@@ -198,6 +198,8 @@ private struct EdgeFadeMask: View {
 struct ComposerToolKeyButton: NSViewRepresentable {
     let symbolName: String
     let tooltip: String
+    var tooltipShortcut: String? = nil
+    var tooltipDetail: String? = nil
     let accessibilityTitle: String
     let accessibilityID: String
     var isEnabled: Bool = true
@@ -210,6 +212,7 @@ struct ComposerToolKeyButton: NSViewRepresentable {
     var menuProvider: (() -> NSMenu)?
     let onEscape: () -> Void
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -228,7 +231,16 @@ struct ComposerToolKeyButton: NSViewRepresentable {
             .withSymbolConfiguration(configuration)
         button.isEnabled = isEnabled || disabledHint != nil
         button.alphaValue = isEnabled ? 1 : 0.42
-        button.toolTip = tooltip
+        button.toolTip = nil
+        button.reduceMotion = accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        button.updateTooltip(
+            CourierTooltipContent(
+                title: tooltip,
+                shortcut: tooltipShortcut,
+                detail: tooltipDetail ?? disabledHint,
+                edge: .top
+            )
+        )
         button.setAccessibilityLabel(accessibilityTitle)
         button.setAccessibilityIdentifier(accessibilityID)
         button.setAccessibilityHelp(disabledHint)
@@ -268,6 +280,11 @@ struct ComposerToolKeyButton: NSViewRepresentable {
 
 final class ComposerToolNSButton: NSButton {
     var onEscape: (() -> Void)?
+    var reduceMotion = false
+    private let tooltipID = UUID().uuidString
+    private var tooltipContent: CourierTooltipContent?
+    private var isPointerInside = false
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isBordered = false
@@ -283,6 +300,18 @@ final class ComposerToolNSButton: NSButton {
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func updateTooltip(_ content: CourierTooltipContent) {
+        tooltipContent = content
+        if isPointerInside {
+            CourierTooltipController.shared.updateContentIfActive(
+                id: tooltipID,
+                content: content,
+                anchorView: self,
+                reduceMotion: reduceMotion
+            )
+        }
+    }
 
     override var acceptsFirstResponder: Bool { isEnabled }
     override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor && window != nil }
@@ -310,13 +339,61 @@ final class ComposerToolNSButton: NSButton {
                            owner: self, userInfo: nil))
     }
 
-    override func mouseEntered(with _: NSEvent) { setHovering(true) }
-    override func mouseExited(with _: NSEvent) { setHovering(false) }
+    override func mouseDown(with event: NSEvent) {
+        CourierTooltipController.shared.dismiss(preserveWarmup: false)
+        super.mouseDown(with: event)
+    }
+
+    override func mouseEntered(with _: NSEvent) {
+        isPointerInside = true
+        setHovering(true)
+        if let tooltipContent {
+            CourierTooltipController.shared.hoverEntered(
+                id: tooltipID,
+                content: tooltipContent,
+                anchorView: self,
+                reduceMotion: reduceMotion
+            )
+        }
+    }
+
+    override func mouseExited(with _: NSEvent) {
+        isPointerInside = false
+        setHovering(false)
+        CourierTooltipController.shared.hoverExited(id: tooltipID, reduceMotion: reduceMotion)
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, isPointerInside {
+            isPointerInside = false
+            setHovering(false)
+            CourierTooltipController.shared.hoverExited(id: tooltipID, reduceMotion: reduceMotion)
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     private func setHovering(_ hovering: Bool) {
         let fill = hovering && isEnabled ? NSColor.labelColor.withAlphaComponent(0.08) : .clear
+        let duration = HoverFillMotion.animationDuration(
+            reduceMotion: reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = fill.cgColor
+            guard let layer else { return }
+            let targetColor = fill.cgColor
+            if duration > 0 {
+                let animation = CABasicAnimation(keyPath: "backgroundColor")
+                animation.fromValue = layer.presentation()?.backgroundColor ?? layer.backgroundColor ?? NSColor.clear.cgColor
+                animation.toValue = targetColor
+                animation.duration = duration
+                animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                layer.add(animation, forKey: "hoverFill")
+            } else {
+                layer.removeAnimation(forKey: "hoverFill")
+            }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.backgroundColor = targetColor
+            CATransaction.commit()
         }
     }
 }

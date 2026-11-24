@@ -95,8 +95,37 @@ public enum ComposerSendButtonAppearance: Equatable, Sendable {
     case disabledNeutral
     case activeAccent
 
+    public enum FillStyle: Equatable, Sendable {
+        case quietGray
+        case solidAccent
+    }
+
+    public enum ArrowStyle: Equatable, Sendable {
+        case muted
+        case white
+    }
+
+    /// Duration of the colour ease between quiet grey and solid accent (0.12 s).
+    public static let colorEaseDuration: TimeInterval = 0.12
+
     public static func forComposer(canSend: Bool) -> Self {
         canSend ? .activeAccent : .disabledNeutral
+    }
+
+    public var fillStyle: FillStyle {
+        self == .activeAccent ? .solidAccent : .quietGray
+    }
+
+    public var arrowStyle: ArrowStyle {
+        self == .activeAccent ? .white : .muted
+    }
+
+    public var fillOpacity: Double {
+        self == .activeAccent ? 1.0 : 0.24
+    }
+
+    public static func colorAnimationDuration(reduceMotion: Bool) -> TimeInterval {
+        reduceMotion ? 0 : colorEaseDuration
     }
 }
 

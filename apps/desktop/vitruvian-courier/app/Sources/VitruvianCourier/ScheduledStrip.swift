@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import VitruvianCourierCore
 import SwiftUI
 
@@ -18,7 +19,8 @@ struct ScheduledStrip: View {
                 reschedule: { id, due in Task { await scheduled.reschedule(id, to: due) } }
             ),
             editing: $scheduled.editingMessage,
-            rescheduling: $scheduled.reschedulingMessage
+            rescheduling: $scheduled.reschedulingMessage,
+            bounceTrigger: scheduled.queuedEventCount
         )
     }
 }
@@ -39,8 +41,17 @@ struct ScheduledList: View {
     var editing: Binding<ScheduledMessage?>? = nil
     var rescheduling: Binding<ScheduledMessage?>? = nil
     @State var isOpen = false
+    var bounceTrigger: Int = 0
     @State private var localEditing: ScheduledMessage?
     @State private var localRescheduling: ScheduledMessage?
+    @State private var handledBounceTrigger = 0
+    @State private var activeBounceTrigger = 0
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
+
+    private var reduceMotionEnabled: Bool {
+        courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
+    }
 
     private var editingBinding: Binding<ScheduledMessage?> {
         editing ?? $localEditing
@@ -51,41 +62,106 @@ struct ScheduledList: View {
     }
 
     var body: some View {
-        if !messages.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Button { withAnimation(.easeOut(duration: 0.15)) { isOpen.toggle() } } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.arrow.circlepath")
-                        Text(title)
-                            .font(.callout.weight(.medium))
-                        if messages.contains(where: { $0.state != .waiting }) {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundStyle(.orange)
-                                .accessibilityLabel(String(localized: "Needs attention"))
+        VStack(spacing: 0) {
+            if !messages.isEmpty {
+                let chevronAnimation: Animation? = ScheduledStripMotion.animatesChevron(
+                    reduceMotion: reduceMotionEnabled
+                )
+                    ? ScheduledStripMotion.chevronCurve.swiftUIAnimation(duration: ScheduledStripMotion.chevronDuration)
+                    : nil
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        if ScheduledStripMotion.animatesToggle(reduceMotion: reduceMotionEnabled) {
+                            withAnimation(
+                                ScheduledStripMotion.toggleCurve.swiftUIAnimation(
+                                    duration: ScheduledStripMotion.toggleDuration
+                                )
+                            ) {
+                                isOpen.toggle()
+                            }
+                        } else {
+                            isOpen.toggle()
                         }
-                        Spacer(minLength: 0)
-                        Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text(title)
+                                .font(.callout.weight(.medium))
+                            if messages.contains(where: { $0.state != .waiting }) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(.orange)
+                                    .accessibilityLabel(String(localized: "Needs attention"))
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(ScheduledStripMotion.chevronRotationDegrees(isOpen: isOpen)))
+                                .animation(chevronAnimation, value: isOpen)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .keyframeAnimator(
+                        initialValue: ScheduledStripMotion.bounceInitialOffsetY,
+                        trigger: activeBounceTrigger
+                    ) { content, offsetY in
+                        content.offset(y: offsetY)
+                    } keyframes: { _ in
+                        KeyframeTrack {
+                            CubicKeyframe(
+                                ScheduledStripMotion.bounceKeyframes[0].offsetY,
+                                duration: ScheduledStripMotion.bounceKeyframes[0].duration
+                            )
+                            CubicKeyframe(
+                                ScheduledStripMotion.bounceKeyframes[1].offsetY,
+                                duration: ScheduledStripMotion.bounceKeyframes[1].duration
+                            )
+                            CubicKeyframe(
+                                ScheduledStripMotion.bounceKeyframes[2].offsetY,
+                                duration: ScheduledStripMotion.bounceKeyframes[2].duration
+                            )
+                        }
+                    }
+
+                    if isOpen {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(messages) { message in
+                                ScheduledRow(
+                                    message: message,
+                                    actions: actions,
+                                    edit: { editingBinding.wrappedValue = message },
+                                    reschedule: { reschedulingBinding.wrappedValue = message }
+                                )
+                            }
+                        }
+                        .transition(.opacity)
+                    }
                 }
-                .buttonStyle(.plain)
-                if isOpen {
-                    ForEach(messages) { message in
-                        ScheduledRow(message: message, actions: actions, edit: { editingBinding.wrappedValue = message },
-                                     reschedule: { reschedulingBinding.wrappedValue = message })
-                    }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.06))
+                .clipped()
+                .sheet(item: editingBinding) { message in ScheduledEditSheet(message: message, actions: actions) }
+                .sheet(item: reschedulingBinding) { message in
+                    ScheduledRescheduleSheet(message: message, actions: actions)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
+                    localEditing = nil
+                    localRescheduling = nil
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Color.accentColor.opacity(0.06))
-            .sheet(item: editingBinding) { message in ScheduledEditSheet(message: message, actions: actions) }
-            .sheet(item: reschedulingBinding) { message in ScheduledRescheduleSheet(message: message, actions: actions) }
-            .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
-                localEditing = nil
-                localRescheduling = nil
+        }
+        .onAppear {
+            handledBounceTrigger = bounceTrigger
+        }
+        .onChange(of: bounceTrigger) { _, newValue in
+            guard newValue != handledBounceTrigger else { return }
+            handledBounceTrigger = newValue
+            guard ScheduledStripMotion.shouldBounce(reduceMotion: reduceMotionEnabled) else { return }
+            DispatchQueue.main.async {
+                activeBounceTrigger += 1
             }
         }
     }

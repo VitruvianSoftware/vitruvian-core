@@ -660,13 +660,17 @@ final class TimelineHostingView: NSHostingView<TimelineHostedRow> {
 }
 
 final class TimelineCell: NSTableCellView {
+    private static let sentRiseAnimationKey = "courier.sentMessageRise"
+
     let hostingView: TimelineHostingView
+    private var displayedItemID: String?
 
     init(identifier: NSUserInterfaceItemIdentifier, rootView: TimelineHostedRow) {
         self.hostingView = TimelineHostingView(rootView: rootView)
         super.init(frame: .zero)
         self.identifier = identifier
         clipsToBounds = false
+        hostingView.wantsLayer = true
         hostingView.sizingOptions = []
         hostingView.translatesAutoresizingMaskIntoConstraints = true
         hostingView.autoresizingMask = [.width, .height]
@@ -679,13 +683,94 @@ final class TimelineCell: NSTableCellView {
 
     private var topExtension: CGFloat = 0
 
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        hostingView.layer?.removeAnimation(forKey: Self.sentRiseAnimationKey)
+        displayedItemID = nil
+    }
+
     func configure(with rootView: TimelineHostedRow, size: NSSize) {
+        let incomingID = rootView.item.id
+        if displayedItemID != incomingID {
+            hostingView.layer?.removeAnimation(forKey: Self.sentRiseAnimationKey)
+            displayedItemID = incomingID
+        }
         topExtension = rootView.topExtension
         if frame.size != size {
             frame = NSRect(origin: frame.origin, size: size)
         }
         hostingView.frame = hostingFrame
         hostingView.rootView = rootView
+    }
+
+    func playSentMessageRiseAnimation(reduceMotion: Bool) {
+        hostingView.wantsLayer = true
+        hostingView.layoutSubtreeIfNeeded()
+        guard let layer = hostingView.layer else { return }
+        layer.removeAnimation(forKey: Self.sentRiseAnimationKey)
+        let spec = SentMessageRiseMotion.initialTransform(reduceMotion: reduceMotion)
+        if !spec.usesMovementAndScale {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = spec.opacity
+            fade.toValue = 1.0
+            fade.duration = spec.duration
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            fade.isRemovedOnCompletion = true
+            layer.add(fade, forKey: Self.sentRiseAnimationKey)
+            return
+        }
+        let boundsSize = layer.bounds.size.width > 0 ? layer.bounds.size : hostingView.bounds.size
+        // The layer's transform is read in its superlayer's orientation, which is what decides which way is down.
+        let pivot = SentMessageRiseMotion.bottomRightPivotOffset(
+            boundsSize: boundsSize,
+            layerAnchorPoint: layer.anchorPoint,
+            superlayerYPointsDown: Self.yPointsDown(inSublayersOf: layer.superlayer)
+        )
+        var startTransform = CATransform3DIdentity
+        startTransform = CATransform3DTranslate(startTransform, pivot.pivotX, pivot.pivotY + pivot.verticalShift, 0)
+        startTransform = CATransform3DScale(startTransform, spec.scale, spec.scale, 1)
+        startTransform = CATransform3DTranslate(startTransform, -pivot.pivotX, -pivot.pivotY, 0)
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = spec.opacity
+        fade.toValue = 1.0
+
+        let rise = CABasicAnimation(keyPath: "transform")
+        rise.fromValue = NSValue(caTransform3D: startTransform)
+        rise.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+
+        let cp = SentMessageRiseMotion.controlPoints
+        let group = CAAnimationGroup()
+        group.animations = [fade, rise]
+        group.duration = spec.duration
+        group.timingFunction = CAMediaTimingFunction(controlPoints: cp.0, cp.1, cp.2, cp.3)
+        group.isRemovedOnCompletion = true
+        layer.add(group, forKey: Self.sentRiseAnimationKey)
+    }
+
+    /// Whether +y runs down the screen in `layer`'s own coordinates: each `isGeometryFlipped` on the way up turns it
+    /// over once (the window's own root layer is the right way up).
+    static func yPointsDown(inSublayersOf layer: CALayer?) -> Bool {
+        var flips = 0
+        var current = layer
+        while let each = current {
+            if each.isGeometryFlipped { flips += 1 }
+            current = each.superlayer
+        }
+        return flips % 2 == 1
+    }
+
+    var hasActiveSentRiseAnimationForTesting: Bool {
+        hostingView.layer?.animation(forKey: Self.sentRiseAnimationKey) != nil
+    }
+
+    /// What the running rise animates, by key path: opacity alone under Reduce Motion, opacity and transform otherwise.
+    var sentRiseAnimatedKeyPathsForTesting: [String] {
+        guard let animation = hostingView.layer?.animation(forKey: Self.sentRiseAnimationKey) else { return [] }
+        if let group = animation as? CAAnimationGroup {
+            return (group.animations ?? []).compactMap { ($0 as? CAPropertyAnimation)?.keyPath }
+        }
+        return [(animation as? CAPropertyAnimation)?.keyPath].compactMap { $0 }
     }
 
     /// The cell's bounds, taller by `topExtension` above the row's top edge.
@@ -925,6 +1010,44 @@ final class TimelineNSTableView: NSTableView {
     }
 }
 
+/// Clip view that bottom-anchors short chats flush above the composer while leaving scrollable tall chats
+/// unconstrained, and forwards clicks in the empty band above a short chat to deselect messages.
+final class TimelineClipView: NSClipView {
+    var contentHeightProvider: (() -> CGFloat)?
+    var onEmptySpaceClick: (() -> Void)?
+
+    override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+        guard let contentHeight = contentHeightProvider?(),
+              let scrollView = enclosingScrollView else {
+            return super.constrainBoundsRect(proposedBounds)
+        }
+        let extra = TimelineBottomAnchoring.extraTopOffset(
+            viewportHeight: proposedBounds.height,
+            topInset: scrollView.contentInsets.top,
+            bottomInset: scrollView.contentInsets.bottom,
+            contentHeight: contentHeight
+        )
+        guard extra > 0.5 else {
+            return super.constrainBoundsRect(proposedBounds)
+        }
+        var constrained = super.constrainBoundsRect(proposedBounds)
+        constrained.origin.y = -(scrollView.contentInsets.top + extra)
+        return constrained
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        if let doc = documentView {
+            let docLocal = doc.convert(local, from: self)
+            if !doc.bounds.contains(docLocal) {
+                onEmptySpaceClick?()
+                return
+            }
+        }
+        super.mouseDown(with: event)
+    }
+}
+
 /// The timeline's scroll view. It tells the timeline when a wheel or trackpad event reaches it, so that only scrolling
 /// this timeline counts as the person scrolling it (a wheel event over the inbox, or any other pane, does not).
 final class TimelineScrollView: NSScrollView {
@@ -938,13 +1061,18 @@ final class TimelineScrollView: NSScrollView {
 
 final class TimelineContainerView: NSView {
     let scrollView = TimelineScrollView()
+    var timelineClipView: TimelineClipView? { scrollView.contentView as? TimelineClipView }
     var onLayout: ((CGSize) -> Void)?
+    /// Told just before and just after the scroll view is given a new frame. Resizing moves the clip view's bounds
+    /// by itself; the timeline must not read that as the person scrolling, and must know whether the newest message
+    /// was in view before the size changed.
+    var onWillResizeScrollView: (() -> Void)?
+    var onDidResizeScrollView: (() -> Void)?
     /// Told when the view enters a window (true) or leaves one (false); not for the first, windowless, state.
     var onWindowPresence: ((Bool) -> Void)?
     private var hadWindow = false
     /// The date capsule that floats under the chat's header while the person scrolls (`FloatingDayController`).
     let floatingDay = FloatingDayController()
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil {
@@ -963,6 +1091,9 @@ final class TimelineContainerView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        let clipView = TimelineClipView()
+        clipView.drawsBackground = false
+        scrollView.contentView = clipView
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
@@ -980,7 +1111,9 @@ final class TimelineContainerView: NSView {
     override func layout() {
         super.layout()
         if scrollView.frame != bounds {
+            onWillResizeScrollView?()
             scrollView.frame = bounds
+            onDidResizeScrollView?()
         }
         // Centred just under the chat's header: the scroll view's top inset is the header and the timeline's own
         // padding, and the capsule sits that padding's width less than a gap below the header.
@@ -1056,12 +1189,21 @@ struct TimelineTableView: NSViewRepresentable {
         private var topControlSizingHost: NSHostingView<TimelineTopControlSizingView>!
 
         private var measuredWidth: CGFloat = 0
+        private var lastContainerHeight: CGFloat = 0
+        /// Whether the newest message was in view just before the last resize, read before the resize moved the
+        /// clip view (afterwards it no longer says).
+        private var wasAtBottomBeforeResize = false
+        private var appliedProgrammaticBeforeResize = false
         private var pendingResizeWidth: CGFloat = 0
         private var resizeDebounceWorkItem: DispatchWorkItem?
         private var heightPassGeneration = 0
 
         private var hasPositionedInitially = false
         private var isApplyingProgrammaticUpdate = false
+        private var reduceMotion = false
+        /// Tests: stands in for the system's Reduce Motion setting.
+        var reduceMotionOverrideForTesting: Bool?
+        private var lastPendingRiseRevision = 0
         private var lastAtBottom = true
         private var lastObservedClipOriginY: CGFloat = 0
         private var topInView = false
@@ -1205,6 +1347,28 @@ struct TimelineTableView: NSViewRepresentable {
             tableView.onEmptySpaceClick = { [weak self] in
                 self?.parent.conversation.deselectMessage()
             }
+            containerView.onWillResizeScrollView = { [weak self] in
+                guard let self, self.hasPositionedInitially else { return }
+                self.wasAtBottomBeforeResize = self.lastAtBottom || self.isScrolledToBottom()
+                self.appliedProgrammaticBeforeResize = self.isApplyingProgrammaticUpdate
+                self.isApplyingProgrammaticUpdate = true
+            }
+            containerView.onDidResizeScrollView = { [weak self] in
+                guard let self, self.hasPositionedInitially else { return }
+                // The newest message was in view before the resize: it still is, in the same layout pass, not a
+                // moment later (a viewport that got shorter would otherwise cover it until something re-checked).
+                if self.wasAtBottomBeforeResize, !self.parent.conversation.isAwayFromLatest {
+                    self.scrollToBottom(animated: false)
+                }
+                self.isApplyingProgrammaticUpdate = self.appliedProgrammaticBeforeResize
+                self.lastObservedClipOriginY = self.containerView.scrollView.contentView.bounds.origin.y
+            }
+            containerView.timelineClipView?.contentHeightProvider = { [weak self] in
+                self?.currentContentHeight() ?? 0
+            }
+            containerView.timelineClipView?.onEmptySpaceClick = { [weak self] in
+                self?.parent.conversation.deselectMessage()
+            }
 
             containerView.scrollView.contentView.postsBoundsChangedNotifications = true
             clipBoundsObserver = NotificationCenter.default.addObserver(
@@ -1311,6 +1475,8 @@ struct TimelineTableView: NSViewRepresentable {
         }
 
         func syncEnvironment(from view: TimelineTableView, environment: EnvironmentValues) {
+            reduceMotion = reduceMotionOverrideForTesting ?? (environment.accessibilityReduceMotion
+                || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
             storedProbe = environment.conversationLayoutProbe
             let env = TimelineRowEnvironment(
                 appearance: view.resolvedAppearance ?? environment.appearancePreferences,
@@ -1529,6 +1695,10 @@ struct TimelineTableView: NSViewRepresentable {
             let clipWidth = scrollView.contentView.bounds.width > 0 ? scrollView.contentView.bounds.width : size.width
             guard clipWidth > 1 else { return }
 
+            let previousHeight = lastContainerHeight
+            let heightChanged = hasPositionedInitially && previousHeight > 1 && abs(size.height - previousHeight) > 0.5
+            lastContainerHeight = size.height
+
             if abs(column.width - clipWidth) > 0.5 {
                 column.width = clipWidth
             }
@@ -1545,6 +1715,25 @@ struct TimelineTableView: NSViewRepresentable {
                 scheduleWidthResize(to: clipWidth)
             } else if !hasPositionedInitially {
                 performInitialLayoutIfReady()
+            }
+            // A new height, with or without a new width: the newest message stays in view. (The width change is
+            // measured a moment later; it keeps the bottom itself.)
+            if heightChanged, hasPositionedInitially {
+                let wasAtBottom = wasAtBottomBeforeResize
+                let isShort = TimelineBottomAnchoring.isShortChat(
+                    viewportHeight: scrollView.contentView.bounds.height,
+                    topInset: scrollView.contentInsets.top,
+                    bottomInset: scrollView.contentInsets.bottom,
+                    contentHeight: currentContentHeight()
+                )
+                if (wasAtBottom || isShort), !parent.conversation.isAwayFromLatest {
+                    isApplyingProgrammaticUpdate = true
+                    scrollToBottom(animated: false)
+                    isApplyingProgrammaticUpdate = false
+                    lastObservedClipOriginY = scrollView.contentView.bounds.origin.y
+                    evaluateScrollPosition()
+                    reportVisibleProbes()
+                }
             }
         }
 
@@ -1565,6 +1754,7 @@ struct TimelineTableView: NSViewRepresentable {
                 scrollToTop(animated: false)
             }
             hasPositionedInitially = true
+            lastContainerHeight = containerView.bounds.height
             isApplyingProgrammaticUpdate = false
             lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
             lastAtBottom = isScrolledToBottom()
@@ -1718,11 +1908,32 @@ struct TimelineTableView: NSViewRepresentable {
             }
         }
 
+        /// The receipt line has moved from the older message to the newer one: the older row got shorter at once (the
+        /// timeline's state and scroll position are already final, and the newest message has not moved). Every row
+        /// from it upward now sits `shrink` lower than it did a moment ago; each draws its old place and eases to the
+        /// new one over `StatusLineStability.receiptEaseDuration`. Purely visual: nothing is measured or scrolled.
+        private func playReceiptEase(shrunkRows: [Int], shrink: CGFloat) {
+            guard shrink > 0.5, let lowest = shrunkRows.max() else { return }
+            tableView.enumerateAvailableRowViews { rowView, row in
+                guard row <= lowest, let layer = rowView.layer else { return }
+                // "Higher on screen" in the layer's own terms: -y when the parent counts y downwards.
+                let from = TimelineCell.yPointsDown(inSublayersOf: layer.superlayer) ? -shrink : shrink
+                let ease = CABasicAnimation(keyPath: "transform.translation.y")
+                ease.fromValue = from
+                ease.toValue = 0
+                ease.duration = StatusLineStability.receiptEaseDuration
+                ease.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                layer.add(ease, forKey: Self.receiptEaseKey)
+            }
+        }
+
+        private static let receiptEaseKey = "courier.receiptLineEase"
+
         // MARK: - Updates & CollectionDifference
 
         func applyUpdates(from view: TimelineTableView, environment: EnvironmentValues) {
             let conversation = view.conversation
-            let items = conversation.items
+                let items = conversation.items
             let topControl = currentTopControl(conversation: conversation)
             let selectedID = conversation.selectedMessageID
             let highlightedID = conversation.highlightedMessageID
@@ -1789,6 +2000,13 @@ struct TimelineTableView: NSViewRepresentable {
             lastTranscriptsSignature = transcriptsSig
 
             handleRequests(view: view, insetsChanged: insetsChanged)
+            if conversation.pendingRiseRevision != lastPendingRiseRevision {
+                lastPendingRiseRevision = conversation.pendingRiseRevision
+                if hasPositionedInitially, !entries.isEmpty {
+                    let tailStart = max(0, entries.count - 5)
+                    animateEligibleSentRows(IndexSet(integersIn: tailStart ..< entries.count), conversation: conversation)
+                }
+            }
             syncSenderCardPopover(view: view, environment: environment)
 
             if storedProbe != nil {
@@ -1920,6 +2138,21 @@ struct TimelineTableView: NSViewRepresentable {
                 ? visibleAnchor(preferMessage: false, allowedIDs: Set(newIDs))
                 : nil
 
+            // Only the receipt line moving between two messages (a newer one has gone): the change itself is as any
+            // other, instant and bottom-anchored, and the rows above it then ease down by the line's height.
+            let easesReceipt = prependAnchor == nil && removedIndexes.isEmpty && insertedIndexes.isEmpty
+                && reloadNewIndexes.isEmpty
+                && StatusLineStability.easesReceiptMove(
+                    changedHeightIDs: heightChangedNewIndexes.compactMap { $0 < newEntries.count ? newEntries[$0].id : nil },
+                    previousReceiptID: lastLastOutgoingID,
+                    currentReceiptID: conversation.lastOutgoingID,
+                    isAtBottom: wasAtBottom && !conversation.isAwayFromLatest,
+                    reduceMotion: reduceMotion
+                )
+            let heightsBefore: [Int: CGFloat] = easesReceipt
+                ? Dictionary(uniqueKeysWithValues: heightChangedNewIndexes.map { ($0, tableView.rect(ofRow: $0).height) })
+                : [:]
+
             isApplyingProgrammaticUpdate = true
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0
@@ -1954,7 +2187,7 @@ struct TimelineTableView: NSViewRepresentable {
                 if let prependAnchor, let targetRow = rowByID[prependAnchor.id] {
                     let newRowRect = tableView.rect(ofRow: targetRow)
                     scrollClipView(toY: newRowRect.minY - prependAnchor.screenMinY)
-                } else if (wasAtBottom || isPinningToBottom),
+                } else if (wasAtBottom || isPinningToBottom || isCurrentShortChat()),
                           !conversation.isAwayFromLatest,
                           restoreAnchor == nil {
                     scrollToBottom(animated: false)
@@ -1963,11 +2196,43 @@ struct TimelineTableView: NSViewRepresentable {
                     scrollClipView(toY: newRowRect.minY - scrollAnchor.screenMinY)
                 }
             }
+            if prependAnchor == nil, !insertedIndexes.isEmpty {
+                animateEligibleSentRows(insertedIndexes, conversation: conversation)
+            }
+            if easesReceipt {
+                let shrunk = heightChangedNewIndexes.filter { (heightsBefore[$0] ?? 0) - tableView.rect(ofRow: $0).height > 0.5 }
+                playReceiptEase(
+                    shrunkRows: shrunk,
+                    shrink: shrunk.reduce(0) { $0 + (heightsBefore[$1] ?? 0) - tableView.rect(ofRow: $1).height }
+                )
+            }
             isApplyingProgrammaticUpdate = false
             lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
             evaluateScrollPosition()
             heightPassGeneration += 1
             scheduleHeightPrewarm(generation: heightPassGeneration)
+        }
+
+        private func animateEligibleSentRows(_ rows: IndexSet, conversation: ConversationModel) {
+            guard !rows.isEmpty else { return }
+            var needsLayout = true
+            for row in rows {
+                guard row >= 0, row < entries.count,
+                      case let .message(msg)? = entries[row].item,
+                      msg.mine else { continue }
+                guard conversation.consumeSentMessageRise(
+                    eventID: msg.id,
+                    isInitialRender: false,
+                    isHistoryLoad: false
+                ) else { continue }
+                if needsLayout {
+                    tableView.layoutSubtreeIfNeeded()
+                    needsLayout = false
+                }
+                if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? TimelineCell {
+                    cell.playSentMessageRiseAnimation(reduceMotion: reduceMotion)
+                }
+            }
         }
 
         private func applyTargetedRowUpdates(
@@ -2040,6 +2305,19 @@ struct TimelineTableView: NSViewRepresentable {
                 let wasAtBottom = isScrolledToBottom()
                 let anchor = wasAtBottom ? nil : visibleAnchor(preferMessage: false)
                 isApplyingProgrammaticUpdate = true
+                // The older message losing its "Sent" line (a newer one has gone): the rows above ease down by that
+                // much over 0.15 s while the newest stays exactly where it is, because the bottom edge is kept by
+                // moving the clip view's origin in step with the rows' own change.
+                let easesReceipt = StatusLineStability.easesReceiptMove(
+                    changedHeightIDs: heightChanged.compactMap { $0 < entries.count ? entries[$0].id : nil },
+                    previousReceiptID: lastLastOutgoingID,
+                    currentReceiptID: lastOutgoingID,
+                    isAtBottom: wasAtBottom && !parent.conversation.isAwayFromLatest,
+                    reduceMotion: reduceMotion
+                )
+                let heightsBefore: [Int: CGFloat] = easesReceipt
+                    ? Dictionary(uniqueKeysWithValues: heightChanged.map { ($0, tableView.rect(ofRow: $0).height) })
+                    : [:]
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = 0
                     ctx.allowsImplicitAnimation = false
@@ -2049,6 +2327,13 @@ struct TimelineTableView: NSViewRepresentable {
                     }
                     tableView.layoutSubtreeIfNeeded()
                     restoreScrollAfterHeightChange(wasAtBottom: wasAtBottom, anchor: anchor)
+                }
+                if easesReceipt {
+                    let shrunk = heightChanged.filter { (heightsBefore[$0] ?? 0) - tableView.rect(ofRow: $0).height > 0.5 }
+                    playReceiptEase(
+                        shrunkRows: shrunk,
+                        shrink: shrunk.reduce(0) { $0 + (heightsBefore[$1] ?? 0) - tableView.rect(ofRow: $1).height }
+                    )
                 }
                 isApplyingProgrammaticUpdate = false
                 lastObservedClipOriginY = containerView.scrollView.contentView.bounds.origin.y
@@ -2113,7 +2398,10 @@ struct TimelineTableView: NSViewRepresentable {
                 return (explicitAnchorID, screenMinY)
             }
 
-            if let visible = visibleAnchor(preferMessage: false) {
+            // A message, not the date line: older messages from the same day go in below that line, so the line stays
+            // at the very top while everything else moves down, and holding it in place let the rows jump (then be
+            // pulled back a moment later).
+            if let visible = visibleAnchor(preferMessage: true) {
                 return visible
             }
 
@@ -2165,6 +2453,10 @@ struct TimelineTableView: NSViewRepresentable {
             let wasAtTop = abs(scrollView.contentView.bounds.origin.y + oldTop) <= 1.0
             let wasAtBottom = isScrolledToBottom()
 
+            // Changing the insets can move the clip view's bounds. That is the app's own move, not the person
+            // scrolling: it must not count as one (it would take the timeline off the bottom).
+            let wasApplying = isApplyingProgrammaticUpdate
+            isApplyingProgrammaticUpdate = true
             scrollView.contentInsets = NSEdgeInsets(top: topInset, left: 0, bottom: bottomInset, right: 0)
             scrollView.scrollerInsets = NSEdgeInsets(
                 top: -ConversationView.timelineVerticalPadding,
@@ -2174,14 +2466,14 @@ struct TimelineTableView: NSViewRepresentable {
             )
 
             if adjustScrollPosition {
-                isApplyingProgrammaticUpdate = true
-                if wasAtBottom, !parent.conversation.isAwayFromLatest {
+                if (wasAtBottom || isCurrentShortChat()), !parent.conversation.isAwayFromLatest {
                     scrollToBottom(animated: false)
                 } else if wasAtTop {
-                    scrollClipView(toY: -topInset)
+                    scrollToTop(animated: false)
                 }
-                isApplyingProgrammaticUpdate = false
             }
+            isApplyingProgrammaticUpdate = wasApplying
+            lastObservedClipOriginY = scrollView.contentView.bounds.origin.y
             return true
         }
 
@@ -2198,7 +2490,8 @@ struct TimelineTableView: NSViewRepresentable {
             if conversation.jumpToBottomRequest != lastJumpToBottomRequest {
                 lastJumpToBottomRequest = conversation.jumpToBottomRequest
                 if hasPositionedInitially {
-                    scrollToBottom(animated: true)
+                    // Reduce Motion: straight there, no 0.2 s glide.
+                    scrollToBottom(animated: !reduceMotion)
                 }
             }
 
@@ -2323,7 +2616,8 @@ struct TimelineTableView: NSViewRepresentable {
                 readNewerIfAtBottom()
             }
 
-            let topThreshold = -scrollView.contentInsets.top + max(
+            let minOriginY = currentOriginYBounds().min
+            let topThreshold = minOriginY + max(
                 clipBounds.height * TimelineTableMetrics.topTriggerScreenMultiplier,
                 TimelineTableMetrics.minimumTopTriggerMargin
             )
@@ -2412,27 +2706,44 @@ struct TimelineTableView: NSViewRepresentable {
             reportVisibleProbes()
         }
 
+        private func currentContentHeight() -> CGFloat {
+            guard !entries.isEmpty, tableView.numberOfRows == entries.count else { return 0 }
+            return tableView.rect(ofRow: entries.count - 1).maxY
+        }
+
+        private func isCurrentShortChat() -> Bool {
+            let scrollView = containerView.scrollView
+            return TimelineBottomAnchoring.isShortChat(
+                viewportHeight: scrollView.contentView.bounds.height,
+                topInset: scrollView.contentInsets.top,
+                bottomInset: scrollView.contentInsets.bottom,
+                contentHeight: currentContentHeight()
+            )
+        }
+
+        private func currentOriginYBounds() -> (min: CGFloat, max: CGFloat) {
+            let scrollView = containerView.scrollView
+            return TimelineBottomAnchoring.originYBounds(
+                viewportHeight: scrollView.contentView.bounds.height,
+                topInset: scrollView.contentInsets.top,
+                bottomInset: scrollView.contentInsets.bottom,
+                contentHeight: currentContentHeight()
+            )
+        }
+
         private func scrollToTop(animated: Bool) {
-            let topY = -containerView.scrollView.contentInsets.top
-            scrollClipView(toY: topY, animated: animated)
+            scrollClipView(toY: currentOriginYBounds().min, animated: animated)
         }
 
         private func scrollToBottom(animated: Bool) {
-            let scrollView = containerView.scrollView
-            let clipHeight = scrollView.contentView.bounds.height
-            let minOriginY = -scrollView.contentInsets.top
-            let contentBottomY = entries.isEmpty ? 0 : tableView.rect(ofRow: entries.count - 1).maxY
-            let maxOriginY = max(minOriginY, contentBottomY + scrollView.contentInsets.bottom - clipHeight)
-            scrollClipView(toY: maxOriginY, animated: animated)
+            scrollClipView(toY: currentOriginYBounds().max, animated: animated)
         }
 
         private func scrollClipView(toY rawY: CGFloat, animated: Bool = false) {
             let scrollView = containerView.scrollView
             let clipView = scrollView.contentView
-            let minOriginY = -scrollView.contentInsets.top
-            let contentBottomY = entries.isEmpty ? 0 : tableView.rect(ofRow: entries.count - 1).maxY
-            let maxOriginY = max(minOriginY, contentBottomY + scrollView.contentInsets.bottom - clipView.bounds.height)
-            let clampedY = min(maxOriginY, max(minOriginY, rawY))
+            let bounds = currentOriginYBounds()
+            let clampedY = min(bounds.max, max(bounds.min, rawY))
             guard abs(clampedY - clipView.bounds.origin.y) > 0.5 else { return }
             let target = NSPoint(x: clipView.bounds.origin.x, y: clampedY)
             if animated {

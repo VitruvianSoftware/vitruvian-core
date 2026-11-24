@@ -22,11 +22,14 @@ struct ConversationView: View {
     let appModel: AppModel
     var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.timelineCovered) private var windowCoversTimeline
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @Environment(\.conversationLayoutProbe) private var conversationLayoutProbe
+    @Environment(\.courierReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.typingLineForTesting) private var typingLineForTesting
     @StateObject private var ui = MessageUI()
     @State private var scrollBox = TimelineScrollBox()
     @State private var isDropTargeted = false
@@ -61,6 +64,19 @@ struct ConversationView: View {
     @State private var measuredHeaderOverlayHeight: CGFloat = 0
     @State private var measuredBottomBarHeight: CGFloat = 0
     @State private var windowToolbarOverlap: CGFloat = 0
+    /// Whether the thread or Chat Info pane has played its entrance since the person opened it: a pane that is rebuilt
+    /// while it stays open (the chat changed under it) must not play it again.
+    @State private var threadEntrancePlayed = false
+    @State private var chatInfoEntrancePlayed = false
+    /// Goes up each time a pane is closed, so that opening it again builds it afresh (and its entrance with it): the
+    /// split view can otherwise hand the old pane's state to the next one.
+    @State private var threadPaneSession = 0
+    @State private var chatInfoPaneSession = 0
+    /// Whether the timeline's bottom inset is raised to hold the typing pill clear of the newest message.
+    @State private var typingInsetRaised = false
+    /// True until the first pass has been laid out: a pane already open then (this view is back after New Chat took
+    /// the detail pane, say) is shown at once, not entered again.
+    @State private var isFirstPass = true
 
     var body: some View {
         HSplitView {
@@ -70,8 +86,15 @@ struct ConversationView: View {
                 ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
                            messageActions: messageActions, preferences: preferences, focus: focus,
                            headerInToolbar: drawsLiquidGlass, chatName: chatName)
+                    .courierSidePaneEntrance(
+                        plays: !isFirstPass && SidePaneMotion.playsEntrance(alreadyPlayedThisOpen: threadEntrancePlayed)
+                    ) {
+                        threadEntrancePlayed = true
+                        conversationLayoutProbe?("entrance/thread", .zero)
+                    }
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
                     .reportsSidePaneWidth(.thread)
+                    .id(threadPaneSession)
             }
             if conversation.isShowingChatInfo, let info = conversation.chatInfo {
                 ChatInfoPane(
@@ -180,8 +203,15 @@ struct ConversationView: View {
                     headerInToolbar: drawsLiquidGlass,
                     selfAvatarPath: conversation.ownAvatarPath(for: info)
                 )
+                .courierSidePaneEntrance(
+                    plays: !isFirstPass && SidePaneMotion.playsEntrance(alreadyPlayedThisOpen: chatInfoEntrancePlayed)
+                ) {
+                    chatInfoEntrancePlayed = true
+                    conversationLayoutProbe?("entrance/chatInfo", .zero)
+                }
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)
+                .id(chatInfoPaneSession)
             }
             if conversation.isShowingAIPane {
                 AIPane(
@@ -210,6 +240,28 @@ struct ConversationView: View {
             }
         }
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
+        .onAppear {
+            // A pane that was already open when this view came (back from New Chat, a window reopened) has had its
+            // entrance: it must not play again.
+            isFirstPass = false
+            if conversation.isShowingChatInfo { chatInfoEntrancePlayed = true }
+            if thread.rootID != nil { threadEntrancePlayed = true }
+        }
+        // Closing a pane re-arms its entrance for the next time the person opens it.
+        .onChange(of: conversation.isShowingChatInfo) { _, showing in
+            if !showing {
+                chatInfoEntrancePlayed = false
+                chatInfoPaneSession += 1
+            }
+        }
+        .onChange(of: thread.rootID == nil) { _, closed in
+            if closed {
+                threadEntrancePlayed = false
+                threadPaneSession += 1
+            }
+        }
+        .onChange(of: typingText != nil) { _, _ in updateTypingInset() }
+        .onChange(of: conversation.roomID) { _, _ in typingInsetRaised = false }
         .environment(\.appearancePreferences, resolvedAppearance)
         .environment(\.themeRoomID, conversation.roomID)
         .environment(\.timelineCovered, windowCoversTimeline || coveredBySheet)
@@ -446,7 +498,6 @@ struct ConversationView: View {
                     ProblemBar(problem: problem, retry: conversation.reload)
                 }
                 ScheduledStrip(scheduled: scheduled)
-                TypingLine(text: conversation.typingLine)
                 ConversationComposerContainer(
                     composer: composer,
                     inbox: inbox,
@@ -658,29 +709,77 @@ struct ConversationView: View {
     }
 
     private var tableMessages: some View {
-        let bottomInset = drawsLiquidGlass ? measuredBottomBarHeight : 0
+        let barInset = drawsLiquidGlass ? measuredBottomBarHeight : 0
         let resolvedThemeHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
-        return TimelineTableView(
-            conversation: conversation,
-            messageActions: messageActions,
-            preferences: preferences,
-            ui: ui,
-            appModel: appModel,
-            actions: actions,
-            effectiveHeaderInset: effectiveHeaderInset,
-            bottomSafeAreaInset: bottomInset,
-            bottomBarSignature: bottomBarSignature,
-            resolvedAppearance: resolvedAppearance,
-            redact: redact,
-            themeAccentHex: resolvedThemeHex,
-            drawsLiquidGlass: drawsLiquidGlass,
-            timelineCovered: windowCoversTimeline || coveredBySheet
-        )
+        // The typing pill floats over the bottom of the timeline. While it shows and the person is at the bottom,
+        // the inset grows by its height (eased) so the newest message stays clear of it and pinned to the bottom.
+        return EasedInsetHost(inset: TypingLineMotion.insetHeight(raised: typingInsetRaised, rowPadding: Self.timelineVerticalPadding)) { typingInset in
+            TimelineTableView(
+                conversation: conversation,
+                messageActions: messageActions,
+                preferences: preferences,
+                ui: ui,
+                appModel: appModel,
+                actions: actions,
+                effectiveHeaderInset: effectiveHeaderInset,
+                bottomSafeAreaInset: barInset + typingInset,
+                bottomBarSignature: bottomBarSignature,
+                resolvedAppearance: resolvedAppearance,
+                redact: redact,
+                themeAccentHex: resolvedThemeHex,
+                drawsLiquidGlass: drawsLiquidGlass,
+                timelineCovered: windowCoversTimeline || coveredBySheet
+            )
+        }
         .modifier(ConversationBottomScrollEdge())
         .modifier(IgnoreBottomContainerSafeAreaWhenGlass(enabled: drawsLiquidGlass))
         .overlay(alignment: .bottomTrailing) {
-            jumpButton
-                .padding(.bottom, bottomInset)
+            trackedJumpButton
+                .padding(.bottom, barInset)
+        }
+        .overlayPreferenceValue(JumpButtonWidthKey.self, alignment: .bottomLeading) { jumpWidth in
+            typingPill(barInset: barInset, jumpButtonWidth: jumpWidth)
+        }
+    }
+
+    private var typingText: String? { typingLineForTesting ?? conversation.typingLine }
+
+    /// Who is typing, as a pill just above the composer over the timeline: it has no place in the layout. While the
+    /// jump-to-latest button shows beside it, the pill ends before the button starts and its text truncates. The slot
+    /// watches the chat's bottom state itself, so this view (and the rows) are not re-evaluated when it flips.
+    private func typingPill(barInset: CGFloat, jumpButtonWidth: CGFloat) -> some View {
+        TypingPillSlot(
+            conversation: conversation, bottom: conversation.bottom, text: typingText, barInset: barInset,
+            jumpButtonWidth: jumpButtonWidth, coordinateSpace: Self.chatCoordinateSpace,
+            atBottomChanged: { updateTypingInset() }
+        )
+    }
+
+    /// The jump-to-latest button, its width reported (as a preference, so that nothing here changes state) for the
+    /// typing pill to leave room for.
+    private var trackedJumpButton: some View {
+        jumpButton
+            .background(GeometryReader { Color.clear.preference(key: JumpButtonWidthKey.self, value: $0.size.width) })
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.chatCoordinateSpace)) } action: { frame in
+                conversationLayoutProbe?("jumpButton", frame)
+            }
+    }
+
+    /// Raises or lowers the timeline's bottom inset for the typing pill: with the pill at the bottom of the chat;
+    /// away from it nothing changes.
+    private func updateTypingInset() {
+        let raised = TypingLineMotion.nextInsetRaised(
+            current: typingInsetRaised, pillVisible: typingText != nil,
+            atBottom: conversation.isAtBottom && !conversation.isAwayFromLatest
+        )
+        guard raised != typingInsetRaised else { return }
+        let reduceMotion = courierReduceMotion(override: reduceMotionOverride, accessibility: accessibilityReduceMotion)
+        if TypingLineMotion.animatesInset(reduceMotion: reduceMotion) {
+            withAnimation(TypingLineMotion.fadeCurve.swiftUIAnimation(duration: TypingLineMotion.fadeDuration)) {
+                typingInsetRaised = raised
+            }
+        } else {
+            typingInsetRaised = raised
         }
     }
 
@@ -756,8 +855,11 @@ struct ConversationView: View {
                                 }
                             }
                     }
+                    // The bottom anchor: scrolling "to the bottom" puts its lower edge at the viewport's, so the
+                    // room the typing pill needs under the newest message is this anchor's height (1 pt, plus the
+                    // pill's room while it shows; the anchor's 1 pt is all the row padding there is down here).
                     Color.clear
-                        .frame(height: 1)
+                        .frame(height: 1 + TypingLineMotion.insetHeight(raised: typingInsetRaised, rowPadding: 1))
                         .id(Self.bottomID)
                         .onAppear {
                             leavingBottom?.cancel()
@@ -799,7 +901,10 @@ struct ConversationView: View {
             .modifier(ConversationBottomScrollEdge())
             // A click on the timeline's empty space (not on a message, which takes its own click) deselects.
             .deselectsOnEmptyClick { conversation.deselectMessage() }
-            .overlay(alignment: .bottomTrailing) { jumpButton }
+            .overlay(alignment: .bottomTrailing) { trackedJumpButton }
+            .overlayPreferenceValue(JumpButtonWidthKey.self, alignment: .bottomLeading) { jumpWidth in
+                typingPill(barInset: 0, jumpButtonWidth: jumpWidth)
+            }
             .onChange(of: conversation.isLoadingOlder) { _, loading in
                 if !loading, topInView, !conversation.olderFailed { requestOlder() }
             }
@@ -811,7 +916,11 @@ struct ConversationView: View {
                 if let request { scrollToMessage(proxy, request) }
             }
             .onChange(of: conversation.jumpToBottomRequest) { _, _ in
-                scrollToBottom(proxy, animated: true)
+                // Reduce Motion: straight there, no 0.2 s glide.
+                scrollToBottom(
+                    proxy,
+                    animated: !(accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                )
             }
             .onChange(of: conversation.items) { _, _ in
                 // New messages, a reaction or a status line are followed only by someone already at the newest
@@ -847,6 +956,18 @@ struct ConversationView: View {
                     userScrollMonitor = nil
                 }
             }
+            .onChange(of: typingInsetRaised) { _, _ in
+                // The typing pill took (or gave back) room under the newest message: keep it in view.
+                guard conversation.isAtBottom, !conversation.isAwayFromLatest else { return }
+                scrollToBottom(proxy)
+                // The room eases, so a scroll during the ease can land short of the final bottom: settle it after.
+                let room = conversation.roomID
+                DispatchQueue.main.asyncAfter(deadline: .now() + TypingLineMotion.fadeDuration + 0.05) {
+                    guard conversation.roomID == room, conversation.isAtBottom,
+                          !conversation.isAwayFromLatest else { return }
+                    proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                }
+            }
             .onChange(of: bottomBarSignature) { _, _ in
                 // The bottom bar grew (a reply, files, more lines): keep the newest message in view.
                 if conversation.isAtBottom, !conversation.isAwayFromLatest { scrollToBottom(proxy) }
@@ -866,8 +987,7 @@ struct ConversationView: View {
     /// Changes when anything under the timeline changes size.
     private var bottomBarSignature: [String] {
         [composerChromeSignature,
-         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight),
-         conversation.typingLine == nil ? "" : "typing"]
+         conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight)]
     }
 
     /// At the top of the timeline when this Mac holds no older message but the network may: the "Loading earlier
@@ -1054,11 +1174,14 @@ struct ConversationView: View {
     @ViewBuilder
     private var placeholder: some View {
         if !conversation.isLoaded {
-            // Only when nothing is kept for the chat, and only after a moment: a fast read never flashes it.
+            // Chat identity has switched already; only the messages are still on their way. Nothing shows for the
+            // first moment (a fast read never flashes), then message-shaped placeholders fade in. A failed read
+            // shows the error and retry state instead.
             if conversation.problem == nil {
-                DelayedSpinner()
+                TimelinePlaceholder()
                     .id(conversation.roomID)
                     .padding(.top, effectiveHeaderInset)
+                    .padding(.bottom, ConversationView.timelineVerticalPadding)
             }
         } else if conversation.items.isEmpty {
             Text(String(localized: "No messages yet"))
@@ -1435,64 +1558,113 @@ private struct ProblemBar: View {
     }
 }
 
-/// A spinner that shows only after `delay`, so a read that finishes sooner never flashes one.
-private struct DelayedSpinner: View {
-    var delay: Duration = .milliseconds(250)
-    @State private var isShown = false
-
-    var body: some View {
-        Group {
-            if isShown { ProgressView() } else { Color.clear }
-        }
-        .task {
-            try? await Task.sleep(for: delay)
-            if !Task.isCancelled { isShown = true }
-        }
-    }
-}
-
 /// The way back to the newest message. Away from it (opened at a search result) it says "Jump to latest", with
 /// a dot once something new has come in. It watches `BottomState` itself, so the timeline does not have to.
-private struct JumpToLatestButton: View {
+struct JumpToLatestButton: View {
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var bottom: BottomState
     let appearance: AppearancePreferences?
+    /// Tests: stands in for the system's Reduce Motion setting.
+    var reduceMotionOverride: Bool?
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var reduceMotion: Bool {
+        reduceMotionOverride ?? (accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
+
+    private var isVisible: Bool { !bottom.isAtBottom || conversation.isAwayFromLatest }
+
+    private var liveLabel: JumpToLatestLabel {
+        JumpToLatestLabel(
+            isAwayFromLatest: conversation.isAwayFromLatest,
+            hasNewerWhileAway: conversation.hasNewerWhileAway,
+            newMessageCount: bottom.newMessageCount
+        )
+    }
+
+    /// What the button said the last time it was shown: it keeps these words while it fades out, so its width does
+    /// not snap to the chevron alone when the count resets as the bottom comes into view.
+    @State private var lastShownLabel = JumpToLatestLabel(isAwayFromLatest: false, hasNewerWhileAway: false, newMessageCount: 0)
+    /// The "Jump to latest" words, kept from the moment the chat stops being away from the latest (the jump was
+    /// made) until the button is gone: the view has not reached the bottom yet, and the button must not shrink to
+    /// the chevron alone on the way.
+    @State private var heldLabel: JumpToLatestLabel?
+
+    /// The fade only: 0.15 s ease-out, with a 50 ms wait when it appears. It never moves or scales, so Reduce Motion
+    /// only shortens it and drops the wait.
+    private var fade: Animation {
+        .easeOut(duration: JumpToLatestMotion.duration(reduceMotion: reduceMotion))
+            .delay(JumpToLatestMotion.delay(appearing: isVisible, reduceMotion: reduceMotion))
+    }
 
     var body: some View {
-        if !bottom.isAtBottom || conversation.isAwayFromLatest {
-            Button {
-                conversation.jumpToBottom()
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.down")
-                    if conversation.isAwayFromLatest {
-                        Text(String(localized: "Jump to latest"))
-                            .font(.callout.weight(.medium))
-                        if conversation.hasNewerWhileAway {
-                            let accentHex = appearance?.effectiveTheme(for: conversation.roomID).accentColorHex
-                                ?? CourierThemePreset.classicTeal.defaultAccentHex
-                            Circle()
-                                .fill(Color(hex: accentHex) ?? Color.accentColor)
-                                .frame(width: 7, height: 7)
-                                .accessibilityLabel(String(localized: "New messages"))
-                        }
-                    } else if bottom.newMessageCount > 0 {
-                        Text(bottom.newMessageCount == 1 ? String(localized: "1 new message")
-                            : String(localized: "\(bottom.newMessageCount) new messages"))
-                            .font(.callout.weight(.medium))
+        // Always in the tree, so it can fade out as well as in; hidden, it takes no clicks and is not announced.
+        let label = JumpToLatestLabel.displayed(
+            current: liveLabel, lastShown: lastShownLabel, held: heldLabel, isVisible: isVisible
+        )
+        Button {
+            conversation.jumpToBottom()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.down")
+                if label.isAwayFromLatest {
+                    Text(String(localized: "Jump to latest"))
+                        .font(.callout.weight(.medium))
+                    if label.hasNewerWhileAway {
+                        let accentHex = appearance?.effectiveTheme(for: conversation.roomID).accentColorHex
+                            ?? CourierThemePreset.classicTeal.defaultAccentHex
+                        Circle()
+                            .fill(Color(hex: accentHex) ?? Color.accentColor)
+                            .frame(width: 7, height: 7)
+                            .accessibilityLabel(String(localized: "New messages"))
                     }
+                } else if label.newMessageCount > 0 {
+                    Text(label.newMessageCount == 1 ? String(localized: "1 new message")
+                        : String(localized: "\(label.newMessageCount) new messages"))
+                        .font(.callout.weight(.medium))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(.regularMaterial))
-                .overlay(Capsule().strokeBorder(.quaternary))
-                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
             }
-            .buttonStyle(.plain)
-            .padding(14)
-            .help(String(localized: "Jump to the newest message (⌘↓)"))
-            .accessibilityLabel(String(localized: "Jump to the newest message"))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule().fill(.regularMaterial)
+                    .overlay(Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(
+                        colorScheme == .dark
+                            ? JumpToLatestMotion.surfaceFillOpacityDark
+                            : JumpToLatestMotion.surfaceFillOpacityLight
+                    )))
+            )
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 0.5))
+            .shadow(
+                color: .black.opacity(colorScheme == .dark
+                    ? JumpToLatestMotion.shadowOpacityDark
+                    : JumpToLatestMotion.shadowOpacityLight),
+                radius: JumpToLatestMotion.shadowRadius,
+                y: JumpToLatestMotion.shadowYOffset
+            )
         }
+        .buttonStyle(.plain)
+        .padding(14)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
+        .animation(fade, value: isVisible)
+        .onChange(of: liveLabel, initial: true) { old, new in
+            guard isVisible else { return }
+            // The jump from a search result: "away" ends at once, the bottom is reached a moment later. The words it
+            // had are kept until the button is gone.
+            if old.isAwayFromLatest, !new.isAwayFromLatest, new.newMessageCount == 0 { heldLabel = old }
+            lastShownLabel = JumpToLatestLabel.displayed(current: new, lastShown: lastShownLabel, held: heldLabel, isVisible: true)
+        }
+        .onChange(of: isVisible) { _, visible in
+            if visible {
+                heldLabel = nil
+                lastShownLabel = liveLabel
+            }
+        }
+        .help(String(localized: "Jump to the newest message (⌘↓)"))
+        .accessibilityLabel(String(localized: "Jump to the newest message"))
     }
 }
 
