@@ -2160,7 +2160,10 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
         .filter((u) => u.sessionUpdate === "agent_message_chunk");
       expect(chunks).toHaveLength(1);
       expect(chunks[0]).toMatchObject({
-        content: { type: "text", text: expect.stringContaining("subtract(a, b)") },
+        content: {
+          type: "text",
+          text: expect.stringContaining("subtract(a, b)"),
+        },
       });
       // And the meter shows the real call, not the empty stale turn.
       const usage = harness.receivedUpdates

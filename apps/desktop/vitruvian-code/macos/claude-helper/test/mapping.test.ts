@@ -648,10 +648,30 @@ describe("SDK -> ACP mapping", () => {
       resetTurnMappingState(state);
       // One small turn, 4 model calls: every call resends the ~90k history.
       const calls = [
-        { input_tokens: 3, cache_read_input_tokens: 90_000, cache_creation_input_tokens: 600, output_tokens: 120 },
-        { input_tokens: 1, cache_read_input_tokens: 90_600, cache_creation_input_tokens: 900, output_tokens: 80 },
-        { input_tokens: 1, cache_read_input_tokens: 91_500, cache_creation_input_tokens: 700, output_tokens: 60 },
-        { input_tokens: 2, cache_read_input_tokens: 92_200, cache_creation_input_tokens: 400, output_tokens: 150 },
+        {
+          input_tokens: 3,
+          cache_read_input_tokens: 90_000,
+          cache_creation_input_tokens: 600,
+          output_tokens: 120,
+        },
+        {
+          input_tokens: 1,
+          cache_read_input_tokens: 90_600,
+          cache_creation_input_tokens: 900,
+          output_tokens: 80,
+        },
+        {
+          input_tokens: 1,
+          cache_read_input_tokens: 91_500,
+          cache_creation_input_tokens: 700,
+          output_tokens: 60,
+        },
+        {
+          input_tokens: 2,
+          cache_read_input_tokens: 92_200,
+          cache_creation_input_tokens: 400,
+          output_tokens: 150,
+        },
       ];
       for (const [i, usage] of calls.entries()) {
         mapSdkMessageToNotifications(
@@ -665,7 +685,12 @@ describe("SDK -> ACP mapping", () => {
         SESSION_ID,
         callWithUsage(
           "msg_sub",
-          { input_tokens: 9, cache_read_input_tokens: 400_000, cache_creation_input_tokens: 0, output_tokens: 5 },
+          {
+            input_tokens: 9,
+            cache_read_input_tokens: 400_000,
+            cache_creation_input_tokens: 0,
+            output_tokens: 5,
+          },
           "toolu_task",
         ),
         state,

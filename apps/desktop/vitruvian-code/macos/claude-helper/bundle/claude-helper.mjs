@@ -43150,12 +43150,7 @@ function mapResultUsageNotification(sessionId, message, state) {
   if (!call) {
     return [];
   }
-  const {
-    inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    cacheWriteTokens
-  } = call;
+  const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = call;
   const cachedTokens = cacheReadTokens + cacheWriteTokens;
   const used = inputTokens + outputTokens + cachedTokens;
   const size = resolveContextWindowSize(message.modelUsage);

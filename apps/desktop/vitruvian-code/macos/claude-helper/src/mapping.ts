@@ -709,18 +709,11 @@ function mapResultUsageNotification(
   // dropped it; then the result's own usage is that one call.
   const call =
     state.lastCallUsage ??
-    (message.num_turns <= 1
-      ? readCallUsage({ usage: message.usage })
-      : null);
+    (message.num_turns <= 1 ? readCallUsage({ usage: message.usage }) : null);
   if (!call) {
     return [];
   }
-  const {
-    inputTokens,
-    outputTokens,
-    cacheReadTokens,
-    cacheWriteTokens,
-  } = call;
+  const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = call;
 
   const cachedTokens = cacheReadTokens + cacheWriteTokens;
   const used = inputTokens + outputTokens + cachedTokens;
