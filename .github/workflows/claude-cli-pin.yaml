@@ -147,14 +147,19 @@ jobs:
               ;;
           esac
 
-          # Nothing to do if the branch already proposes exactly this pin:
-          # re-pushing would only reset CI and clear any armed auto-merge.
-          if [ -n "$remote_sha" ] && git show "$remote_sha:tools/testinfra/claude_cli.bzl" | cmp -s - tools/testinfra/claude_cli.bzl; then
-            echo "$branch already proposes $VERSION; left alone."
-            exit 0
-          fi
-
           existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+
+          # Nothing to do if an open pull request already proposes exactly this
+          # pin: re-pushing would only reset CI and clear any armed auto-merge.
+          # A closed one is reopened as a new pull request below.
+          if [ -n "$existing" ] && [ -n "$remote_sha" ]; then
+            remote_pin="$RUNNER_TEMP/claude-cli-pin-remote.bzl"
+            git show "$remote_sha:tools/testinfra/claude_cli.bzl" > "$remote_pin"
+            if cmp -s "$remote_pin" tools/testinfra/claude_cli.bzl; then
+              echo "PR #${existing} already proposes $VERSION; left alone."
+              exit 0
+            fi
+          fi
           if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
             gh pr merge "$existing" --disable-auto
           fi
