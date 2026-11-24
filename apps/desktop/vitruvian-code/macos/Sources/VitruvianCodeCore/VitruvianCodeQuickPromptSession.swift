@@ -2603,9 +2603,20 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
              .configOptions,
              .notice,
              .sessionInfo:
-            if case .configOptions = event { configOptionsEventCount += 1 }
-            liveState.apply(event)
+            if case .configOptions(let options) = event {
+                configOptionsEventCount += 1
+                liveState.apply(.configOptions(shownConfigOptions(options)))
+            } else {
+                liveState.apply(event)
+            }
         }
+    }
+
+    /// The live chat's settings as the chat shows them. An Ollama (claude) chat on the Agent SDK
+    /// drops the helper's model choice: the SDK lists Claude's models, and the chat's model is the
+    /// Ollama one picked from `ollama list` in the model menu (`OllamaClaude.withoutModelOption`).
+    private func shownConfigOptions(_ options: [AgentConfigOption]) -> [AgentConfigOption] {
+        liveConnectionOllamaModel == nil ? options : OllamaClaude.withoutModelOption(options)
     }
 
     /// Maps the interim Step 2b approval card buttons to ACP option IDs (`allow_once`, `allow_always`,
@@ -3573,7 +3584,7 @@ extension VitruvianCodeQuickPromptSession {
             if option.value == value { continue }
             do {
                 let updated = try await persistent.setConfigOption(id, value)
-                if !updated.isEmpty { liveState.apply(.configOptions(updated)) }
+                if !updated.isEmpty { liveState.apply(.configOptions(shownConfigOptions(updated))) }
             } catch {
                 liveConfigOptionError = strings.configOptionUpdateFailed
                 throw ConfigReapplyError(message: strings.configOptionUpdateFailed)
@@ -3617,7 +3628,7 @@ extension VitruvianCodeQuickPromptSession {
             let updated = try await active.setConfigOption(trimmedID, value)
             guard liveConnection === active else { return false }
             if !updated.isEmpty {
-                liveState.apply(.configOptions(updated))
+                liveState.apply(.configOptions(shownConfigOptions(updated)))
             }
             rememberedConfigChoices[trimmedID] = value
             liveConfigOptionError = nil

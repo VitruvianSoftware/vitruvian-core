@@ -141,6 +141,17 @@ public enum OllamaClaude {
         base.merging(environment(serverURL: serverURL(ollamaHost: base[hostVariable]), model: model)) { _, ollama in ollama }
     }
 
+    /// `options` without the session's model choice (id or category `model`). On an Ollama chat
+    /// the helper's list is Claude's models, which Ollama does not serve; the chat's model menu
+    /// offers Ollama's own (`ollama list`), and a pick there starts a new connection on it.
+    public static func withoutModelOption(_ options: [AgentConfigOption]) -> [AgentConfigOption] {
+        options.filter { option in
+            let id = option.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let category = option.category?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return id != "model" && category != "model"
+        }
+    }
+
     /// Go's `net.SplitHostPort`: `host:port` or `[v6]:port`. Nil when there is no port, or
     /// when an unbracketed host has a colon of its own.
     private static func splitHostPort(_ text: String) -> (String, String)? {

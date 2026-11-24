@@ -3260,6 +3260,26 @@ final class EngineHostTests: XCTestCase {
         XCTAssertEqual(listed.launchSpecUsed.environment["CLAUDE_CODE_SUBAGENT_MODEL"], "llama3.2")
     }
 
+    /// The model menu of an Ollama chat on the SDK is Ollama's, as on the command line: the
+    /// models `ollama list` reports, never Claude's.
+    func testAnOllamaChatOnTheSDKOffersOllamasModels() async {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.executables = [rig.home + "/.local/bin/claude", "/opt/homebrew/bin/ollama"]
+        rig.programOutput = "NAME            ID              SIZE      MODIFIED\nqwen3:8b        500a1f067a9f    5.2 GB    2 days ago\nllama3.2:latest a80c4f17acd5    2.0 GB    3 weeks ago\n"
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: RecordingHost())
+        var ollama = VitruvianCodeCLIProvider.ollama
+        ollama.connection = .claudeSDK
+
+        engine.updateActiveProvider(ollama)
+        engine.refreshModels()
+        await rig.wait { engine.availableModels.contains { $0.id == "qwen3:8b" } }
+
+        XCTAssertEqual(engine.availableModels.map(\.id), ["qwen3:8b", "llama3.2:latest"])
+        XCTAssertTrue(rig.programRuns.contains { $0.name == "ollama" && $0.arguments == ["list"] })
+        XCTAssertFalse(rig.programRuns.contains { $0.arguments == ["--version"] }, "no Claude model check")
+    }
+
     func testOllamaVariablesAreNotSetForClaudeOrForOllamaOnTheCommandLine() throws {
         let rig = Rig()
         defer { rig.tearDown() }
