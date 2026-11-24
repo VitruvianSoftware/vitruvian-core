@@ -71,6 +71,17 @@ final class ToolExitTests: XCTestCase {
         sentinel = nil
     }
 
+    /// The trace is off unless asked for, and each line says when, how much
+    /// CPU the process had used, which process, and the step.
+    func testTheTraceLineCarriesTheClockTheCPUAndTheStep() {
+        XCTAssertEqual(ToolTrace.enabled, ProcessInfo.processInfo.environment["VITRUVIAN_TOOL_TRACE"] == "1")
+        let line = ToolTrace.line("loop returned")
+        XCTAssertTrue(line.hasPrefix("tool-trace wall="), line)
+        XCTAssertTrue(line.contains(" cpu_ms="), line)
+        XCTAssertTrue(line.contains(" pid=\(getpid()) "), line)
+        XCTAssertTrue(line.hasSuffix(" loop returned\n"), line)
+    }
+
     func testTheBudgetsFitInsideTheProtocolsTwoSeconds() {
         XCTAssertLessThan(ToolExit.stopBudget, ToolExit.deadline)
         XCTAssertLessThanOrEqual(ToolExit.deadline, 1.5)

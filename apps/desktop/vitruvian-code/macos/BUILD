@@ -168,6 +168,13 @@ genrule(
 # script, under a home of its own: the handshake, a command, an unknown
 # command, the island panel opened and tapped, refusals, and a clean exit.
 # It starts the real program.
+#
+# Exclusive: the script holds the tool to the app's time limits (two seconds
+# to answer, two to exit after shutdown), which are a person's machine's.
+# Beside VitruvianCodeTests and Swift compiles on a 3-vCPU CI runner the
+# whole script ran in 6-7 s instead of 1, and the exit missed its two
+# seconds; alone it measures the tool, not the runner. conformance_alone_test
+# keeps the tag.
 rust_test(
     name = "tool_conformance_test",
     size = "medium",
@@ -186,9 +193,20 @@ rust_test(
     },
     tags = [
         "block-network",
+        "exclusive",
         "manual",
     ],
     target_compatible_with = ["@platforms//os:macos"],
+)
+
+# tool_conformance_test runs alone: see its comment. Not tied to macOS.
+rust_test(
+    name = "conformance_alone_test",
+    size = "small",
+    srcs = ["atrium-extension/src/conformance_alone_test.rs"],
+    data = ["BUILD"],
+    edition = "2021",
+    env = {"BUILD_FILE": "$(rootpath BUILD)"},
 )
 
 # The tool's version is the app's, in the manifest, the tool's Version.swift
