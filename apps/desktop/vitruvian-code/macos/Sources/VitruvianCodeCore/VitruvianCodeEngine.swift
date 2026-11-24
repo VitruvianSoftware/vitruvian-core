@@ -1154,6 +1154,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
+        let started = process.processIdentifier
+        ChildProcesses.shared.add(started, leadsGroup: false)
         // Only the child keeps the write end, so its exit reaches the reader as EOF.
         try? pipe.fileHandleForWriting.close()
         try? input.fileHandleForReading.close()
@@ -1170,6 +1172,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 DispatchQueue.main.async { onOutput(chunk) }
             }
             process.waitUntilExit()
+            ChildProcesses.shared.remove(started)
             writer.close()
             let status = process.terminationStatus
             try? reader.close()
@@ -1207,6 +1210,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         process.standardOutput = output
         process.standardError = errors
         try process.run()
+        let started = process.processIdentifier
+        ChildProcesses.shared.add(started, leadsGroup: false)
         // Only the child keeps the write ends, so its exit reaches the readers as EOF.
         try? output.fileHandleForWriting.close()
         try? errors.fileHandleForWriting.close()
@@ -1231,6 +1236,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             try? outputReader.close()
             errorsRead.wait()
             process.waitUntilExit()
+            ChildProcesses.shared.remove(started)
             let status = process.terminationStatus
             DispatchQueue.main.async { onExit(status) }
         }

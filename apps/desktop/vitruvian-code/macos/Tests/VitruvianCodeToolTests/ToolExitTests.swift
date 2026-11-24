@@ -21,6 +21,7 @@
 import Foundation
 import XCTest
 
+import VitruvianCodeCore
 import VitruvianCodeToolCore
 
 /// Darwin marks `fork` unavailable to Swift; the child here only registers
@@ -109,6 +110,73 @@ final class ToolExitTests: XCTestCase {
         XCTAssertEqual(status, 0)
         XCTAssertFalse(stopped)
         XCTAssertLessThan(after ?? .infinity, 2)
+    }
+
+    /// Waits up to `seconds` for `pgid` to be gone; true once it is.
+    private func gone(_ pgid: pid_t, within seconds: TimeInterval) -> Bool {
+        let deadline = ProcessInfo.processInfo.systemUptime + seconds
+        while AgentProcess.processGroupExists(pgid) {
+            if ProcessInfo.processInfo.systemUptime > deadline { return false }
+            usleep(10_000)
+        }
+        return true
+    }
+
+    /// A chat's program that ignores SIGTERM, with one it started in its
+    /// group, as the Claude helper and its `claude`: a stop cut short by the
+    /// deadline leaves neither running.
+    func testKillsTheChatsProgramsWhenTheDeadlineCutsTheStopShort() throws {
+        let child = try AgentProcess(AgentProcessLaunchSpec(
+            executable: "/bin/sh", arguments: ["-c", "trap '' TERM; /bin/sleep 30 & wait"]))
+        let pgid = child.processGroupID
+        defer { _ = kill(-pgid, SIGKILL) }
+        XCTAssertTrue(ChildProcesses.shared.pids.contains(child.pid))
+        // It does ignore a polite ask.
+        usleep(100_000)
+        _ = kill(-pgid, SIGTERM)
+        XCTAssertFalse(gone(pgid, within: 0.3), "the fake chat program ended on SIGTERM")
+
+        let ended = DispatchSemaphore(value: 0)
+        Thread.detachNewThread {
+            ToolExit.leave(status: 0, deadline: 0.2, stop: {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }, end: { _ in ended.signal() })
+        }
+        XCTAssertEqual(ended.wait(timeout: .now() + 3), .success)
+        XCTAssertTrue(gone(pgid, within: 2), "the chat's programs outlived the tool's end")
+        XCTAssertFalse(ChildProcesses.shared.pids.contains(child.pid), "a reaped program was kept")
+    }
+
+    /// A stop that finishes in time kills nothing.
+    func testAStopThatFinishesKillsNothing() throws {
+        let children = ChildProcesses()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        defer { process.terminate() }
+        children.add(process.processIdentifier, leadsGroup: false)
+        let ended = expectation(description: "ended")
+        Thread.detachNewThread {
+            ToolExit.leave(status: 0, deadline: 5, children: children, stop: {}, end: { _ in ended.fulfill() })
+        }
+        wait(for: [ended], timeout: 5)
+        XCTAssertTrue(process.isRunning, "a program was killed although the stop finished")
+    }
+
+    /// A program in the caller's own group, as a provider's command is, is
+    /// killed alone: the group would be the tool itself.
+    func testKillAllKillsAProgramThatSharesTheCallersGroup() throws {
+        let children = ChildProcesses()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "trap '' TERM; while :; do /bin/sleep 1; done"]
+        try process.run()
+        children.add(process.processIdentifier, leadsGroup: false)
+        XCTAssertEqual(children.killAll(), 1)
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationReason, .uncaughtSignal)
+        XCTAssertEqual(process.terminationStatus, SIGKILL)
     }
 
     /// `exit` would run every atexit handler, CoreAnalytics' among them,

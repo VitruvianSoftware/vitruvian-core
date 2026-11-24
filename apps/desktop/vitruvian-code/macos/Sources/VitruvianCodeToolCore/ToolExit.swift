@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import Foundation
+import VitruvianCodeCore
 
 /// How the program ends once the app says `shutdown`.
 ///
@@ -38,6 +39,9 @@ import Foundation
 /// So the stop gets a budget, the wait for the main thread a deadline, and
 /// the process ends with `_exit`. Nothing is lost by skipping the handlers:
 /// the kit writes to the app with `write(2)`, which has no buffer to flush.
+/// A stop cut short by the deadline would leave the chat's programs running
+/// (agy, the Claude helper and its `claude`, what they started), so those
+/// still in `ChildProcesses` are killed, groups and all, before the end.
 public enum ToolExit {
     /// From the end of the kit's loop to the end of the process, whatever
     /// the main thread is doing: well inside the protocol's two seconds.
@@ -52,12 +56,15 @@ public enum ToolExit {
     }
 
     /// Runs `stop` on the main actor and calls `end` once it has finished,
-    /// or once `deadline` has passed, whichever is first. Called on the
-    /// kit's thread when its loop returns; it blocks that thread, never the
-    /// main one. It returns only if `end` does, as in the tests.
+    /// or once `deadline` has passed, whichever is first. At the deadline,
+    /// the programs still in `children` are killed first, from this thread.
+    /// Called on the kit's thread when its loop returns; it blocks that
+    /// thread, never the main one. It returns only if `end` does, as in the
+    /// tests.
     public static func leave(
         status: Int32,
         deadline: TimeInterval = deadline,
+        children: ChildProcesses = .shared,
         stop: @escaping @Sendable @MainActor () async -> Void,
         end: @Sendable (Int32) -> Void
     ) {
@@ -66,7 +73,9 @@ public enum ToolExit {
             await stop()
             stopped.signal()
         }
-        _ = stopped.wait(timeout: .now() + max(0, deadline))
+        if stopped.wait(timeout: .now() + max(0, deadline)) == .timedOut {
+            children.killAll()
+        }
         end(status)
     }
 }
