@@ -61,6 +61,14 @@ struct ConversationView: View {
     @State private var measuredHeaderOverlayHeight: CGFloat = 0
     @State private var measuredBottomBarHeight: CGFloat = 0
     @State private var windowToolbarOverlap: CGFloat = 0
+    /// The chat column's frame and the chat's header's, in the window: with glass the header is a toolbar item, kept
+    /// inside the room the column leaves it (`ChatHeaderWidth`).
+    @State private var chatColumnFrame: CGRect?
+    @State private var toolbarHeaderFrame: CGRect?
+    /// Bumped to put a new header item in the toolbar when the toolbar has moved the header into its overflow menu,
+    /// and the width it was bumped at, so it is bumped once for each width (`ChatHeaderWidth`).
+    @State private var toolbarHeaderGeneration = 0
+    @State private var toolbarHeaderReplacedAt: CGFloat?
 
     var body: some View {
         HSplitView {
@@ -222,9 +230,14 @@ struct ConversationView: View {
                 hex: resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
             ) ?? .accentColor
         )
-        .courierChatToolbar {
+        .courierChatToolbar(identityGeneration: toolbarHeaderGeneration) {
             ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
                                         redactNamesAndPictures: redact, part: .identity)
+                .frame(maxWidth: toolbarHeaderMaxWidth, alignment: .leading)
+                .background(WindowFrameReader { frame in
+                    toolbarHeaderFrame = frame
+                    replaceToolbarHeaderIfOverflowed()
+                })
         } actions: {
             ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
                                         redactNamesAndPictures: redact, part: .actions)
@@ -313,6 +326,32 @@ struct ConversationView: View {
                 Text(roomConfirmDetail)
             }
         }
+    }
+
+    /// The widest the chat's header may be in the toolbar, so a long name truncates and never pushes the header and
+    /// its buttons into the toolbar's overflow menu (`ChatHeaderWidth`). The narrowest until the column is measured:
+    /// an item the toolbar has once put in its overflow menu does not come back when it narrows.
+    private var toolbarHeaderMaxWidth: CGFloat {
+        guard let column = chatColumnFrame else { return ChatHeaderWidth.minimum }
+        let buttons = 1 + (conversation.timerChoices.isEmpty ? 0 : 1)
+        return ChatHeaderWidth.maximum(columnMinX: column.minX, columnMaxX: column.maxX,
+                                       headerMinX: toolbarHeaderFrame?.minX, buttons: buttons)
+    }
+
+    /// The window shrank faster than the header's limit followed it, and the toolbar moved the header (and the
+    /// buttons after it) into its overflow menu, where it stays even once it is narrow enough: a new item in its
+    /// place is laid out again at the new width. Once for each width, so a window too narrow for any header does
+    /// not keep replacing it.
+    private func replaceToolbarHeaderIfOverflowed() {
+        guard drawsLiquidGlass, chatColumnFrame != nil else { return }
+        guard toolbarHeaderFrame == nil else {
+            toolbarHeaderReplacedAt = nil
+            return
+        }
+        let width = toolbarHeaderMaxWidth
+        guard toolbarHeaderReplacedAt != width else { return }
+        toolbarHeaderReplacedAt = width
+        toolbarHeaderGeneration += 1
     }
 
     private var resolvedAppearance: AppearancePreferences? {
@@ -423,6 +462,12 @@ struct ConversationView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
+            WindowFrameReader { frame in
+                chatColumnFrame = frame
+                replaceToolbarHeaderIfOverflowed()
+            }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
             if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
                 ChatWallpaperCanvasView(
                     preset: effectiveTheme.wallpaper,

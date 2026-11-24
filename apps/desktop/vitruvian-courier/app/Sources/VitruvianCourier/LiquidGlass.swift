@@ -191,12 +191,17 @@ extension View {
     ///
     /// `panes` is the open side panes' headers (the thread, Chat Info), one item after the chat's buttons, at the
     /// toolbar's trailing edge over the panes (`PaneHeader`).
+    ///
+    /// A change of `identityGeneration` puts a new item in the identity's place: the toolbar does not bring back an
+    /// item it has moved into its overflow menu when the item narrows, only a new one (`ChatHeaderWidth`).
     func courierChatToolbar<Identity: View, Actions: View, Panes: View>(
+        identityGeneration: Int = 0,
         @ViewBuilder identity: () -> Identity,
         @ViewBuilder actions: () -> Actions,
         @ViewBuilder panes: () -> Panes
     ) -> some View {
-        modifier(CourierChatToolbar(identity: identity(), actions: actions(), panes: panes()))
+        modifier(CourierChatToolbar(identityGeneration: identityGeneration, identity: identity(), actions: actions(),
+                                    panes: panes()))
     }
 
     /// The chat list, in the window's sidebar: with glass its own opaque background goes, so the sidebar's floating
@@ -262,6 +267,7 @@ private struct CourierExtendsUnderBars: ViewModifier {
 }
 
 private struct CourierChatToolbar<Identity: View, Actions: View, Panes: View>: ViewModifier {
+    let identityGeneration: Int
     let identity: Identity
     let actions: Actions
     let panes: Panes
@@ -271,8 +277,14 @@ private struct CourierChatToolbar<Identity: View, Actions: View, Panes: View>: V
         if #available(macOS 26.0, *), liquidGlass {
             content
                 .toolbar {
-                    ToolbarItem(placement: .navigation) { identity }
-                        .sharedBackgroundVisibility(.hidden)
+                    // Two branches, so a new generation is a new item and not the same one updated.
+                    if identityGeneration.isMultiple(of: 2) {
+                        ToolbarItem(placement: .navigation) { identity }
+                            .sharedBackgroundVisibility(.hidden)
+                    } else {
+                        ToolbarItem(placement: .navigation) { identity }
+                            .sharedBackgroundVisibility(.hidden)
+                    }
                     // On the toolbar's trailing edge, as Mail's and Messages' buttons are (a Mac's `.primaryAction`
                     // is its leading edge, next to the name).
                     ToolbarSpacer(.flexible)
