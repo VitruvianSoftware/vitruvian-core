@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.41](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.40...vitruvian-courier-v0.3.41) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** hovers and animations that match the feel of Beeper ([#5407](https://github.com/VitruvianSoftware/vitruvian-core/issues/5407)) ([4478607](https://github.com/VitruvianSoftware/vitruvian-core/commit/44786079fe024a374d2b96564124e6fdda66f175))
+
 ## [0.3.40](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.39...vitruvian-courier-v0.3.40) (2026-11-24)
 
 
