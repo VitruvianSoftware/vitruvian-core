@@ -511,6 +511,7 @@ struct ChatWorkingDirectoryBadge: View {
 
             NSApp.activate(ignoringOtherApps: true)
             if panel.runModal() == .OK, let url = panel.url {
+                session.forgetResumedFolder()
                 var next = engine.configuration
                 next.workingDirectory = url.path
                 engine.updateChatConfiguration(next)
