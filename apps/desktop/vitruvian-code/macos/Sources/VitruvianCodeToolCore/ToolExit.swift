@@ -58,13 +58,15 @@ public enum ToolExit {
     /// Runs `stop` on the main actor and calls `end` once it has finished,
     /// or once `deadline` has passed, whichever is first. At the deadline,
     /// the programs still in `children` are killed first, from this thread.
+    /// The program passes `ChildProcesses.shared`; a test passes its own,
+    /// since killing the shared one kills every child of the test process.
     /// Called on the kit's thread when its loop returns; it blocks that
     /// thread, never the main one. It returns only if `end` does, as in the
     /// tests.
     public static func leave(
         status: Int32,
         deadline: TimeInterval = deadline,
-        children: ChildProcesses = .shared,
+        children: ChildProcesses,
         stop: @escaping @Sendable @MainActor () async -> Void,
         end: @Sendable (Int32) -> Void
     ) {

@@ -46,6 +46,31 @@ final class ToolExitTests: XCTestCase {
         var snapshot: (Int32?, TimeInterval?, Bool) { lock.lock(); defer { lock.unlock() }; return (status, after, stopped) }
     }
 
+    /// A program the test process holds in `ChildProcesses.shared`, as
+    /// another suite's fake helper would be when every suite runs in one
+    /// process (the mirror's `swift test`). No test here may kill it.
+    private var sentinel: Process?
+
+    override func setUpWithError() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        ChildProcesses.shared.add(process.processIdentifier, leadsGroup: false)
+        sentinel = process
+    }
+
+    override func tearDown() {
+        guard let process = sentinel else { return }
+        // A deadline that reached the shared registry has killed it.
+        usleep(50_000)
+        XCTAssertTrue(process.isRunning, "a test killed the programs in ChildProcesses.shared")
+        ChildProcesses.shared.remove(process.processIdentifier)
+        process.terminate()
+        process.waitUntilExit()
+        sentinel = nil
+    }
+
     func testTheBudgetsFitInsideTheProtocolsTwoSeconds() {
         XCTAssertLessThan(ToolExit.stopBudget, ToolExit.deadline)
         XCTAssertLessThanOrEqual(ToolExit.deadline, 1.5)
@@ -57,7 +82,7 @@ final class ToolExitTests: XCTestCase {
         let done = expectation(description: "ended")
         let start = ProcessInfo.processInfo.systemUptime
         Thread.detachNewThread {
-            ToolExit.leave(status: 0, deadline: 5, stop: { ending.stop() }, end: { status in
+            ToolExit.leave(status: 0, deadline: 5, children: ChildProcesses(), stop: { ending.stop() }, end: { status in
                 ending.ended(status, ProcessInfo.processInfo.systemUptime - start)
                 done.fulfill()
             })
@@ -76,7 +101,7 @@ final class ToolExitTests: XCTestCase {
         let done = expectation(description: "ended")
         let start = ProcessInfo.processInfo.systemUptime
         Thread.detachNewThread {
-            ToolExit.leave(status: 3, deadline: 0.2, stop: {
+            ToolExit.leave(status: 3, deadline: 0.2, children: ChildProcesses(), stop: {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
                 ending.stop()
             }, end: { status in
@@ -99,7 +124,7 @@ final class ToolExitTests: XCTestCase {
         let ended = DispatchSemaphore(value: 0)
         let start = ProcessInfo.processInfo.systemUptime
         Thread.detachNewThread {
-            ToolExit.leave(status: 0, deadline: 0.2, stop: { ending.stop() }, end: { status in
+            ToolExit.leave(status: 0, deadline: 0.2, children: ChildProcesses(), stop: { ending.stop() }, end: { status in
                 ending.ended(status, ProcessInfo.processInfo.systemUptime - start)
                 ended.signal()
             })
@@ -126,11 +151,12 @@ final class ToolExitTests: XCTestCase {
     /// group, as the Claude helper and its `claude`: a stop cut short by the
     /// deadline leaves neither running.
     func testKillsTheChatsProgramsWhenTheDeadlineCutsTheStopShort() throws {
+        let children = ChildProcesses()
         let child = try AgentProcess(AgentProcessLaunchSpec(
-            executable: "/bin/sh", arguments: ["-c", "trap '' TERM; /bin/sleep 30 & wait"]))
+            executable: "/bin/sh", arguments: ["-c", "trap '' TERM; /bin/sleep 30 & wait"]), registry: children)
         let pgid = child.processGroupID
         defer { _ = kill(-pgid, SIGKILL) }
-        XCTAssertTrue(ChildProcesses.shared.pids.contains(child.pid))
+        XCTAssertTrue(children.pids.contains(child.pid))
         // It does ignore a polite ask.
         usleep(100_000)
         _ = kill(-pgid, SIGTERM)
@@ -138,13 +164,13 @@ final class ToolExitTests: XCTestCase {
 
         let ended = DispatchSemaphore(value: 0)
         Thread.detachNewThread {
-            ToolExit.leave(status: 0, deadline: 0.2, stop: {
+            ToolExit.leave(status: 0, deadline: 0.2, children: children, stop: {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
             }, end: { _ in ended.signal() })
         }
         XCTAssertEqual(ended.wait(timeout: .now() + 3), .success)
         XCTAssertTrue(gone(pgid, within: 2), "the chat's programs outlived the tool's end")
-        XCTAssertFalse(ChildProcesses.shared.pids.contains(child.pid), "a reaped program was kept")
+        XCTAssertFalse(children.pids.contains(child.pid), "a reaped program was kept")
     }
 
     /// A stop that finishes in time kills nothing.

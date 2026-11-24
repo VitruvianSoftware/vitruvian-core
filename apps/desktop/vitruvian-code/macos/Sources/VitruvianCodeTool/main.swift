@@ -218,7 +218,7 @@ tool.onLanguageChanged = { app in
 // seconds either way. See ToolExit.
 Thread.detachNewThread {
     let status = kit.tool.serve()
-    ToolExit.leave(status: status, stop: {
+    ToolExit.leave(status: status, children: .shared, stop: {
         await codeTool.stopAll(timeout: ToolExit.stopBudget)
     }, end: { ToolExit.endProcess($0) })
 }

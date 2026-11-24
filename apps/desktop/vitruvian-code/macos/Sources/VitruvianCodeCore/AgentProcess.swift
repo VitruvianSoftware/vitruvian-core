@@ -211,6 +211,7 @@ public final class AgentProcess: Sendable {
     public init(
         _ spec: AgentProcessLaunchSpec,
         signalProcessGroup: @escaping SignalSender = { Darwin.kill(-$0, $1) },
+        registry: ChildProcesses = .shared,
         onExit: (@Sendable (AgentProcessExit) -> Void)? = nil
     ) throws {
         self.signalProcessGroup = signalProcessGroup
@@ -345,7 +346,7 @@ public final class AgentProcess: Sendable {
 
         let childPID = spawnedPID
         self.pid = childPID
-        ChildProcesses.shared.add(childPID, leadsGroup: true)
+        registry.add(childPID, leadsGroup: true)
         let inputWriter = AgentInput(FileHandle(fileDescriptor: stdinPipe[1], closeOnDealloc: true))
         self.input = inputWriter
 
@@ -367,7 +368,7 @@ public final class AgentProcess: Sendable {
                 }
                 break
             }
-            ChildProcesses.shared.remove(childPID)
+            registry.remove(childPID)
             // Report the exit before closing stdin: a write blocked on a full
             // pipe (a grandchild still holds the read end and isn't reading)
             // holds the input lock, and the close would wait on it.
