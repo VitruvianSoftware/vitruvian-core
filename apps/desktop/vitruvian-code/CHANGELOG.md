@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.46.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.1...vitruvian-code-v1.46.0) (2026-11-24)
+
+
+### Features
+
+* **vitruvian-code:** show each live chat's MCP servers and where they are configured ([#5485](https://github.com/VitruvianSoftware/vitruvian-core/issues/5485)) ([5526dc7](https://github.com/VitruvianSoftware/vitruvian-core/commit/5526dc7939337416fdfe922ba8e66ab1d544311c))
+
 ## [1.45.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.0...vitruvian-code-v1.45.1) (2026-11-24)
 
 
