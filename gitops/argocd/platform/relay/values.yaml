@@ -28,7 +28,7 @@
 # replica (the chart's own, with Recreate): the relay holds each computer's
 # connection and each sign-in session in memory.
 image:
-  digest: "9220b88d20c02681b1a02c675526a63cf26e8c52@sha256:7fe1c579858a27491e73b8ce22a5420e924ca2159910b75fcb759c56ef51d598"
+  digest: "11156c123ccf79ced4088df992fbc36fbab3e02f@sha256:6c3af64c533b6ef08347fcd49b3618979d30b4fcf8c827a5523f1a4564a0106a"
 
 hostname: relay.vitruviansoftware.dev
 
