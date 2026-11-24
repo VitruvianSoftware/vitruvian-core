@@ -155,6 +155,17 @@ checked. In the runs list a neutral verdict still shows as a green run,
 because Actions has no neutral run; the run page carries a "nothing checked"
 notice.
 
+### `claude-cli-pin.yaml` — keep the plugin tests' Claude Code CLI current
+
+Weekly (Tuesdays 14:23 UTC, plus `workflow_dispatch`), runs
+`bazel run //tools/claude-cli-pin:update`, which moves
+`tools/testinfra/claude_cli.bzl` to npm's latest `@anthropic-ai/claude-code`
+and its four platform `sha512` checksums. When the pin changes, it mints the
+sync App token and opens or updates `chore(testinfra): bump the Claude Code CLI
+to <version>` on `chore/claude-cli-pin`; the required `build-test` check runs
+the orchestrator plugin tests on the new CLI. See
+[`tools/claude-cli-pin/README.md`](../../tools/claude-cli-pin/README.md).
+
 ### `model-prices.yaml` — keep orchestrator model prices current
 
 Weekly (Mondays 13:41 UTC, plus `workflow_dispatch`), runs

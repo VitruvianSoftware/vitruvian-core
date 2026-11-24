@@ -1,0 +1,7 @@
+{
+  "dist": {
+    "integrity": "sha512-9UUbpdtrFXfQWXACwblqvPfKz5ZdtOtbiiwbRY3h1pzrqGcimLbUJUZty/SsHOXaTqSJQzFTuO6iSqZITyFKXQ=="
+  },
+  "name": "@anthropic-ai/claude-code-darwin-x64",
+  "version": "2.1.331"
+}
