@@ -64,6 +64,12 @@ struct ConversationView: View {
     @State private var measuredHeaderOverlayHeight: CGFloat = 0
     @State private var measuredBottomBarHeight: CGFloat = 0
     @State private var windowToolbarOverlap: CGFloat = 0
+    /// With glass, where the chat column and its header are in the window, so the header, a toolbar item, stays inside
+    /// the room the column leaves it (`ChatHeaderWidth`). Held, not observed: only the header redraws when they move,
+    /// never the timeline.
+    @State private var toolbarHeaderLayout = ChatHeaderLayout()
+    /// Bumped to put a new header item in the toolbar when the toolbar has moved the header into its overflow menu.
+    @State private var toolbarHeaderGeneration = 0
     /// Whether the thread or Chat Info pane has played its entrance since the person opened it: a pane that is rebuilt
     /// while it stays open (the chat changed under it) must not play it again.
     @State private var threadEntrancePlayed = false
@@ -274,9 +280,13 @@ struct ConversationView: View {
                 hex: resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
             ) ?? .accentColor
         )
-        .courierChatToolbar {
-            ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
-                                        redactNamesAndPictures: redact, part: .identity)
+        .courierChatToolbar(identityGeneration: toolbarHeaderGeneration) {
+            ToolbarChatHeader(layout: toolbarHeaderLayout, buttons: toolbarHeaderButtons,
+                              onOverflow: { toolbarHeaderGeneration += 1 }) {
+                ConversationHeaderContainer(inbox: inbox, conversation: conversation,
+                                            readAloud: messageActions.readAloud,
+                                            redactNamesAndPictures: redact, part: .identity)
+            }
         } actions: {
             ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
                                         redactNamesAndPictures: redact, part: .actions)
@@ -366,6 +376,10 @@ struct ConversationView: View {
             }
         }
     }
+
+    /// The chat's buttons after its header in the toolbar: Chat Info, and Disappearing Messages where the network
+    /// has it.
+    private var toolbarHeaderButtons: Int { 1 + (conversation.timerChoices.isEmpty ? 0 : 1) }
 
     private var resolvedAppearance: AppearancePreferences? {
         appearance ?? appearanceEnv
@@ -475,6 +489,11 @@ struct ConversationView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
+            if drawsLiquidGlass {
+                WindowFrameReader { [toolbarHeaderLayout] frame in toolbarHeaderLayout.columnFrame = frame }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+            }
             if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
                 ChatWallpaperCanvasView(
                     preset: effectiveTheme.wallpaper,
