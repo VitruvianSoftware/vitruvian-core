@@ -220,7 +220,7 @@ macos_application(
 #
 # Unpacks :VitruvianCourierTestCopy into a temporary folder and opens it with VITRUVIAN_COURIER_DATA_DIR set to its own data folder
 # (default: a folder under $TMPDIR). --seed NAME opens it full of the made-up chats of ../seed/scenarios/NAME.json,
-# in a fresh $TMPDIR/vitruvian-courier-test-copy/seed-NAME (VITRUVIAN_COURIER_SEED). It refuses an app whose bundle identifier is not the test copy's, and a data
+# in a fresh $TMPDIR/courier-test/seed-NAME (VITRUVIAN_COURIER_SEED). It refuses an app whose bundle identifier is not the test copy's, and a data
 # folder that is the installed app's. It never touches /Applications/Vitruvian Courier.app.
 rust_binary(
     name = "run_test_copy",
@@ -328,10 +328,11 @@ rust_test(
     size = "small",
     crate = ":vitruvian_courier_scripts_lib",
     # The same crate's tests as :vitruvian_courier_scripts_lib_test, so the same data:
-    # publish's test reads version.bzl.
+    # publish's test reads version.bzl, run_test_copy's the seed scenarios.
     data = [
         "Resources/VitruvianCourier.entitlements",
         "version.bzl",
+        "//apps/desktop/vitruvian-courier/seed:scenarios",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -439,8 +440,11 @@ rust_test(
     name = "vitruvian_courier_scripts_lib_test",
     size = "small",
     crate = ":vitruvian_courier_scripts_lib",
-    # publish's test reads the real version.bzl, as release-please rewrites it.
-    data = ["version.bzl"],
+    # publish's test reads the real version.bzl, as release-please rewrites it; run_test_copy's, every seed scenario.
+    data = [
+        "version.bzl",
+        "//apps/desktop/vitruvian-courier/seed:scenarios",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )

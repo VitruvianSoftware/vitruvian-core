@@ -139,6 +139,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     @Published public private(set) var isRunning = false
     /// True while at least one tool approval card in the conversation is awaiting a decision.
     @Published public private(set) var hasPendingApproval = false
+    /// The chat's MCP status panel while it is open; nil when closed.
+    @Published public private(set) var mcpStatusPanel: AgentMCPStatusPanel?
     /// The tool the agent is using right now, if any.
     @Published public private(set) var activity: String?
     @Published public private(set) var conversationID: String?
@@ -248,6 +250,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var liveConnection: (any PersistentAgentConnection)?
     private var liveConnectionProviderID: UUID?
     private var liveConnectionKind: AgentConnectionKind?
+    /// The model an Ollama (claude) live connection was started with: Ollama's model is set
+    /// when the helper starts (`OllamaClaude`), so a chat that switches model gets a new
+    /// connection, which resumes the same conversation. Nil for every other connection.
+    private var liveConnectionOllamaModel: String?
     private var liveConnectionWorktree: Bool?
     /// The folder the live connection was started in. A connection runs where
     /// it started, so one started for another folder is not reused.
@@ -682,7 +688,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // Claude on the Agent SDK sends everything as events, so its transcript is not followed:
         // following it too would show each message twice (docs/designs/vitruvian-code-acp.md,
         // "Transcript follower in live chats").
-        if effectiveProvider.route == .claude && effectiveProvider.connection == .claudeSDK {
+        if effectiveProvider.runsOnClaudeSDK {
             stopTranscriptFollower()
             return
         }
@@ -959,6 +965,17 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if chatConnectionOverride != nil {
             persistCurrentChatConnectionOverride()
         }
+    }
+
+    /// The model an Ollama (claude) chat on the Agent SDK starts its connection with, as
+    /// `ClaudeSDKConnection` picks it; nil for any other provider or connection.
+    static func ollamaSDKModel(
+        provider: VitruvianCodeCLIProvider,
+        configuration: VitruvianCodeConfiguration,
+        ollamaDefaultModel: String
+    ) -> String? {
+        guard provider.route == .ollama, provider.runsOnClaudeSDK else { return nil }
+        return OllamaClaude.model(configured: configuration.model, ollamaDefaultModel: ollamaDefaultModel)
     }
 
     /// Effective connection kind for this chat (`chatConnectionOverride` wins over provider setting).
@@ -1372,6 +1389,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
            reusable.isConnected,
            liveConnectionProviderID == effectiveProv.id,
            liveConnectionKind == effectiveProv.connection,
+           liveConnectionOllamaModel == Self.ollamaSDKModel(
+               provider: effectiveProv, configuration: configuration, ollamaDefaultModel: ollamaDefaultModel),
            liveConnectionWorktree == wantsWorktree,
            // A worktree connection keeps the worktree rule; any other runs
            // only in the folder it was started in.
@@ -1638,6 +1657,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             liveConnection = persistent
             liveConnectionProviderID = effectiveProv.id
             liveConnectionKind = effectiveProv.connection
+            liveConnectionOllamaModel = Self.ollamaSDKModel(
+                provider: effectiveProv, configuration: configuration, ollamaDefaultModel: ollamaDefaultModel)
             liveConnectionWorktree = (liveWorktreePath != nil && resolvedDirectory == liveWorktreePath)
             liveConnectionDirectory = resolvedDirectory
             lastLaunchDirectory = resolvedDirectory
@@ -1690,6 +1711,13 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     self.consecutiveRestartFailures = 0
                     self.isConnectionLockedAfterFailures = false
                     self.lastRestartFailureMessage = nil
+                    // A new live session may have loaded other servers: an open panel follows.
+                    if self.mcpStatusPanel != nil {
+                        Task { @MainActor [weak self] in
+                            guard let self else { return }
+                            await self.refreshMCPStatus(configuration: configuration)
+                        }
+                    }
                     if !startedID.isEmpty {
                         self.assignConversationID(startedID)
                         if !self.isFollowerActive {
@@ -2111,6 +2139,70 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         return action
     }
 
+    // MARK: - MCP status
+
+    /// Which agent's MCP servers this chat's panel shows, or nil when it has none (a
+    /// command-line chat): the control is hidden then.
+    public func mcpStatusAgent(configuration: VitruvianCodeConfiguration) -> AgentMCPStatusAgent? {
+        let provider = effectiveProvider(for: configuration.activeProvider)
+        return AgentMCPStatusAgent.of(provider, kind: provider.connection)
+    }
+
+    /// Opens the panel and reads the agent's servers.
+    public func openMCPStatus(configuration: VitruvianCodeConfiguration) async {
+        guard let agent = mcpStatusAgent(configuration: configuration) else { return }
+        mcpStatusPanel = AgentMCPStatusPanel(agent: agent, isLoading: true)
+        await refreshMCPStatus(configuration: configuration)
+    }
+
+    public func closeMCPStatus() {
+        mcpStatusPanel = nil
+    }
+
+    /// Reads the agent's servers again into the open panel. Claude reports them for its live
+    /// session (`_vitruvian/mcpStatus`); agy reports none over ACP, so its own config file is
+    /// read, read-only.
+    public func refreshMCPStatus(configuration: VitruvianCodeConfiguration) async {
+        guard mcpStatusPanel != nil else { return }
+        guard let agent = mcpStatusAgent(configuration: configuration) else {
+            mcpStatusPanel = nil
+            return
+        }
+        var panel = AgentMCPStatusPanel(agent: agent, servers: mcpStatusPanel?.servers ?? [], isLoading: true)
+        mcpStatusPanel = panel
+        switch agent {
+        case .agy:
+            panel.servers = AgentMCPStatusReader.agyRows(
+                geminiHome: (environment.home as NSString).appendingPathComponent(".gemini"),
+                fileExists: environment.fileExists,
+                readFile: environment.readFile
+            )
+        case .claude:
+            if let reporter = liveConnection as? any AgentMCPStatusReporting, liveConnection?.isConnected == true {
+                do {
+                    let statuses = try await reporter.mcpStatus()
+                    panel.servers = AgentMCPStatusReader.rows(
+                        fromClaude: statuses,
+                        workingDirectory: liveConnectionDirectory ?? workingDirectory(for: configuration),
+                        home: environment.home,
+                        configDirectory: configuration.activeProvider.claudeConfigDirectory
+                            ?? environment.processEnvironment[ClaudeSDKSupport.configDirectoryKey]
+                    )
+                } catch {
+                    panel.servers = []
+                    panel.problem = .failed(error.localizedDescription)
+                }
+            } else {
+                panel.servers = []
+                panel.problem = .notConnected
+            }
+        }
+        panel.isLoading = false
+        // Closed while it was reading: stay closed.
+        guard mcpStatusPanel != nil else { return }
+        mcpStatusPanel = panel
+    }
+
     public func newChat() {
         // A turn still waiting for its model is dropped, not ended.
         awaitingModel = false
@@ -2186,6 +2278,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         connection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
+        liveConnectionOllamaModel = nil
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask?.cancel()
@@ -2259,6 +2352,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
+        liveConnectionOllamaModel = nil
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask = nil
@@ -2680,12 +2774,23 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
              .configOptions,
              .notice,
              .sessionInfo:
-            if case .configOptions = event { configOptionsEventCount += 1 }
             if case .sessionInfo(let title, let updatedAt) = event {
                 applySessionInfoToList(title: title, updatedAt: updatedAt)
             }
-            liveState.apply(event)
+            if case .configOptions(let options) = event {
+                configOptionsEventCount += 1
+                liveState.apply(.configOptions(shownConfigOptions(options)))
+            } else {
+                liveState.apply(event)
+            }
         }
+    }
+
+    /// The live chat's settings as the chat shows them. An Ollama (claude) chat on the Agent SDK
+    /// drops the helper's model choice: the SDK lists Claude's models, and the chat's model is the
+    /// Ollama one picked from `ollama list` in the model menu (`OllamaClaude.withoutModelOption`).
+    private func shownConfigOptions(_ options: [AgentConfigOption]) -> [AgentConfigOption] {
+        liveConnectionOllamaModel == nil ? options : OllamaClaude.withoutModelOption(options)
     }
 
     /// Maps the interim Step 2b approval card buttons to ACP option IDs (`allow_once`, `allow_always`,
@@ -3653,7 +3758,7 @@ extension VitruvianCodeQuickPromptSession {
             if option.value == value { continue }
             do {
                 let updated = try await persistent.setConfigOption(id, value)
-                if !updated.isEmpty { liveState.apply(.configOptions(updated)) }
+                if !updated.isEmpty { liveState.apply(.configOptions(shownConfigOptions(updated))) }
             } catch {
                 liveConfigOptionError = strings.configOptionUpdateFailed
                 throw ConfigReapplyError(message: strings.configOptionUpdateFailed)
@@ -3697,7 +3802,7 @@ extension VitruvianCodeQuickPromptSession {
             let updated = try await active.setConfigOption(trimmedID, value)
             guard liveConnection === active else { return false }
             if !updated.isEmpty {
-                liveState.apply(.configOptions(updated))
+                liveState.apply(.configOptions(shownConfigOptions(updated)))
             }
             rememberedConfigChoices[trimmedID] = value
             liveConfigOptionError = nil

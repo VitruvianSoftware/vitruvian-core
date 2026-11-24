@@ -138,6 +138,55 @@ public enum AgentProcessError: Error, Equatable, Sendable, LocalizedError {
     }
 }
 
+/// The chat's programs still running, so that a program that must end
+/// before the engine has stopped them (the tool, at its shutdown deadline)
+/// can kill them from any thread, without the main actor. Each entry is
+/// added once the program has started and removed once it has been reaped,
+/// so a pid the kernel may have given to another process is not kept.
+public final class ChildProcesses: @unchecked Sendable {
+    public static let shared = ChildProcesses()
+
+    private let lock = NSLock()
+    /// Each running program, and whether it leads a process group of its own.
+    private var live: [pid_t: Bool] = [:]
+
+    public init() {}
+
+    /// A program that started. `leadsGroup` when it was put in a group of
+    /// its own (an `AgentProcess`): what it started is killed with it.
+    public func add(_ pid: pid_t, leadsGroup: Bool) {
+        guard pid > 0 else { return }
+        lock.lock(); live[pid] = leadsGroup; lock.unlock()
+    }
+
+    /// A program that has been reaped.
+    public func remove(_ pid: pid_t) {
+        lock.lock(); live[pid] = nil; lock.unlock()
+    }
+
+    /// The programs still running.
+    public var pids: [pid_t] {
+        lock.lock(); defer { lock.unlock() }
+        return Array(live.keys)
+    }
+
+    /// Sends `SIGKILL` to each program still running: to its whole group
+    /// when it leads one (agy makes its own too, after it starts), else to
+    /// the program alone, as it shares the caller's group. Returns how many
+    /// were signalled. Waits for nothing.
+    @discardableResult
+    public func killAll() -> Int {
+        lock.lock(); let entries = live; lock.unlock()
+        for (pid, leadsGroup) in entries {
+            if leadsGroup || getpgid(pid) == pid {
+                _ = Darwin.kill(-pid, SIGKILL)
+            }
+            _ = Darwin.kill(pid, SIGKILL)
+        }
+        return entries.count
+    }
+}
+
 /// A child process launched in its own process group (`POSIX_SPAWN_SETPGROUP`, pgroup 0)
 /// with piped standard input, standard output and standard error read off the main actor.
 public final class AgentProcess: Sendable {
@@ -162,6 +211,7 @@ public final class AgentProcess: Sendable {
     public init(
         _ spec: AgentProcessLaunchSpec,
         signalProcessGroup: @escaping SignalSender = { Darwin.kill(-$0, $1) },
+        registry: ChildProcesses = .shared,
         onExit: (@Sendable (AgentProcessExit) -> Void)? = nil
     ) throws {
         self.signalProcessGroup = signalProcessGroup
@@ -296,6 +346,7 @@ public final class AgentProcess: Sendable {
 
         let childPID = spawnedPID
         self.pid = childPID
+        registry.add(childPID, leadsGroup: true)
         let inputWriter = AgentInput(FileHandle(fileDescriptor: stdinPipe[1], closeOnDealloc: true))
         self.input = inputWriter
 
@@ -317,6 +368,7 @@ public final class AgentProcess: Sendable {
                 }
                 break
             }
+            registry.remove(childPID)
             // Report the exit before closing stdin: a write blocked on a full
             // pipe (a grandchild still holds the read end and isn't reading)
             // holds the input lock, and the close would wait on it.

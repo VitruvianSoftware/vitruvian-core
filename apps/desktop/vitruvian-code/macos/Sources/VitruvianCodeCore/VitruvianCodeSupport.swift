@@ -250,14 +250,17 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
 
     /// The connection choices offered in Settings for this provider, starting
     /// with Default (`nil`) and Command line. ACP is offered only for agy;
-    /// Claude SDK and Claude ACP only for Claude.
+    /// Claude SDK and Claude ACP for Claude; Claude SDK, with Ollama's
+    /// endpoint (`OllamaClaude`), for Ollama (claude).
     public var availableConnections: [AgentConnectionKind?] {
         switch route {
         case .antigravity:
             return [nil, .commandLine, .acp]
         case .claude:
             return [nil, .commandLine, .claudeSDK, .claudeACP]
-        case .ollama, .opencode, .custom:
+        case .ollama:
+            return [nil, .commandLine, .claudeSDK]
+        case .opencode, .custom:
             return [nil, .commandLine]
         }
     }

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.45.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.0...vitruvian-code-v1.45.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** end the tool within two seconds of shutdown ([#5491](https://github.com/VitruvianSoftware/vitruvian-core/issues/5491)) ([e96909a](https://github.com/VitruvianSoftware/vitruvian-core/commit/e96909a8371c87720e16795fc6d5006ecd65fbfc))
+
+## [1.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.2...vitruvian-code-v1.45.0) (2026-11-24)
+
+
+### Features
+
+* **vitruvian-code:** run Ollama (claude) on the live Agent SDK connection ([#5479](https://github.com/VitruvianSoftware/vitruvian-core/issues/5479)) ([772e022](https://github.com/VitruvianSoftware/vitruvian-core/commit/772e022779f9016b2e8cc24f042bcd9d22bb8413))
+
 ## [1.44.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.1...vitruvian-code-v1.44.2) (2026-11-24)
 
 

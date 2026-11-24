@@ -12,7 +12,7 @@ The SwiftUI app. It runs and supervises the Go engine (`../engine`, bundled as `
 Unit tests can't show that a window really opens or a column really hides. To check that by hand, or with a script, run the test copy:
 
 ```sh
-bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:run_test_copy            # its data in $TMPDIR/vitruvian-courier-test-copy/data
+bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:run_test_copy            # its data in $TMPDIR/courier-test/data
 bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:run_test_copy -- --data DIR
 bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:run_test_copy -- --seed group-threads   # full of made-up chats
 ```
@@ -22,14 +22,14 @@ It is the same app, built as `:VitruvianCourierTestCopy` with its own bundle ide
 - **Settings** (UserDefaults), the notification permission and the Login Items entry are its own, because macOS keys them by bundle identifier.
 - **Data.** `run_test_copy` opens it with `VITRUVIAN_COURIER_DATA_DIR` set, which the app hands to its engine. It refuses `~/Library/Application Support/Vitruvian Courier` as the folder. Even started some other way, the test copy never falls back to that folder: without `VITRUVIAN_COURIER_DATA_DIR` it uses `~/Library/Application Support/Vitruvian Courier Test Copy` (`TestCopy` in `EngineLocation.swift`).
 - **Keychain.** It keeps its Telegram keys under its own service, `com.vitruviansoftware.courier.dev.telegram`, so it never reads the installed app's.
-- **The installed app** in `/Applications` is never touched: the copy is unpacked under `$TMPDIR/vitruvian-courier-test-copy/app`, and `run_test_copy` refuses an app whose bundle identifier isn't the test copy's. Both can run at once.
+- **The installed app** in `/Applications` is never touched: the copy is unpacked under `$TMPDIR/courier-test/app`, and `run_test_copy` refuses an app whose bundle identifier isn't the test copy's. Both can run at once.
 
 Without `--seed` it has no networks until you add one, so the Chat and Message items that need a chat are greyed out.
 
 **Opening it full of chats.** `--seed NAME` opens it with the made-up chats of `../seed/scenarios/NAME.json`
 (`group-threads`, `direct`, `long-content`, `multi-network`, `empty`; an unknown name lists them), so a change to how
 chats look can be checked by hand or by screenshot without signing in to anything. Its data folder is
-`$TMPDIR/vitruvian-courier-test-copy/seed-NAME`, emptied on every run, so each run starts from the scenario as written (with
+`$TMPDIR/courier-test/seed-NAME`, emptied on every run, so each run starts from the scenario as written (with
 `--data DIR` the folder is yours, and a scenario already played into it is not played again). The test copy bundles
 `vitruvian-courier-engine-seeded`, the engine built with the `courierseed` tag: given `VITRUVIAN_COURIER_SEED` (which `run_test_copy`
 passes), it runs fake networks under the scenario's real network names instead of the real bridges, and plays the

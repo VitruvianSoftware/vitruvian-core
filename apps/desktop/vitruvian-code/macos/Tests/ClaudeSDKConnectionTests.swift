@@ -1012,8 +1012,8 @@ final class ClaudeSDKConnectionTests: XCTestCase {
 
         var ollama = VitruvianCodeCLIProvider.ollama
         ollama.connection = .claudeSDK
-        XCTAssertTrue(live.makeConnection(AgentConnectionSpec(provider: ollama, workingDirectory: work.path)) is CommandLineConnection,
-                      "Ollama is a later step")
+        XCTAssertTrue(live.makeConnection(AgentConnectionSpec(provider: ollama, workingDirectory: work.path)) is ClaudeSDKConnection,
+                      "Ollama (claude) runs on the helper too, pointed at Ollama (OllamaClaudeTests)")
         var claudeACP = VitruvianCodeCLIProvider.claude
         claudeACP.connection = .claudeACP
         XCTAssertTrue(live.makeConnection(AgentConnectionSpec(provider: claudeACP, workingDirectory: work.path)) is CommandLineConnection,

@@ -208,7 +208,7 @@ today, or does only for one agent, or by hand.
 | **Agent notices** as banners | `notice` | Yes | System and status messages | Yes | Not shown |
 | **Subagents from typed events** | — | Start from child-work reports, finish at end of turn (section 2) | Task and subagent messages | `subagent_update` and `session_message`, with child session IDs | Inferred from transcripts |
 | **Session history from the agent:** list, reopen without replay, close, live titles, fork | `session/list`, `session/resume`, `session/load`, `session/close`, `session_info_update` | Yes, plus the session-log watch (section 2) | `resume`, `forkSession`, `getSessionMessages` | Yes | Transcript files; fork through `--fork` |
-| **The user's MCP servers** for any agent | `mcpServers` on `session/new` | Yes | `mcpServers`, `mcpServerStatus()` | Yes | Each agent set up separately |
+| **The user's MCP servers:** each agent loads its own; the app shows their status | `mcpServers` on `session/new` (the app sends none) | Loads its own settings; no status over ACP, so the app reads agy's `mcp_config.json` read-only | Loads its own settings (`settingSources`); `mcpServerStatus()` | Loads its own | Each agent set up separately |
 | **Extra folders** in a chat's workspace | `additionalDirectories` | Yes | `additionalDirectories` | Yes | No |
 | **App instructions added to the system prompt** (for example, how to link PRs) | `systemPrompt` (append) | Only on agy releases that support it (section 2) | `systemPrompt` with append | Yes | No |
 | **Sign in to an agent from the app** | `authMethods`, `authenticate` | Yes (`oauth-personal`, section 5) | Claude Code's own login | Claude Code's own login | Done in a terminal |
@@ -364,8 +364,8 @@ and `probe.ts`:
     own `uv`; without it, the agent is listed as needing `uv`;
 *   it updates only when the user picks a new version;
 *   an install that takes more than 20 minutes is stopped;
-*   the user's MCP servers are passed to a registry agent only after the user
-    turns that on for that agent.
+*   the app passes a registry agent no MCP servers: like every agent, it uses
+    its own configured ones.
 
 OpenCode uses this path when its ACP mode is available. So does the Claude
 ACP adapter (section 4).
@@ -577,8 +577,15 @@ The provider settings gain a **Connection** choice per agent:
 *   **OpenCode and registry agents:** ACP when available, otherwise command
     line.
 
-**MCP servers.** The app keeps its own MCP server list. On first use it
-imports the user's Claude Code MCP configuration. The editable command
+**MCP servers.** Each agent owns its MCP configuration, and the app passes it
+none, as T3 Code passes none: agy gets `mcpServers: []`
+(`apps/server/src/provider/Drivers/AntigravityDriver.ts`) and Claude loads its
+own settings (`orchestration-v2/Adapters/ClaudeAdapterV2.ts`). A live chat
+instead has an MCP status panel, our own addition (T3 Code has none): the
+servers the agent loaded, their state, and where each is configured, with Show
+in Finder for the file. Claude's come from the helper's `_vitruvian/mcpStatus`.
+agy reports nothing over ACP, so its `mcp_config.json` is read, read-only, for
+names and on or off. The editable command
 templates stay for the command-line connection.
 
 ## Alternatives Considered
@@ -659,7 +666,7 @@ Build the helper with Node's single-executable feature or Bun's compiler.
 | **An agent acting with full access**, the default, as in T3 Code. | App file writes and terminals are offered only where T3 Code offers them, and only inside the session's folders. agy's approvals pass through the app, so every action is visible. |
 | **agy writing a file into the user's repository** (`run_workflow` on agy 1.4.2–1.4.5). | The agy version gates disable that tool (section 2). |
 | **API keys entered in the app.** | Stored in a private 0600 file, shown masked, passed to the helper in its first message, never in argv or the environment (section 3). Keychain once Developer ID signing ships. |
-| **Registry agents run third-party code** with the user's rights. | Installed only when the user adds them, at an exact version, into an app-managed folder; MCP servers only with the user's consent (section 2). |
+| **Registry agents run third-party code** with the user's rights. | Installed only when the user adds them, at an exact version, into an app-managed folder; the app passes them no MCP servers (section 2). |
 | **Bundled Node costs:** larger downloads, signing, and patching. Node is large, and the universal app and the extension carry two architectures. | Per-architecture apps carry one Node. Node is pinned in `//:.nvmrc` and updated with the repo's dependencies. When Developer ID signing ships (PR #4589), Node is signed inside-out with the hardened runtime and the entitlements Node's JIT compiler needs (`com.apple.security.cs.allow-jit`, `com.apple.security.cs.allow-unsigned-executable-memory`). The size added is measured in step 3. A single-program helper is the fallback (see Alternatives). |
 | **The user's `claude` too old for the SDK or a model.** | The version check in section 3, as in T3 Code's `ClaudeProvider.ts`. |
 | **agy behaving differently over ACP than T3 Code expects.** | Recorded replay tests from a real `agy acp` session (Detailed Implementation, Delivery order, step 2), and the checks in Facts to verify. |
@@ -915,7 +922,7 @@ events. For Claude chats on the SDK, the follower is off.
 | `macos/Sources/VitruvianCodeCore/CommandLineConnection.swift` (new) | Wraps today's runner as an `AgentConnection`, reusing `launchAgentProcess` and `AgentInput` | The command-line connection |
 | `macos/Sources/VitruvianCodeCore/VitruvianCodeEngine.swift` | Adds `Environment.makeConnection`. Moves `AgentInput` out of `launchAgentProcess` so connections can reuse it. Adds the `posix_spawn` helper that starts a process in its own group | Testable launching; clean shutdown |
 | `macos/Sources/VitruvianCodeCore/VitruvianCodeQuickPromptSession.swift` | Talks only to `AgentConnection`, one per open chat. Adds the per-chat mode and plan switch, taking their starting values from the global default and `host.planMode`. Adds the follower's subagent-only mode. Adds idle shutdown with T3 Code's limits. Handles crash recovery: an interrupted turn, cancelled approvals, and at most 3 restarts in a row | Lifecycle (section 7), approvals (section 8) |
-| `macos/Sources/VitruvianCodeCore/VitruvianCodeHost.swift`, `macos/Sources/VitruvianCode/StandaloneHost.swift`, `macos/Sources/VitruvianCodeToolCore/ToolSettings.swift` | New host properties: per-chat mode, live connections switched on (hidden), and later the MCP list, registry agents and Claude config folder. All saved state goes through the host | The shared-code guard tests stay green |
+| `macos/Sources/VitruvianCodeCore/VitruvianCodeHost.swift`, `macos/Sources/VitruvianCode/StandaloneHost.swift`, `macos/Sources/VitruvianCodeToolCore/ToolSettings.swift` | New host properties: per-chat mode, live connections switched on (hidden), and later the registry agents and Claude config folder. All saved state goes through the host | The shared-code guard tests stay green |
 | `macos/Sources/VitruvianCode/SettingsView.swift`, `macos/Sources/VitruvianCodeToolCore/Pages.swift` | A hidden **Connection** picker for each agent, shown when the user holds Option in Settings. The global approval picker leaves out `.auto` | Paths can be tried by hand from step 1 |
 | `macos/Sources/VitruvianCodeUI/VitruvianCodeMermaidPage.swift` → `macos/Sources/VitruvianCodeCore/BundleResources.swift` (moved) | `scriptDirectories(for:)` moves to Core | Shared by Mermaid and `BundledNode` |
 | `macos/Sources/VitruvianCode/App.swift` | Adds a `--state-dir <path>` launch argument that moves the bot folder, the state folder and the logs | An isolated test copy for click-throughs |
@@ -986,11 +993,11 @@ the peak resident memory of one connection.
 | `macos/Sources/VitruvianCodeCore/ACP/ACPRegistry.swift` (new) | Installs as T3 Code's `AcpRegistrySupport.ts` does:<ul><li>only when the user adds an agent;</li><li>at an exact version;</li><li>into `<state>/agents/<id>/<version>/`;</li><li>npm through the bundled Node;</li><li>uv through the user's `uv`, with the agent flagged when `uv` is missing;</li><li>stops after T3 Code's install timeout.</li></ul> | Registry agents |
 | `macos/Sources/VitruvianCodeCore/ACP/RegistryAgents/ClaudeACPAdapter.swift` (new) | Maps `subagent_update` and `session_message` to subagent events for Agent, Task and background subagents, following `claudeAcp.ts` | The Claude ACP option |
 | `macos/Sources/VitruvianCodeCore/ACP/ACPAuth.swift` (new) | Shows the agent's sign-in methods. Agent methods use `authenticate`. Terminal methods run as a child process whose output is shown in a sheet. Exit code 0 counts as success, and the app then reconnects, as the ACP spec says | Sign-in from the app |
-| `macos/Sources/VitruvianCodeCore/AgentMCPServers.swift` (new) | The app's MCP list, kept through the host. On first use it imports `mcpServers` from `~/.claude.json`. At session start it adds the project's `.mcp.json`, which wins on name clashes, as Claude Code does. agy and Claude get it automatically. A registry agent gets it only after the user enables MCP servers for that agent | MCP servers |
+| `macos/Sources/VitruvianCodeCore/AgentMCPStatus.swift`, `macos/Sources/VitruvianCodeUI/AgentMCPStatusView.swift` (new) | The chat's MCP status panel. No app MCP list: each agent owns its config, and the app passes none, as T3 Code does (`AntigravityDriver.ts` sends agy `mcpServers: []`; `ClaudeAdapterV2.ts` lets Claude load its own settings). The panel lists what the agent loaded: name, state (connected, failed, needs sign-in, starting, off) and where it is configured (Claude Code settings, project `.mcp.json`, claude.ai connector, managed, plugin, agy settings), with Show in Finder. Claude's come from `_vitruvian/mcpStatus`; agy's from its `mcp_config.json`, read-only. Hidden for command-line chats. Our addition: T3 Code has no MCP status UI | MCP status |
 | `macos/Sources/VitruvianCodeCore/AgentSessionHistory.swift` (new) | Uses `session/list` and `session_info_update` where offered, otherwise the transcript readers. `session/list` is asked only over a chat's already-open live connection; no agent process is ever started just to list. Measured on agy 1.5.16 (PR #5487), a start for a list took 12.3 s cold and 2.0–2.7 s warm, peaked at 0.9–1.5 GB for agy itself, and started every MCP server in the user's agy settings (21–22 child processes), for a list the transcript readers give at once. T3 Code does not list agy sessions over ACP either: `apps/server/src/provider/AntigravityProvider.ts` sets no `acpSessionManagement`, which only registry agents have (`packages/provider-acp-registry/src/server/driver.ts`) | History from the agent |
 | `macos/Sources/VitruvianCodeCore/OllamaClaude.swift` (new) | For Ollama (claude) on the SDK: `ANTHROPIC_BASE_URL` points at the Ollama server, `ANTHROPIC_AUTH_TOKEN` is set to `ollama`, and the chosen model is passed as the SDK `model`. The existing model lookup is reused. **Check in step 3:** that Ollama's Anthropic-compatible endpoint accepts these | Ollama on the live path |
-| `macos/Sources/VitruvianCode/SettingsView.swift`, `ConfigManager.swift`, `macos/Sources/VitruvianCodeToolCore/Pages.swift` | Adds the registry agent list (add, choose version, remove), the MCP servers with a switch for each registry agent, extra folders per project, the Claude config folder, and sensitive environment values | Settings (section 9) |
-| `macos/Tests/ACPRegistryTests.swift`, `ACPAuthTests.swift`, `AgentMCPServersTests.swift`, `AgentSessionHistoryTests.swift`, `ClaudeACPAdapterTests.swift`, `OllamaClaudeTests.swift` (new), and the Ollama cases in `EngineHostTests.swift` | Checks that an install needs an exact version and the user's action, and that a missing `uv` is flagged. Checks that terminal sign-in reconnects on exit 0. Checks that MCP import merges correctly and secrets never appear in argv or the environment. Checks the history fallback. Checks the adapter's subagent events. Checks the Ollama variables | Coverage, including safety rules |
+| `macos/Sources/VitruvianCode/SettingsView.swift`, `ConfigManager.swift`, `macos/Sources/VitruvianCodeToolCore/Pages.swift` | Adds the registry agent list (add, choose version, remove), extra folders per project, the Claude config folder, and sensitive environment values | Settings (section 9) |
+| `macos/Tests/ACPRegistryTests.swift`, `ACPAuthTests.swift`, `AgentMCPStatusTests.swift`, `AgentSessionHistoryTests.swift`, `ClaudeACPAdapterTests.swift`, `OllamaClaudeTests.swift` (new), and the Ollama cases in `EngineHostTests.swift` | Checks that an install needs an exact version and the user's action, and that a missing `uv` is flagged. Checks that terminal sign-in reconnects on exit 0. Checks that MCP status maps each agent's data to states and sources, that the panel is hidden for command-line chats, and that no environment value or header is shown. Checks the history fallback. Checks the adapter's subagent events. Checks the Ollama variables | Coverage, including safety rules |
 
 #### Step 6: defaults and docs
 

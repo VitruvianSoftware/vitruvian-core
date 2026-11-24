@@ -23,6 +23,14 @@ load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/pagerduty:{setup,preview,config}`.
 # Never run `:up` from a laptop; CI applies the production stack after merge.
+exports_files(
+    [
+        "go.mod",
+        "go.sum",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 pulumi_project(
     name = "pagerduty",
     dir = "infrastructure/pulumi/platform/pagerduty",
