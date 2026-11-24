@@ -39,7 +39,9 @@ config:
   # Comma-separated Zitadel user ids of invited people. Each user must already
   # exist in the same org as the project (orgId above), and must not also be in
   # grantUserIds. Empty = nobody invited.
-  zitadel-apps-relay:inviteUserIds: ""
+  # 401064406491859363 is relay-test, a test person for the live second-user
+  # check (created 2026-11-24 with no password in git). Remove it after the test.
+  zitadel-apps-relay:inviteUserIds: "401064406491859363"
   # ChatGPT's per-connector callback, copied from ChatGPT's "Add custom MCP
   # server" screen. Empty = no ChatGPT client yet (spike A, second half).
   zitadel-apps-relay:chatgptRedirectUris: ""
