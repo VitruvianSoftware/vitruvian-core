@@ -46,6 +46,8 @@ on:
     # Manual apply: break-glass + the bootstrap run that first applies the
     # pipeline-gate variables (which include REPO_CONFIG_AUTO_APPLY itself).
     # Bypasses the variable gate below — a dispatch is an explicit human act.
+    # Manual runs apply from `main` only; a dispatch from any other branch is
+    # skipped.
     workflow_dispatch:
 
 permissions:
@@ -63,7 +65,7 @@ concurrency:
 
 jobs:
     apply:
-        if: ${{ github.event_name == 'workflow_dispatch' || vars.REPO_CONFIG_AUTO_APPLY == 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.REPO_CONFIG_AUTO_APPLY == 'true') }}
         runs-on: ubuntu-26.04
         timeout-minutes: 45
         steps:
@@ -204,6 +206,22 @@ jobs:
                       echo "${repo}: Sponsorships on"
                   done < "${LIST}"
                   exit "${failed}"
+
+            # GitHub Actions cache storage limit: the Pulumi GitHub provider has
+            # no resource for /repos/{owner}/{repo}/actions/cache/storage-limit.
+            # Runs even if an earlier settings step (e.g., Sponsor or fork-PR)
+            # failed, provided the App token succeeded and the job wasn't
+            # cancelled; earlier failures still fail the job. Reconciles
+            # ACTIONS_CACHE_LIMIT_CONFIRMED_GB to the confirmed live limit.
+            - name: Set the Actions cache storage limit
+              if: ${{ !cancelled() && steps.app-token.outcome == 'success' }}
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  REPO: ${{ github.repository }}
+                  LIMIT_FILE: infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt
+              run: |
+                  set -euo pipefail
+                  infrastructure/pulumi/platform/repo-config/set_actions_cache_limit.sh
 
             # Digest of the apply (creates/updates/replaces/deletes, destructive
             # flagged) on the Actions run summary. No PR on a push, so summary only.
