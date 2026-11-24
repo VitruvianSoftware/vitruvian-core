@@ -104,6 +104,13 @@ exports_files(
     visibility = ["//.github/actions/setup-bazel:__pkg__"],
 )
 
+# Exported so setup-bazel's restore_keys_test verifies neither setup-bazel nor
+# bazel-repo-cache-warm can restore legacy partial -repository-<hex> keys.
+exports_files(
+    [".github/actions/bazel-repo-cache-warm/action.yml"],
+    visibility = ["//.github/actions/setup-bazel:__pkg__"],
+)
+
 # agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
 # worktrees under it), but a file named from this package still resolves.
 # //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.

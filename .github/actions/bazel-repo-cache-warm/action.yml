@@ -24,7 +24,7 @@
 # offline completeness proof (--repository_disable_download) plus vacuity
 # control check, and — only when inputs.mode == 'save' — capacity check,
 # archive-only actions/cache/save, confirmation readback, and pruning of
-# superseded same-platform -repository-full- entries.
+# superseded and legacy same-platform repository entries.
 
 name: Warm and verify Bazel repository cache
 description: Warm, offline-verify, and (in save mode on main) guard, save, confirm, and prune the Bazel repository archive cache.
@@ -684,9 +684,10 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         ACTIONS_CACHE_LIMIT_CONFIRMED_GB: ${{ inputs.cache-limit-gb }}
         LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        PLATFORM: ${{ inputs.platform-os }}-${{ inputs.platform-arch }}
       run: |
         set -euo pipefail
-        python3 .github/actions/setup-bazel/cache_capacity_guard.py
+        python3 .github/actions/setup-bazel/cache_capacity_guard.py --platform "$PLATFORM"
 
     - name: Save complete repository cache (archives only)
       id: cache-save
@@ -702,6 +703,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        PLATFORM: ${{ inputs.platform-os }}-${{ inputs.platform-arch }}
       run: |
         set -euo pipefail
-        python3 .github/actions/setup-bazel/cache_prune.py
+        python3 .github/actions/setup-bazel/cache_prune.py --platform "$PLATFORM"

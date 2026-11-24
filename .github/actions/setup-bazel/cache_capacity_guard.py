@@ -4,11 +4,11 @@
 """Fail-safe Actions cache capacity guard for bazel-repo-cache.yaml.
 
 Reads the repository's current Actions cache usage, lists active cache entries
-to subtract legacy partial `setup-bazel-1-*-repository-<hex>` entries and
-same-platform superseded `setup-bazel-1-<platform>-repository-full-<hex>` entries
-(which are replaced once the new `-repository-full-` entry lands), reads the
-confirmed cache limit from `ACTIONS_CACHE_LIMIT_CONFIRMED_GB`, and skips saving
-with exit 0 (printing a warning and one-line summary) if the variable is
+to subtract same-platform legacy partial `setup-bazel-1-<platform>-repository-<hex>`
+entries and same-platform superseded `setup-bazel-1-<platform>-repository-full-<hex>`
+entries (which are replaced/pruned once the new `-repository-full-` entry lands),
+reads the confirmed cache limit from `ACTIONS_CACHE_LIMIT_CONFIRMED_GB`, and skips
+saving with exit 0 (printing a warning and one-line summary) if the variable is
 missing, invalid, or smaller than `needed`.
 """
 
@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 
 BYTES_PER_GB = 1_000_000_000
-LEGACY_PARTIAL_REPO_KEY_RE = re.compile(r"^setup-bazel-1-.+-repository-[0-9a-fA-F]+$")
+_HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 _NEXT_LINK_RE = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
 DEFAULT_API_READ_ATTEMPTS = 3
 DEFAULT_API_READ_BACKOFF_SECONDS = (2.0, 4.0)
@@ -34,13 +34,22 @@ def full_repo_cache_prefix(platform):
     return f"setup-bazel-1-{platform}-repository-full-"
 
 
-def is_legacy_partial_repo_cache_key(key):
-    """True for legacy partial `-repository-<hex>` keys (not `-repository-full-`)."""
-    if not isinstance(key, str):
+def legacy_partial_repo_cache_prefix(platform):
+    """Return the exact legacy partial `-repository-` key prefix for `platform`."""
+    return f"setup-bazel-1-{platform}-repository-"
+
+
+def is_legacy_partial_repo_cache_key(key, platform):
+    """True for same-platform legacy partial `-repository-<hex>` keys (never `-repository-full-`)."""
+    if not isinstance(key, str) or not isinstance(platform, str) or not platform:
         return False
-    return (
-        bool(LEGACY_PARTIAL_REPO_KEY_RE.match(key)) and "-repository-full-" not in key
-    )
+    if "-repository-full-" in key:
+        return False
+    prefix = legacy_partial_repo_cache_prefix(platform)
+    if not key.startswith(prefix):
+        return False
+    suffix = key[len(prefix) :]
+    return bool(_HEX_RE.fullmatch(suffix))
 
 
 def is_superseded_full_repo_cache_key(key, platform, current_lock_hash):
@@ -107,7 +116,7 @@ def compute_needed_bytes(
         if not isinstance(entry, dict):
             continue
         key = entry.get("key", "")
-        if is_legacy_partial_repo_cache_key(key):
+        if is_legacy_partial_repo_cache_key(key, platform):
             size = entry.get("size_in_bytes")
             if isinstance(size, bool) or not isinstance(size, int) or size < 0:
                 raise ValueError(
@@ -284,7 +293,7 @@ def _format_report_lines(platform, ok, report):
     stdout_lines = [
         f"Actions cache capacity check ({platform}): {status}",
         f"  Current active usage (actions/cache/usage): {report['total_active_bytes']:,} bytes ({_fmt_gb(report['total_active_bytes'])})",
-        f"  Legacy partial repository caches subtracted: {report['legacy_bytes']:,} bytes ({legacy_detail})",
+        f"  Same-platform legacy partial repository caches subtracted: {report['legacy_bytes']:,} bytes ({legacy_detail})",
         f"  Superseded same-platform full caches subtracted: {report['superseded_bytes']:,} bytes ({superseded_detail})",
         f"  Effective active usage after eviction/replacement: {report['effective_active_bytes']:,} bytes ({_fmt_gb(report['effective_active_bytes'])})",
         f"  This platform archive size (ARCHIVE_BYTES): {report['archive_bytes']:,} bytes ({_fmt_gb(report['archive_bytes'])})",
@@ -299,7 +308,7 @@ def _format_report_lines(platform, ok, report):
         "| Metric | Bytes | Size (SI GB) |",
         "|---|---:|---:|",
         f"| Current active usage (`actions/cache/usage`) | {report['total_active_bytes']:,} | {_fmt_gb(report['total_active_bytes'])} |",
-        f"| Legacy partial repo caches subtracted | -{report['legacy_bytes']:,} | -{_fmt_gb(report['legacy_bytes'])} |",
+        f"| Same-platform legacy partial repo caches subtracted | -{report['legacy_bytes']:,} | -{_fmt_gb(report['legacy_bytes'])} |",
         f"| Superseded same-platform full caches subtracted | -{report['superseded_bytes']:,} | -{_fmt_gb(report['superseded_bytes'])} |",
         f"| Effective active usage | {report['effective_active_bytes']:,} | {_fmt_gb(report['effective_active_bytes'])} |",
         f"| This platform archives (`ARCHIVE_BYTES`) | {report['archive_bytes']:,} | {_fmt_gb(report['archive_bytes'])} |",

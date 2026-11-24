@@ -21,9 +21,50 @@ MEASURED_LEGACY_LINUX_BYTES = 5_382_975_054
 MEASURED_LEGACY_DARWIN_BYTES = 1_550_912_413
 MEASURED_LINUX_ARCHIVE_BYTES = 6_152_540_160  # 5.73 GiB
 
+# Exact live snapshot numbers for PR #5433.
+LIVE_USAGE_BYTES = 10_602_162_673
+LIVE_LEGACY_LINUX_BYTES = 5_810_848_856
+LIVE_LINUX_ARCHIVE_BYTES = 6_334_550_016
+LIVE_MACOS_ARCHIVE_BYTES = 1_711_935_488
+LIVE_LLVM_BYTES = 2_340_676_605
+LIVE_SETUP_GO_BYTES = 2_278_144_667
+LIVE_BAZELISK_LINUX_BYTES = 57_086_589
+LIVE_BAZELISK_DARWIN_BYTES = 115_389_651
+
 CURRENT_HASH = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 OLDER_LINUX_HASH = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 OTHER_DARWIN_HASH = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+LIVE_LEGACY_LINUX_HASH = (
+    "39c2ecfd00000000000000000000000000000000000000000000000000000000"
+)
+
+LIVE_CACHES = [
+    {
+        "id": 10,
+        "key": f"setup-bazel-1-linux-x64-repository-{LIVE_LEGACY_LINUX_HASH}",
+        "size_in_bytes": LIVE_LEGACY_LINUX_BYTES,
+    },
+    {
+        "id": 11,
+        "key": "llvm-contents-v2-Linux-cf72627ff81aef34-39c2ecfd",
+        "size_in_bytes": LIVE_LLVM_BYTES,
+    },
+    {
+        "id": 12,
+        "key": "setup-go-Linux-x64-go1.25.0-0123456789abcdef",
+        "size_in_bytes": LIVE_SETUP_GO_BYTES,
+    },
+    {
+        "id": 13,
+        "key": "setup-bazel-1-linux-x64-bazelisk-021fd14121db7b5b5d5160f63bacb0cc3ccc88e25b0a9e0086e812725e516e7d",
+        "size_in_bytes": LIVE_BAZELISK_LINUX_BYTES,
+    },
+    {
+        "id": 14,
+        "key": "setup-bazel-1-darwin-arm64-bazelisk-021fd14121db7b5b5d5160f63bacb0cc3ccc88e25b0a9e0086e812725e516e7d",
+        "size_in_bytes": LIVE_BAZELISK_DARWIN_BYTES,
+    },
+]
 
 SAMPLE_CACHES = [
     {
@@ -51,22 +92,45 @@ SAMPLE_CACHES = [
 
 def test_is_legacy_partial_repo_cache_key():
     assert guard.is_legacy_partial_repo_cache_key(
-        "setup-bazel-1-linux-x64-repository-0dbf70751d7f1d87"
+        "setup-bazel-1-linux-x64-repository-0dbf70751d7f1d87",
+        "linux-x64",
     )
     assert guard.is_legacy_partial_repo_cache_key(
-        "setup-bazel-1-darwin-arm64-repository-deadbeef"
+        "setup-bazel-1-darwin-arm64-repository-deadbeef",
+        "darwin-arm64",
+    )
+    # Cross-platform legacy keys must never match.
+    assert not guard.is_legacy_partial_repo_cache_key(
+        "setup-bazel-1-linux-x64-repository-0dbf70751d7f1d87",
+        "darwin-arm64",
     )
     assert not guard.is_legacy_partial_repo_cache_key(
-        "setup-bazel-1-linux-x64-repository-full-0dbf70751d7f1d87"
+        "setup-bazel-1-darwin-arm64-repository-deadbeef",
+        "linux-x64",
     )
     assert not guard.is_legacy_partial_repo_cache_key(
-        "setup-bazel-1-darwin-arm64-repository-full-deadbeef"
+        "setup-bazel-1-linux-x64-repository-0dbf70751d7f1d87",
+        "",
+    )
+    # -repository-full- keys are never legacy.
+    assert not guard.is_legacy_partial_repo_cache_key(
+        f"setup-bazel-1-linux-x64-repository-full-{CURRENT_HASH}",
+        "linux-x64",
     )
     assert not guard.is_legacy_partial_repo_cache_key(
-        "setup-bazel-1-linux-x64-bazelisk-021fd141"
+        f"setup-bazel-1-darwin-arm64-repository-full-{OTHER_DARWIN_HASH}",
+        "darwin-arm64",
     )
-    assert not guard.is_legacy_partial_repo_cache_key("llvm-contents-v2-Linux-abc")
-    assert not guard.is_legacy_partial_repo_cache_key("pipeline-rdeps-map-v1-abc")
+    assert not guard.is_legacy_partial_repo_cache_key(
+        "setup-bazel-1-linux-x64-bazelisk-021fd141",
+        "linux-x64",
+    )
+    assert not guard.is_legacy_partial_repo_cache_key(
+        "llvm-contents-v2-Linux-abc", "linux-x64"
+    )
+    assert not guard.is_legacy_partial_repo_cache_key(
+        "pipeline-rdeps-map-v1-abc", "linux-x64"
+    )
 
 
 def test_is_superseded_full_repo_cache_key():
@@ -139,7 +203,7 @@ def test_compute_needed_bytes_subtracts_legacy_and_same_platform_superseded():
         platform="linux-x64",
         current_lock_hash=CURRENT_HASH,
     )
-    expected_legacy = MEASURED_LEGACY_LINUX_BYTES + MEASURED_LEGACY_DARWIN_BYTES
+    expected_legacy = MEASURED_LEGACY_LINUX_BYTES
     expected_superseded = 1_000_000_000
     expected_needed = (
         total_active
@@ -148,13 +212,13 @@ def test_compute_needed_bytes_subtracts_legacy_and_same_platform_superseded():
         + MEASURED_LINUX_ARCHIVE_BYTES
     )
     assert legacy_bytes == expected_legacy
-    assert len(matched_legacy) == 2
+    assert len(matched_legacy) == 1
     assert superseded_bytes == expected_superseded
     assert matched_superseded == [
         (f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}", 1_000_000_000)
     ]
     assert needed == expected_needed
-    assert needed == 8_666_141_376
+    assert needed == 10_217_053_789
 
 
 def test_compute_needed_bytes_clamps_stale_usage():
@@ -165,9 +229,60 @@ def test_compute_needed_bytes_clamps_stale_usage():
         platform="linux-x64",
         current_lock_hash=CURRENT_HASH,
     )
-    assert legacy_bytes == MEASURED_LEGACY_LINUX_BYTES + MEASURED_LEGACY_DARWIN_BYTES
+    assert legacy_bytes == MEASURED_LEGACY_LINUX_BYTES
     assert superseded_bytes == 0
     assert needed == 5_000
+
+
+def test_macos_first_does_not_subtract_linux_legacy():
+    ok, report = guard.evaluate_capacity(
+        total_active_bytes=LIVE_USAGE_BYTES,
+        caches=LIVE_CACHES,
+        archive_bytes=LIVE_MACOS_ARCHIVE_BYTES,
+        limit_gb_raw="15",
+        platform="darwin-arm64",
+        current_lock_hash=CURRENT_HASH,
+    )
+    assert ok is True
+    assert report["legacy_bytes"] == 0
+    assert report["matched_legacy"] == []
+    assert report["superseded_bytes"] == 0
+    assert report["needed_bytes"] == LIVE_USAGE_BYTES + LIVE_MACOS_ARCHIVE_BYTES
+    assert report["needed_bytes"] == 12_314_098_161
+
+
+def test_linux_then_subtracts_linux_legacy_after_macos_saved():
+    usage_after_macos = LIVE_USAGE_BYTES + LIVE_MACOS_ARCHIVE_BYTES
+    assert usage_after_macos == 12_314_098_161
+    caches_after_macos = list(LIVE_CACHES) + [
+        {
+            "id": 15,
+            "key": f"setup-bazel-1-darwin-arm64-repository-full-{CURRENT_HASH}",
+            "size_in_bytes": LIVE_MACOS_ARCHIVE_BYTES,
+        }
+    ]
+    ok, report = guard.evaluate_capacity(
+        total_active_bytes=usage_after_macos,
+        caches=caches_after_macos,
+        archive_bytes=LIVE_LINUX_ARCHIVE_BYTES,
+        limit_gb_raw="15",
+        platform="linux-x64",
+        current_lock_hash=CURRENT_HASH,
+    )
+    assert ok is True
+    assert report["legacy_bytes"] == LIVE_LEGACY_LINUX_BYTES
+    assert report["matched_legacy"] == [
+        (
+            f"setup-bazel-1-linux-x64-repository-{LIVE_LEGACY_LINUX_HASH}",
+            LIVE_LEGACY_LINUX_BYTES,
+        )
+    ]
+    assert report["superseded_bytes"] == 0
+    assert (
+        report["needed_bytes"]
+        == usage_after_macos - LIVE_LEGACY_LINUX_BYTES + LIVE_LINUX_ARCHIVE_BYTES
+    )
+    assert report["needed_bytes"] == 12_837_799_321
 
 
 def test_parse_limit_gb_var_validation():
@@ -376,7 +491,7 @@ def test_main_allows_when_limit_var_sufficient_with_superseded_and_pagination(
     assert "::warning::" not in captured.out
     assert "ALLOWED" in captured.out
     assert OLDER_LINUX_HASH in captured.out
-    assert "8,666,141,376" in captured.out
+    assert "10,217,053,789" in captured.out
     assert "15,000,000,000" in captured.out
     assert "ALLOWED" in summary.read_text(encoding="utf-8")
     assert "allow_save=true" in output.read_text(encoding="utf-8")

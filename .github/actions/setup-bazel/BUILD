@@ -51,3 +51,21 @@ py_test(
     data = ["//:.bazelversion"],
     env = {"BAZELVERSION_PATH": "$(rootpath //:.bazelversion)"},
 )
+
+py_test(
+    name = "restore_keys_test",
+    size = "small",
+    srcs = [
+        "restore_keys_test.py",
+    ],
+    args = ["$(rootpath restore_keys_test.py)"],
+    data = [
+        "action.yml",
+        "//:.github/actions/bazel-repo-cache-warm/action.yml",
+    ],
+    env = {
+        "SETUP_BAZEL_ACTION_PATH": "$(rootpath action.yml)",
+        "WARM_COMPOSITE_ACTION_PATH": "$(rootpath //:.github/actions/bazel-repo-cache-warm/action.yml)",
+    },
+    deps = ["@pip//pyyaml"],
+)

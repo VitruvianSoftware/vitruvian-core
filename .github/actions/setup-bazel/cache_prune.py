@@ -1,11 +1,13 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-"""Confirm a newly saved `-repository-full-` cache entry, then prune superseded ones.
+"""Confirm a newly saved `-repository-full-` cache entry, then prune superseded and legacy ones.
 
 Only deletes same-platform `setup-bazel-1-<platform>-repository-full-<hash>`
-entries with a different lock hash, and ONLY after `GET /actions/caches?key=<new>`
-confirms the newly saved entry exists. Never deletes on non-main refs.
+entries with a different lock hash and same-platform legacy partial
+`setup-bazel-1-<platform>-repository-<hex>` entries, and ONLY after
+`GET /actions/caches?key=<new>` confirms the newly saved entry exists. Never
+deletes on non-main refs.
 """
 
 import argparse
@@ -22,6 +24,7 @@ from cache_capacity_guard import (
     _NEXT_LINK_RE,
     _github_get_json,
     full_repo_cache_prefix,
+    is_legacy_partial_repo_cache_key,
     is_superseded_full_repo_cache_key,
 )
 
@@ -77,7 +80,7 @@ def confirm_and_prune_superseded_caches(
     retry_delay_seconds=2.0,
     sleep_fn=time.sleep,
 ):
-    """Confirm `new_key` exists, then delete superseded same-platform full entries."""
+    """Confirm `new_key` exists, then delete superseded full and legacy partial same-platform entries."""
     if not platform or not current_lock_hash:
         raise ValueError("platform and current_lock_hash must be non-empty")
 
@@ -130,12 +133,15 @@ def confirm_and_prune_superseded_caches(
         key = entry.get("key")
         if key == new_key:
             continue
-        if not is_superseded_full_repo_cache_key(key, platform, current_lock_hash):
+        if not (
+            is_superseded_full_repo_cache_key(key, platform, current_lock_hash)
+            or is_legacy_partial_repo_cache_key(key, platform)
+        ):
             continue
         cache_id = entry.get("id")
         if isinstance(cache_id, bool) or not isinstance(cache_id, int):
             errors.append(
-                f"Skipping superseded entry {key!r} with invalid id {cache_id!r}"
+                f"Skipping prunable entry {key!r} with invalid id {cache_id!r}"
             )
             continue
         try:
@@ -243,7 +249,7 @@ def main(argv=None, sleep_fn=time.sleep):
         )
         msg = (
             f"Confirmed {result['new_key']}; pruned {len(result['deleted'])} "
-            f"superseded {args.platform} cache(s): {summary_items}."
+            f"superseded/legacy {args.platform} cache(s): {summary_items}."
         )
         if result["errors"]:
             msg += f" ({len(result['errors'])} warning(s))"
@@ -254,8 +260,8 @@ def main(argv=None, sleep_fn=time.sleep):
         )
     else:
         msg = (
-            f"Confirmed {result['new_key']}; no superseded {args.platform} "
-            f"full caches to prune."
+            f"Confirmed {result['new_key']}; no superseded or legacy {args.platform} "
+            f"caches to prune."
         )
 
     print(msg, flush=True)

@@ -17,6 +17,9 @@ NEW_HASH = "1111111111111111111111111111111111111111111111111111111111111111"
 OLD_HASH_1 = "2222222222222222222222222222222222222222222222222222222222222222"
 OLD_HASH_2 = "3333333333333333333333333333333333333333333333333333333333333333"
 DARWIN_HASH = "4444444444444444444444444444444444444444444444444444444444444444"
+LIVE_LEGACY_LINUX_HASH = (
+    "39c2ecfd00000000000000000000000000000000000000000000000000000000"
+)
 
 
 class FakeCacheApi:
@@ -46,7 +49,7 @@ def _sample_all_entries():
         {
             "id": 100,
             "key": f"setup-bazel-1-linux-x64-repository-full-{NEW_HASH}",
-            "size_in_bytes": 6_000_000_000,
+            "size_in_bytes": 6_334_550_016,
         },
         {
             "id": 101,
@@ -61,27 +64,37 @@ def _sample_all_entries():
         {
             "id": 201,
             "key": f"setup-bazel-1-darwin-arm64-repository-full-{DARWIN_HASH}",
-            "size_in_bytes": 3_100_000_000,
+            "size_in_bytes": 1_711_935_488,
         },
         {
             "id": 301,
-            "key": f"setup-bazel-1-linux-x64-repository-{OLD_HASH_1}",
-            "size_in_bytes": 4_000_000_000,
+            "key": f"setup-bazel-1-linux-x64-repository-{LIVE_LEGACY_LINUX_HASH}",
+            "size_in_bytes": 5_810_848_856,
         },
         {
             "id": 302,
             "key": f"setup-bazel-1-darwin-arm64-repository-{DARWIN_HASH}",
-            "size_in_bytes": 1_500_000_000,
+            "size_in_bytes": 1_550_912_413,
         },
         {
             "id": 401,
-            "key": "llvm-contents-v2-Linux-abc123",
-            "size_in_bytes": 2_300_000_000,
+            "key": "llvm-contents-v2-Linux-cf72627ff81aef34-39c2ecfd",
+            "size_in_bytes": 2_340_676_605,
         },
         {
             "id": 402,
-            "key": "setup-bazel-1-linux-x64-bazelisk-021fd141",
-            "size_in_bytes": 57_000_000,
+            "key": "setup-go-Linux-x64-go1.25.0-0123456789abcdef",
+            "size_in_bytes": 2_278_144_667,
+        },
+        {
+            "id": 403,
+            "key": "setup-bazel-1-linux-x64-bazelisk-021fd14121db7b5b5d5160f63bacb0cc3ccc88e25b0a9e0086e812725e516e7d",
+            "size_in_bytes": 57_086_589,
+        },
+        {
+            "id": 404,
+            "key": "setup-bazel-1-darwin-arm64-bazelisk-021fd14121db7b5b5d5160f63bacb0cc3ccc88e25b0a9e0086e812725e516e7d",
+            "size_in_bytes": 115_389_651,
         },
     ]
 
@@ -92,7 +105,7 @@ def test_confirm_before_delete_order_and_exact_targets():
     api = FakeCacheApi(
         confirm_responses=[
             [],
-            [{"id": 100, "key": new_key, "size_in_bytes": 6_000_000_000}],
+            [{"id": 100, "key": new_key, "size_in_bytes": 6_334_550_016}],
         ],
         all_entries=_sample_all_entries(),
     )
@@ -109,22 +122,68 @@ def test_confirm_before_delete_order_and_exact_targets():
     assert result["confirmed"] is True
     assert result["errors"] == []
     assert sleeps == [0.5]
-    # Exact superseded same-platform full keys deleted; new key, darwin keys,
-    # legacy partial keys, and unrelated keys left untouched.
-    assert api.deleted_ids == [101, 102]
-    assert [cid for cid, _k, _s in result["deleted"]] == [101, 102]
+    # Exact superseded same-platform full keys AND same-platform legacy partial key (301) deleted;
+    # new key, darwin full/legacy keys, and unrelated keys left untouched.
+    assert api.deleted_ids == [101, 102, 301]
+    assert [cid for cid, _k, _s in result["deleted"]] == [101, 102, 301]
 
     # Assert strict call ordering: confirm calls -> full list -> delete calls.
-    first_delete_idx = next(
-        i for i, c in enumerate(api.calls) if c[0] == "delete_cache"
-    )
+    delete_indices = [i for i, c in enumerate(api.calls) if c[0] == "delete_cache"]
     confirm_indices = [
         i for i, c in enumerate(api.calls) if c == ("list_caches", new_key)
     ]
     full_list_idx = api.calls.index(("list_caches", None))
     assert confirm_indices == [0, 1]
     assert full_list_idx == 2
-    assert all(ci < full_list_idx < first_delete_idx for ci in confirm_indices)
+    assert delete_indices == [3, 4, 5]
+    assert all(
+        ci < full_list_idx < di for ci in confirm_indices for di in delete_indices
+    )
+    assert api.calls[5] == ("delete_cache", 301)
+
+
+def test_other_platform_legacy_untouched():
+    linux_new_key = f"setup-bazel-1-linux-x64-repository-full-{NEW_HASH}"
+    linux_api = FakeCacheApi(
+        confirm_responses=[
+            [{"id": 100, "key": linux_new_key, "size_in_bytes": 6_334_550_016}]
+        ],
+        all_entries=_sample_all_entries(),
+    )
+    linux_res = prune.confirm_and_prune_superseded_caches(
+        api=linux_api,
+        platform="linux-x64",
+        current_lock_hash=NEW_HASH,
+        max_confirm_attempts=1,
+        retry_delay_seconds=0.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert linux_res["confirmed"] is True
+    assert 301 in linux_api.deleted_ids
+    assert 302 not in linux_api.deleted_ids
+    assert 201 not in linux_api.deleted_ids
+
+    darwin_new_hash = "5555555555555555555555555555555555555555555555555555555555555555"
+    darwin_new_key = f"setup-bazel-1-darwin-arm64-repository-full-{darwin_new_hash}"
+    darwin_api = FakeCacheApi(
+        confirm_responses=[
+            [{"id": 200, "key": darwin_new_key, "size_in_bytes": 1_711_935_488}]
+        ],
+        all_entries=_sample_all_entries(),
+    )
+    darwin_res = prune.confirm_and_prune_superseded_caches(
+        api=darwin_api,
+        platform="darwin-arm64",
+        current_lock_hash=darwin_new_hash,
+        max_confirm_attempts=1,
+        retry_delay_seconds=0.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert darwin_res["confirmed"] is True
+    assert darwin_api.deleted_ids == [201, 302]
+    assert 301 not in darwin_api.deleted_ids
+    assert 101 not in darwin_api.deleted_ids
+    assert 102 not in darwin_api.deleted_ids
 
 
 def test_no_delete_when_confirm_fails():
@@ -246,7 +305,10 @@ def test_main_warns_and_exits_0_on_delete_failure(tmp_path, capsys):
             }
         if method == "DELETE" and path == "/repos/o/r/actions/caches/101":
             return 500, {"message": "Delete failed"}
-        if method == "DELETE" and path == "/repos/o/r/actions/caches/102":
+        if method == "DELETE" and path in (
+            "/repos/o/r/actions/caches/102",
+            "/repos/o/r/actions/caches/301",
+        ):
             return 204, None
         return 404, {"message": "Not Found"}
 
@@ -286,6 +348,7 @@ def test_main_warns_and_exits_0_on_delete_failure(tmp_path, capsys):
     assert [r for r in requests if r[0] == "DELETE"] == [
         ("DELETE", "/repos/o/r/actions/caches/101"),
         ("DELETE", "/repos/o/r/actions/caches/102"),
+        ("DELETE", "/repos/o/r/actions/caches/301"),
     ]
 
 
