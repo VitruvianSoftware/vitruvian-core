@@ -1,7 +1,7 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-"""Verify bazel-repo-cache.yaml main gates, permissions isolation, needs, and concurrency."""
+"""Verify bazel-repo-cache.yaml main gates, permissions isolation, needs, concurrency, and bazel-repo-cache-warm composite guarantees."""
 
 import os
 import re
@@ -14,6 +14,16 @@ def _resolve_workflow_path():
         return Path(env_path)
     return (
         Path(__file__).resolve().parents[3] / ".github/workflows/bazel-repo-cache.yaml"
+    )
+
+
+def _resolve_warm_action_path():
+    env_path = os.environ.get("WARM_COMPOSITE_ACTION_PATH")
+    if env_path and os.path.isfile(env_path):
+        return Path(env_path)
+    return (
+        Path(__file__).resolve().parents[3]
+        / ".github/actions/bazel-repo-cache-warm/action.yml"
     )
 
 
@@ -180,3 +190,170 @@ def test_save_jobs_have_distinct_per_platform_concurrency_groups():
         assert "cancel-in-progress: false" in conc, (
             f"{jid} concurrency must set cancel-in-progress: false, got {conc!r}"
         )
+
+
+# Pre-save deletion currently runs inside the capacity-guard step
+# (`cache_capacity_guard.py`); any future dedicated pre-save-delete step must
+# also be explicitly listed here.
+ALLOWED_WARM_TOKEN_STEPS = frozenset(
+    {
+        "Check Actions cache capacity before saving",
+        "Confirm saved cache and prune superseded same-platform entries",
+    }
+)
+
+
+def _record_step_field(step, field_line, line_no):
+    m = re.match(r"^(name|id|uses):\s*(.+?)\s*$", field_line)
+    if not m:
+        return
+    key, raw_val = m.group(1), m.group(2)
+    val = raw_val.split(" #", 1)[0].strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+        val = val[1:-1]
+    if key == "uses":
+        step["uses"] = val
+        step["uses_line"] = line_no
+    elif not step[key]:
+        step[key] = val
+
+
+def _split_composite_steps(text):
+    """Split a composite action's `runs.steps` into step dicts with line bounds."""
+    steps = []
+    in_runs = False
+    in_steps = False
+    step_indent = None
+    current = None
+
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            if current is not None:
+                current["lines"].append(raw)
+            continue
+
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent == 0:
+            in_runs = stripped == "runs:"
+            in_steps = False
+            step_indent = None
+            current = None
+            continue
+
+        if not in_runs:
+            continue
+
+        if not in_steps:
+            if stripped == "steps:":
+                in_steps = True
+            continue
+
+        if step_indent is None:
+            if stripped.startswith("- "):
+                step_indent = indent
+            elif indent <= 2:
+                in_steps = False
+                continue
+
+        if indent < step_indent:
+            in_steps = False
+            current = None
+            continue
+
+        if indent == step_indent and stripped.startswith("- "):
+            current = {
+                "start_line": line_no,
+                "name": "",
+                "id": "",
+                "uses": "",
+                "uses_line": None,
+                "lines": [raw],
+                "text": "",
+            }
+            steps.append(current)
+            _record_step_field(current, stripped[2:].lstrip(), line_no)
+            continue
+
+        if current is not None:
+            current["lines"].append(raw)
+            if indent == step_indent + 2:
+                _record_step_field(current, stripped, line_no)
+
+    for step in steps:
+        step["text"] = "\n".join(step["lines"])
+    return steps
+
+
+def test_warm_composite_capacity_guard_precedes_every_save_step():
+    steps = _split_composite_steps(
+        _resolve_warm_action_path().read_text(encoding="utf-8")
+    )
+    guard_steps = [
+        s
+        for s in steps
+        if "capacity" in s["name"].lower()
+        or s["id"] == "capacity-guard"
+        or "cache_capacity_guard.py" in s["text"]
+    ]
+    assert len(guard_steps) == 1, (
+        f"expected exactly 1 capacity guard step, got {[(s['start_line'], s['name']) for s in guard_steps]}"
+    )
+    guard = guard_steps[0]
+
+    save_steps = [s for s in steps if s["uses"].startswith("actions/cache/save@")]
+    assert save_steps, "expected at least one actions/cache/save@ step"
+
+    for save in save_steps:
+        assert guard["start_line"] < save["start_line"], (
+            f"capacity guard step '{guard['name']}' (line {guard['start_line']}) "
+            f"must precede save step '{save['name']}' (line {save['start_line']})"
+        )
+        assert guard["start_line"] < save["uses_line"], (
+            f"capacity guard step '{guard['name']}' (line {guard['start_line']}) "
+            f"must precede save uses: line {save['uses_line']}"
+        )
+
+
+def test_warm_composite_prune_runs_only_after_save_steps():
+    steps = _split_composite_steps(
+        _resolve_warm_action_path().read_text(encoding="utf-8")
+    )
+    prune_steps = [
+        s
+        for s in steps
+        if "prune" in s["name"].lower() or "cache_prune.py" in s["text"]
+    ]
+    assert prune_steps, "expected at least one prune step"
+
+    save_steps = [s for s in steps if s["uses"].startswith("actions/cache/save@")]
+    assert save_steps, "expected at least one actions/cache/save@ step"
+
+    for prune in prune_steps:
+        assert any(prune["start_line"] > save["start_line"] for save in save_steps), (
+            f"prune step '{prune['name']}' (line {prune['start_line']}) "
+            "must run after at least one actions/cache/save@ step"
+        )
+        for save in save_steps:
+            assert prune["start_line"] > save["start_line"], (
+                f"prune step '{prune['name']}' (line {prune['start_line']}) "
+                f"must not precede save step '{save['name']}' (line {save['start_line']})"
+            )
+
+
+def test_warm_composite_github_token_restricted_to_guard_prune_and_pre_save_delete_steps():
+    steps = _split_composite_steps(
+        _resolve_warm_action_path().read_text(encoding="utf-8")
+    )
+    assert steps, "expected composite steps in bazel-repo-cache-warm/action.yml"
+    step_names = {s["name"] for s in steps}
+    assert ALLOWED_WARM_TOKEN_STEPS <= step_names, (
+        f"missing allowed token steps {sorted(ALLOWED_WARM_TOKEN_STEPS - step_names)}"
+    )
+
+    for step in steps:
+        if "GH_TOKEN" in step["text"] or "GITHUB_TOKEN" in step["text"]:
+            assert step["name"] in ALLOWED_WARM_TOKEN_STEPS, (
+                f"GH_TOKEN/GITHUB_TOKEN is allowed only on {sorted(ALLOWED_WARM_TOKEN_STEPS)}, "
+                f"found in step '{step['name']}' (line {step['start_line']})"
+            )

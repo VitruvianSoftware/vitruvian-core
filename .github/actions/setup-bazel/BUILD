@@ -82,8 +82,12 @@ py_test(
         "bazel_repo_cache_workflow_test.py",
     ],
     args = ["$(rootpath bazel_repo_cache_workflow_test.py)"],
-    data = ["//:.github/workflows/bazel-repo-cache.yaml"],
+    data = [
+        "//:.github/actions/bazel-repo-cache-warm/action.yml",
+        "//:.github/workflows/bazel-repo-cache.yaml",
+    ],
     env = {
         "BAZEL_REPO_CACHE_WORKFLOW_PATH": "$(rootpath //:.github/workflows/bazel-repo-cache.yaml)",
+        "WARM_COMPOSITE_ACTION_PATH": "$(rootpath //:.github/actions/bazel-repo-cache-warm/action.yml)",
     },
 )
