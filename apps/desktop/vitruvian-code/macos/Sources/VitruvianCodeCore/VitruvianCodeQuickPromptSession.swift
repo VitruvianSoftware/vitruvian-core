@@ -353,6 +353,13 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// The drawer's sessions as the provider listed them, before the
     /// user's pins and names (`sessionPreferences`) are applied.
     private var listedSessions: [VitruvianCodeSessionSummary] = []
+    /// Bumped on every refresh, so an agent's list that comes back after a
+    /// newer refresh (or a switch of agent or folder) is dropped.
+    private var sessionHistoryGeneration = 0
+    private var sessionHistoryTask: Task<Void, Never>?
+    /// Agents (provider and program) that said they have no `session/list`:
+    /// not started again for it until the app restarts.
+    private var sessionListUnsupported: Set<String> = []
     /// Pins and renamed titles of the drawer's sessions. The host keeps
     /// them; they are read each time, never kept here.
     public var sessionPreferences: VitruvianCodeSessionPreferences { host.sessionPreferences }
@@ -475,9 +482,87 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     /// Refreshes the session list using the active provider, with the
     /// user's pins and names applied (pinned ones first).
+    ///
+    /// The transcript readers' list shows at once, as before. Where the agent's
+    /// connection advertises `session/list`, the agent is then asked, and its
+    /// own list (titles, times, folders) replaces that one when it answers
+    /// (`AgentSessionHistory`). If it does not offer the list, or the request
+    /// fails, the transcript list stays.
     public func refreshSessions(configuration: VitruvianCodeConfiguration) {
-        listedSessions = environment.listSessions(sessionsDirectory(for: configuration), configuration.activeProvider,
-                                                  host.hiddenClaudeSessionIDs)
+        let directory = sessionsDirectory(for: configuration)
+        let transcriptRows = environment.listSessions(directory, configuration.activeProvider,
+                                                      host.hiddenClaudeSessionIDs)
+        listedSessions = transcriptRows
+        sessions = sessionPreferences.apply(to: listedSessions)
+        refreshSessionsFromAgent(configuration: configuration, directory: directory, transcriptRows: transcriptRows)
+    }
+
+    /// Asks the agent for its own session list, on the chat's open connection
+    /// when that is the same agent and offers it, otherwise on a connection
+    /// started only for the question and stopped after it, as T3 Code lists
+    /// native sessions (`probe.ts`, `listAcpRegistrySessions`).
+    private func refreshSessionsFromAgent(configuration: VitruvianCodeConfiguration, directory: String,
+                                          transcriptRows: [VitruvianCodeSessionSummary]) {
+        sessionHistoryGeneration &+= 1
+        let generation = sessionHistoryGeneration
+        sessionHistoryTask?.cancel()
+        sessionHistoryTask = nil
+        let provider = configuration.activeProvider
+        let agentPath = engine?.agentPath ?? lastTurnAgentPath
+        let key = provider.id.uuidString + "|" + (agentPath ?? "")
+        guard !sessionListUnsupported.contains(key) else { return }
+
+        let lister: any AgentSessionListing
+        let ownsLister: Bool
+        if let live = liveConnection, live.isConnected, liveConnectionProviderID == provider.id,
+           live.capabilities.listSessions, let listing = live as? any AgentSessionListing {
+            lister = listing
+            ownsLister = false
+        } else {
+            let spec = AgentConnectionSpec(
+                kind: provider.connection ?? .commandLine,
+                provider: provider,
+                configuration: configuration,
+                agentPath: agentPath,
+                workingDirectory: directory.isEmpty ? environment.home : directory,
+                environment: environment.processEnvironment
+            )
+            guard let made = environment.makeSessionLister(spec) else { return }
+            lister = made
+            ownsLister = true
+        }
+        let home = environment.home
+        sessionHistoryTask = Task { @MainActor [weak self] in
+            let outcome: Result<[AgentListedSession], any Error>
+            do {
+                outcome = .success(try await AgentSessionHistory.fetchAll(
+                    from: lister, cwd: directory.isEmpty ? nil : directory))
+            } catch {
+                outcome = .failure(error)
+            }
+            if ownsLister { await lister.stop() }
+            guard let self, !Task.isCancelled, generation == self.sessionHistoryGeneration else { return }
+            switch outcome {
+            case .success(let listed):
+                self.listedSessions = AgentSessionHistory.summaries(
+                    listed: listed, directory: directory, home: home, transcriptRows: transcriptRows)
+                self.sessions = self.sessionPreferences.apply(to: self.listedSessions)
+            case .failure(let error):
+                if case ACPConnectionError.sessionListNotAdvertised = error {
+                    self.sessionListUnsupported.insert(key)
+                }
+            }
+        }
+    }
+
+    /// Applies the agent's `session_info_update` for the open conversation to its
+    /// row in the list, so a new title or time shows without a refresh.
+    private func applySessionInfoToList(title: String?, updatedAt: String?) {
+        guard let id = conversationID, !id.isEmpty else { return }
+        let updated = AgentSessionHistory.applyingSessionInfo(
+            title: title, updatedAt: updatedAt, sessionID: id, to: listedSessions)
+        guard updated != listedSessions else { return }
+        listedSessions = updated
         sessions = sessionPreferences.apply(to: listedSessions)
     }
 
@@ -2604,6 +2689,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
              .notice,
              .sessionInfo:
             if case .configOptions = event { configOptionsEventCount += 1 }
+            if case .sessionInfo(let title, let updatedAt) = event {
+                applySessionInfoToList(title: title, updatedAt: updatedAt)
+            }
             liveState.apply(event)
         }
     }

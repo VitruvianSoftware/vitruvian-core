@@ -103,6 +103,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 customMakeConnection = newValue
             }
         }
+        /// Builds the connection the chat's "Recent sessions" list asks the agent's own
+        /// `session/list` through (`AgentSessionHistory`), or nil when that agent's
+        /// connection has none: the list then comes from `listSessions`. Nil unless
+        /// set, so a test double never starts a real agent; `live` sets it.
+        public var makeSessionLister: @MainActor (AgentConnectionSpec) -> (any AgentSessionListing)?
         /// agy's or claude's recent conversations for a folder, newest first.
         /// The last argument is the app's list of archived Claude sessions.
         public var listSessions: (_ directory: String, _ provider: VitruvianCodeCLIProvider,
@@ -173,6 +178,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                                              @escaping @MainActor @Sendable (Data) -> Void,
                                              @escaping @MainActor @Sendable (Int32) -> Void) throws -> VitruvianCodeRunningAgent,
                      makeConnection: ((AgentConnectionSpec) -> any AgentConnection)? = nil,
+                     makeSessionLister: @escaping @MainActor (AgentConnectionSpec) -> (any AgentSessionListing)? = { _ in nil },
                      listSessions: @escaping (String, VitruvianCodeCLIProvider, [String]) -> [VitruvianCodeSessionSummary] = { _, _, _ in [] },
                      readTranscript: @escaping (String, VitruvianCodeCLIProvider) -> [VitruvianCodeChatMessage]? = { _, _ in nil },
                      transcriptPath: @escaping (String, VitruvianCodeCLIProvider) -> String? = { _, _ in nil },
@@ -216,6 +222,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             self.openFile = openFile
             self.launchAgent = launchAgent
             self.customMakeConnection = makeConnection
+            self.makeSessionLister = makeSessionLister
             self.listSessions = listSessions
             self.readTranscript = readTranscript
             self.transcriptPath = transcriptPath
@@ -245,7 +252,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     stateDirectory: $0
                 )
             }
-            return Environment(
+            var environment = Environment(
                 defaults: suiteName.flatMap { .init(suiteName: $0) } ?? .standard,
                 home: home,
                 processEnvironment: ProcessInfo.processInfo.environment,
@@ -282,6 +289,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     await VitruvianCodeEngine.offMainThread { VitruvianCodeEngine.runSqliteProcess(database, sql, readsRows) }
                 },
                 botCandidates: VitruvianCodeSupport.bundledBotCandidates(for: .main))
+            let base = environment
+            environment.makeSessionLister = { spec in
+                AgentSessionHistory.liveLister(spec: spec, environment: base)
+            }
+            return environment
         }
     }
 

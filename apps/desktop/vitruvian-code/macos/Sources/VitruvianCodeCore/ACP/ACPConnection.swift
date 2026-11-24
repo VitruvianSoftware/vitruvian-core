@@ -79,6 +79,7 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
     case alreadyStopped
     case unknownInteractionRequest(String)
     case missingSessionID
+    case sessionListNotAdvertised
 
     public var errorDescription: String? {
         switch self {
@@ -90,6 +91,8 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
             return "No pending ACP permission or question request matches '\(id)'."
         case .missingSessionID:
             return "ACP agent returned an empty session identifier."
+        case .sessionListNotAdvertised:
+            return "ACP agent does not advertise session/list support."
         }
     }
 }
@@ -337,97 +340,16 @@ public final class ACPConnection: PersistentAgentConnection {
                 request.additionalDirectories,
                 hooks.additionalDirectories
             )
-            let launched = try processFactory(effectiveSpec)
-            self.launchedProcess = launched
-            self.clientFiles = ACPClientFiles(
+            let initialized = try await launchAndInitialize(
+                spec: effectiveSpec,
                 workingDirectory: request.workingDirectory,
                 additionalDirectories: initialAdditionalDirs
             )
-
-            startStderrDrain(launched.stderr)
-            startExitMonitor(launched.waitForExit)
-
-            let acpTransport = ACPTransport(
-                incoming: launched.stdout,
-                outgoing: launched.writeStdin,
-                closeOutgoing: launched.closeStdin,
-                maxLineBytes: maxLineBytes,
-                onRequest: { [weak self] method, params in
-                    guard let self else {
-                        throw ACPRPCError(code: ACPRPCError.internalError, message: "Connection deallocated")
-                    }
-                    return try await self.handleIncomingRequest(method: method, params: params)
-                },
-                onNotification: { [weak self] method, params in
-                    guard let self else { return }
-                    await self.handleIncomingNotification(method: method, params: params)
-                },
-                onFailure: { [weak self] error in
-                    guard let self else { return }
-                    await self.handleTransportFailure(error)
-                },
-                onLog: { [weak self] message in
-                    Task { @MainActor [weak self] in
-                        self?.recordLogLine("[acp] \(message)")
-                    }
-                }
-            )
-            self.transport = acpTransport
-            await acpTransport.start()
-
-            if let prepared = await hooks.prepareInitialize?() {
-                self.clientInfo = prepared.clientInfo
-                self.policy = prepared.policy
-            }
-            guard !isStopping, !isStopped else {
-                throw ACPConnectionError.alreadyStopped
-            }
-
-            let initParams = ACPInitializeParams(
-                protocolVersion: ACPInitializeParams.v1ProtocolVersion,
-                clientInfo: clientInfo,
-                clientCapabilities: policy.clientCapabilities,
-                _meta: hooks.initializeMeta
-            )
-            let initResult: ACPInitializeResult = try await acpTransport.request(
-                method: "initialize",
-                params: initParams,
-                timeout: sessionSetupTimeout
-            )
-            guard !isStopping, !isStopped else {
-                throw ACPConnectionError.alreadyStopped
-            }
-
-            self.initializeResult = initResult
-            self.agentVersion = initResult.agentInfo?.version
-            if let updatedPolicy = hooks.onInitialized?(initResult) {
-                self.policy = updatedPolicy
-            }
-
+            let acpTransport = initialized.transport
+            let initResult = initialized.result
             let agentCaps = initResult.agentCapabilities
             let advertisedAuthMethods = initResult.authMethods ?? []
-            self.authMethods = advertisedAuthMethods
-            var resolvedCapabilities = AgentCapabilities(
-                loadSession: agentCaps?.loadSession == true,
-                resumeSession: agentCaps?.sessionCapabilities?.supportsResume == true,
-                listSessions: agentCaps?.sessionCapabilities?.supportsList == true,
-                closeSession: agentCaps?.sessionCapabilities?.supportsClose == true,
-                images: agentCaps?.promptCapabilities?.image == true,
-                audio: agentCaps?.promptCapabilities?.audio == true,
-                embeddedContext: agentCaps?.promptCapabilities?.embeddedContext == true,
-                mcpHTTP: agentCaps?.mcpCapabilities?.http == true,
-                configOptions: false,
-                authMethods: !advertisedAuthMethods.isEmpty
-            )
-            self.capabilities = resolvedCapabilities
-
-            for request in hooks.postInitializeRequests?(initResult) ?? [] {
-                let _: ACPJSONValue = try await acpTransport.request(
-                    method: request.method,
-                    params: request.params,
-                    timeout: sessionSetupTimeout
-                )
-            }
+            var resolvedCapabilities = self.capabilities
             guard !isStopping, !isStopped else {
                 throw ACPConnectionError.alreadyStopped
             }
@@ -613,6 +535,170 @@ public final class ACPConnection: PersistentAgentConnection {
                 eventsContinuation.finish()
             }
             throw error
+        }
+    }
+
+    /// Starts the agent process and its transport, then sends `initialize` and any
+    /// post-initialize requests. Sets `capabilities` from what the agent advertised
+    /// (`configOptions` stays false until a session opens). Shared by `start` and by
+    /// `listSessions` on a connection that has no session.
+    private func launchAndInitialize(
+        spec effectiveSpec: AgentProcessLaunchSpec,
+        workingDirectory: String,
+        additionalDirectories: [String]
+    ) async throws -> (transport: ACPTransport, result: ACPInitializeResult) {
+        let launched = try processFactory(effectiveSpec)
+        self.launchedProcess = launched
+        self.clientFiles = ACPClientFiles(
+            workingDirectory: workingDirectory,
+            additionalDirectories: additionalDirectories
+        )
+
+        startStderrDrain(launched.stderr)
+        startExitMonitor(launched.waitForExit)
+
+        let acpTransport = ACPTransport(
+            incoming: launched.stdout,
+            outgoing: launched.writeStdin,
+            closeOutgoing: launched.closeStdin,
+            maxLineBytes: maxLineBytes,
+            onRequest: { [weak self] method, params in
+                guard let self else {
+                    throw ACPRPCError(code: ACPRPCError.internalError, message: "Connection deallocated")
+                }
+                return try await self.handleIncomingRequest(method: method, params: params)
+            },
+            onNotification: { [weak self] method, params in
+                guard let self else { return }
+                await self.handleIncomingNotification(method: method, params: params)
+            },
+            onFailure: { [weak self] error in
+                guard let self else { return }
+                await self.handleTransportFailure(error)
+            },
+            onLog: { [weak self] message in
+                Task { @MainActor [weak self] in
+                    self?.recordLogLine("[acp] \(message)")
+                }
+            }
+        )
+        self.transport = acpTransport
+        await acpTransport.start()
+
+        if let prepared = await hooks.prepareInitialize?() {
+            self.clientInfo = prepared.clientInfo
+            self.policy = prepared.policy
+        }
+        guard !isStopping, !isStopped else {
+            throw ACPConnectionError.alreadyStopped
+        }
+
+        let initParams = ACPInitializeParams(
+            protocolVersion: ACPInitializeParams.v1ProtocolVersion,
+            clientInfo: clientInfo,
+            clientCapabilities: policy.clientCapabilities,
+            _meta: hooks.initializeMeta
+        )
+        let initResult: ACPInitializeResult = try await acpTransport.request(
+            method: "initialize",
+            params: initParams,
+            timeout: sessionSetupTimeout
+        )
+        guard !isStopping, !isStopped else {
+            throw ACPConnectionError.alreadyStopped
+        }
+
+        self.initializeResult = initResult
+        self.agentVersion = initResult.agentInfo?.version
+        if let updatedPolicy = hooks.onInitialized?(initResult) {
+            self.policy = updatedPolicy
+        }
+
+        let agentCaps = initResult.agentCapabilities
+        let advertisedAuthMethods = initResult.authMethods ?? []
+        self.authMethods = advertisedAuthMethods
+        self.capabilities = AgentCapabilities(
+            loadSession: agentCaps?.loadSession == true,
+            resumeSession: agentCaps?.sessionCapabilities?.supportsResume == true,
+            listSessions: agentCaps?.sessionCapabilities?.supportsList == true,
+            closeSession: agentCaps?.sessionCapabilities?.supportsClose == true,
+            images: agentCaps?.promptCapabilities?.image == true,
+            audio: agentCaps?.promptCapabilities?.audio == true,
+            embeddedContext: agentCaps?.promptCapabilities?.embeddedContext == true,
+            mcpHTTP: agentCaps?.mcpCapabilities?.http == true,
+            configOptions: false,
+            authMethods: !advertisedAuthMethods.isEmpty
+        )
+
+        for request in hooks.postInitializeRequests?(initResult) ?? [] {
+            let _: ACPJSONValue = try await acpTransport.request(
+                method: request.method,
+                params: request.params,
+                timeout: sessionSetupTimeout
+            )
+        }
+        return (acpTransport, initResult)
+    }
+
+    /// One page of the agent's own past sessions (`session/list`), for the chat's
+    /// "Recent sessions" list. On an open connection it asks over the same process.
+    /// On one with no session yet it starts the process, initializes it and asks,
+    /// without opening a session, as T3 Code's `listAcpRegistrySessions` does
+    /// (`packages/provider-acp-registry/src/server/probe.ts`); the caller then
+    /// stops it. Throws `ACPConnectionError.sessionListNotAdvertised` when the
+    /// agent does not offer `session/list`, so the caller can fall back. When the
+    /// agent says it needs sign-in, signs in with the connection's auth method
+    /// once and asks again, as `start` does for `session/new`.
+    public func listSessions(cwd: String?, cursor: String?) async throws -> ACPSessionListResult {
+        guard !isStopped, !isStopping else {
+            throw ACPConnectionError.alreadyStopped
+        }
+        let acpTransport: ACPTransport
+        if let existing = transport {
+            acpTransport = existing
+        } else {
+            var effectiveSpec = launchSpec
+            let folder = cwd?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if effectiveSpec.workingDirectory?.isEmpty ?? true {
+                effectiveSpec.workingDirectory = folder.isEmpty ? NSHomeDirectory() : folder
+            }
+            fallbackLogSessionID = "session-list"
+            do {
+                acpTransport = try await launchAndInitialize(
+                    spec: effectiveSpec,
+                    workingDirectory: effectiveSpec.workingDirectory ?? NSHomeDirectory(),
+                    additionalDirectories: hooks.additionalDirectories
+                ).transport
+            } catch {
+                await stop()
+                throw error
+            }
+        }
+        guard capabilities.listSessions else {
+            throw ACPConnectionError.sessionListNotAdvertised
+        }
+        let params = ACPSessionListParams(cwd: cwd, cursor: cursor)
+        do {
+            return try await acpTransport.request(
+                method: "session/list",
+                params: params,
+                timeout: sessionSetupTimeout
+            )
+        } catch {
+            guard Self.isAuthRequiredError(error), let authMethodID = hooks.authMethodID,
+                  authMethods.isEmpty || authMethods.contains(where: { $0.id == authMethodID }) else {
+                throw error
+            }
+            let _: ACPJSONValue = try await acpTransport.request(
+                method: "authenticate",
+                params: ACPAuthenticateParams(methodId: authMethodID),
+                timeout: sessionSetupTimeout
+            )
+            return try await acpTransport.request(
+                method: "session/list",
+                params: params,
+                timeout: sessionSetupTimeout
+            )
         }
     }
 

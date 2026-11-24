@@ -1,0 +1,8 @@
+{"direction":"client","method":"initialize"}
+{"direction":"agent","send":{"jsonrpc":"2.0","result":{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"load_session":true,"promptCapabilities":{"image":true,"audio":false,"embeddedContext":true},"sessionCapabilities":{"resume":{},"close":{},"load":{},"list":{},"additionalDirectories":{}},"session_capabilities":{"resume":{},"close":{},"load":{},"list":{},"additionalDirectories":{}},"auth":{"logout":{}},"_meta":{"antigravity":{"tier":true,"systemPrompt":{"append":true}}}},"agentInfo":{"name":"Antigravity ACP Server","version":"1.5.16"},"authMethods":[{"id":"oauth-personal","name":"Log in with Google","description":"Log in with your Google account"},{"id":"gemini-api-key","name":"Gemini API key","description":"Use an API key with Gemini Developer API"}]},"id":"$id"}}
+{"direction":"client","method":"session/list"}
+{"direction":"agent","send":{"jsonrpc":"2.0","error":{"code":-32000,"message":"Authentication required"},"id":"$id"}}
+{"direction":"client","method":"authenticate"}
+{"direction":"agent","send":{"jsonrpc":"2.0","result":{"_meta":{"antigravity":{"tier":{"name":"Example tier","id":"example-tier","upgradeUri":""}}}},"id":"$id"}}
+{"direction":"client","method":"session/list"}
+{"direction":"agent","send":{"jsonrpc":"2.0","result":{"sessions":[{"sessionId":"0b7f3c1e-1111-4a5b-9c6d-000000000001","cwd":"/workspace/app","title":"Fix the login redirect","updatedAt":"2026-11-23T17:01:24Z"},{"sessionId":"0b7f3c1e-2222-4a5b-9c6d-000000000002","cwd":"/elsewhere","title":"Draft release notes","updatedAt":"2026-11-24T17:02:02Z"},{"sessionId":"0b7f3c1e-3333-4a5b-9c6d-000000000003","cwd":"/workspace/app/packages/ui","title":"Tidy the button styles","updatedAt":"2026-11-24T09:15:00Z"}]},"id":"$id"}}
