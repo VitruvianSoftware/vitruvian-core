@@ -82,14 +82,15 @@ jobs:
 
   warm-linux-save:
     name: warm-linux-save
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: warm-macos-save
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 120
     permissions:
       contents: read
       actions: write
     concurrency:
-      group: bazel-repo-cache-save
+      group: bazel-repo-cache-save-linux
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -138,7 +139,7 @@ jobs:
       contents: read
       actions: write
     concurrency:
-      group: bazel-repo-cache-save
+      group: bazel-repo-cache-save-macos
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

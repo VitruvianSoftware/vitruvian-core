@@ -148,8 +148,10 @@ runs:
     # evicting main's entries; self-hosted runners upload too slowly (~1.8 MB/s)
     # and hit job timeouts; and allowing partial jobs (such as Copybara export)
     # to race-save first on main poisoned exact-key hits with incomplete
-    # entries. Isolating the restore key behind the `-repository-full-` segment
-    # ensures consumers never match legacy partial `-repository-<hash>` entries.
+    # entries. Restoring checks the exact `-repository-full-<hash>` key, then the
+    # `-repository-full-` prefix, and falls back LAST to the same-platform
+    # legacy `-repository-` prefix so a full entry always wins when one exists
+    # while keeping the legacy cache usable until a full entry is saved.
     #
     # tools/conformance (CACHESAVE) fails if this action ever re-enables
     # `repository-cache` or `cache-save` on bazel-contrib/setup-bazel, if a
@@ -264,6 +266,7 @@ runs:
         key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
         restore-keys: |
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
 
     - uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
       with:

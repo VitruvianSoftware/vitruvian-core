@@ -1040,13 +1040,16 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
         }
     }
     let rk_lines = restore_keys_lines(content);
-    if !rk_lines.iter().any(|l| l.contains("-repository-full-"))
-        || rk_lines.iter().any(|l| l.ends_with("-repository-"))
-    {
+    let rk_valid = rk_lines.len() == 2
+        && rk_lines[0].ends_with("-repository-full-")
+        && rk_lines[1].ends_with("-repository-")
+        && !rk_lines[1].contains("-repository-full-")
+        && rk_lines[0].strip_suffix("full-") == Some(rk_lines[1].as_str());
+    if !rk_valid {
         problems.push((
             format!("restore-keys: {:?}", rk_lines),
-            "prefix ending in -repository-full-".to_string(),
-            "restore-keys must fall back only to `-repository-full-` so consumers never read legacy partial `-repository-<hash>` entries".to_string(),
+            "[<platform>-repository-full-, <platform>-repository-]".to_string(),
+            "restore-keys must list the `-repository-full-` prefix first and the same-platform legacy `-repository-` fallback last so full entries always win".to_string(),
         ));
     }
     if lines
@@ -1097,6 +1100,55 @@ struct StepMeta {
     warm_mode: Option<String>,
 }
 
+fn feed_step_line(
+    steps: &mut Vec<StepMeta>,
+    step_indent: &mut Option<usize>,
+    ind: usize,
+    s: &str,
+) -> bool {
+    if let Some(rest) = s.strip_prefix("- ") {
+        if step_indent.is_none() || *step_indent == Some(ind) {
+            if [
+                "uses:",
+                "name:",
+                "id:",
+                "if:",
+                "run:",
+                "env:",
+                "with:",
+                "shell:",
+                "continue-on-error:",
+            ]
+            .iter()
+            .any(|p| rest.starts_with(p))
+            {
+                *step_indent = Some(ind);
+                steps.push(StepMeta::default());
+                let last = steps.last_mut().unwrap();
+                last.runs_capacity_guard |= rest.contains("cache_capacity_guard.py");
+                last.runs_prune |= rest.contains("cache_prune.py");
+                apply_step_key(last, rest);
+                return true;
+            }
+        }
+    }
+    if let (Some(si), Some(last)) = (*step_indent, steps.last_mut()) {
+        if ind > si {
+            last.runs_capacity_guard |= s.contains("cache_capacity_guard.py");
+            last.runs_prune |= s.contains("cache_prune.py");
+            if ind == si + 2 || (ind == si + 4 && (s.starts_with("key:") || s.starts_with("mode:")))
+            {
+                apply_step_key(last, s);
+            }
+            return true;
+        }
+        if !s.starts_with("- ") {
+            *step_indent = None;
+        }
+    }
+    false
+}
+
 /// Every step's `uses:`, `if:`, `with.key:`, `name:`, and `continue-on-error:`
 /// across a workflow or composite action.
 fn composite_steps(content: &str) -> Vec<StepMeta> {
@@ -1108,50 +1160,7 @@ fn composite_steps(content: &str) -> Vec<StepMeta> {
         if s.is_empty() || s.starts_with('#') {
             continue;
         }
-        let ind = indent(line);
-        if let Some(rest) = s.strip_prefix("- ") {
-            if step_indent.is_none() || step_indent == Some(ind) {
-                if rest.starts_with("uses:")
-                    || rest.starts_with("name:")
-                    || rest.starts_with("id:")
-                    || rest.starts_with("if:")
-                    || rest.starts_with("run:")
-                    || rest.starts_with("env:")
-                    || rest.starts_with("with:")
-                    || rest.starts_with("shell:")
-                    || rest.starts_with("continue-on-error:")
-                {
-                    step_indent = Some(ind);
-                    steps.push(StepMeta::default());
-                    let last = steps.last_mut().unwrap();
-                    if rest.contains("cache_capacity_guard.py") {
-                        last.runs_capacity_guard = true;
-                    }
-                    if rest.contains("cache_prune.py") {
-                        last.runs_prune = true;
-                    }
-                    apply_step_key(last, rest);
-                    continue;
-                }
-            }
-        }
-        if let (Some(si), Some(last)) = (step_indent, steps.last_mut()) {
-            if ind > si {
-                if s.contains("cache_capacity_guard.py") {
-                    last.runs_capacity_guard = true;
-                }
-                if s.contains("cache_prune.py") {
-                    last.runs_prune = true;
-                }
-                if ind == si + 2 {
-                    apply_step_key(last, s);
-                } else if ind == si + 4 && (s.starts_with("key:") || s.starts_with("mode:")) {
-                    apply_step_key(last, s);
-                }
-            } else if ind <= si && !s.starts_with("- ") {
-                step_indent = None;
-            }
-        }
+        feed_step_line(&mut steps, &mut step_indent, indent(line), s);
     }
     steps
 }
@@ -1321,36 +1330,7 @@ fn parse_repo_cache_workflow(content: &str) -> ParsedWarmWorkflow {
         }
 
         if in_job_steps && ind >= 6 {
-            if let Some(rest) = s.strip_prefix("- ") {
-                if step_indent.is_none() || step_indent == Some(ind) {
-                    step_indent = Some(ind);
-                    job.steps.push(StepMeta::default());
-                    let last = job.steps.last_mut().unwrap();
-                    if rest.contains("cache_capacity_guard.py") {
-                        last.runs_capacity_guard = true;
-                    }
-                    if rest.contains("cache_prune.py") {
-                        last.runs_prune = true;
-                    }
-                    apply_step_key(last, rest);
-                    continue;
-                }
-            }
-            if let (Some(si), Some(last)) = (step_indent, job.steps.last_mut()) {
-                if ind > si {
-                    if s.contains("cache_capacity_guard.py") {
-                        last.runs_capacity_guard = true;
-                    }
-                    if s.contains("cache_prune.py") {
-                        last.runs_prune = true;
-                    }
-                    if ind == si + 2 {
-                        apply_step_key(last, s);
-                    } else if ind == si + 4 && (s.starts_with("key:") || s.starts_with("mode:")) {
-                        apply_step_key(last, s);
-                    }
-                }
-            }
+            feed_step_line(&mut job.steps, &mut step_indent, ind, s);
         }
     }
 
@@ -1618,45 +1598,58 @@ pub(crate) fn repo_cache_warm_composite_problems(content: &str) -> Vec<(String, 
         .filter(|(_, s)| s.uses.starts_with("actions/cache/save@"))
         .map(|(i, _)| i)
         .collect();
-    if save_indices.len() != 1 {
+    if save_indices.len() < 2 {
         problems.push((
             format!("{} actions/cache/save step(s)", save_indices.len()),
-            "1 actions/cache/save step".to_string(),
-            "warm composite must contain one verified actions/cache/save step".to_string(),
+            ">=2 actions/cache/save steps (bounded upload retry)".to_string(),
+            "warm composite must retry repository cache upload with bounded attempts".to_string(),
         ));
         return problems;
     }
 
-    let save_idx = save_indices[0];
-    let save_step = &steps[save_idx];
-    let save_if_ok = save_step.if_expr.as_deref().is_some_and(|e| {
-        e.contains("inputs.mode == 'save'")
-            && e.contains("cache-hit != 'true'")
-            && e.contains("allow_save == 'true'")
-    });
-    if !save_if_ok {
-        problems.push((
-            format!(
-                "save if: {}",
-                save_step.if_expr.as_deref().unwrap_or("unset")
-            ),
-            "if: inputs.mode == 'save' && ...cache-hit != 'true' && ...allow_save == 'true'"
-                .to_string(),
-            "save step must run only in save mode on a cache miss when capacity guard allows it"
-                .to_string(),
-        ));
-    }
-    if !save_step.key.as_deref().is_some_and(has_full_repo_hash_key) {
-        problems.push((
-            format!("save key: {}", save_step.key.as_deref().unwrap_or("unset")),
-            "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
-            "warm composite must save under the `-repository-full-` key matching setup-bazel"
-                .to_string(),
-        ));
+    for &save_idx in &save_indices {
+        let save_step = &steps[save_idx];
+        let save_if_ok = save_step.if_expr.as_deref().is_some_and(|e| {
+            e.contains("inputs.mode == 'save'")
+                && e.contains("cache-hit != 'true'")
+                && e.contains("allow_save == 'true'")
+        });
+        if !save_if_ok {
+            problems.push((
+                format!(
+                    "save if: {}",
+                    save_step.if_expr.as_deref().unwrap_or("unset")
+                ),
+                "if: inputs.mode == 'save' && ...cache-hit != 'true' && ...allow_save == 'true'"
+                    .to_string(),
+                "save step must run only in save mode on a cache miss when capacity guard allows it"
+                    .to_string(),
+            ));
+        }
+        if !save_step.key.as_deref().is_some_and(has_full_repo_hash_key) {
+            problems.push((
+                format!("save key: {}", save_step.key.as_deref().unwrap_or("unset")),
+                "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
+                "warm composite must save under the `-repository-full-` key matching setup-bazel"
+                    .to_string(),
+            ));
+        }
+        if save_step.continue_on_error.as_deref() != Some("true") {
+            problems.push((
+                format!(
+                    "save continue-on-error: {}",
+                    save_step.continue_on_error.as_deref().unwrap_or("unset")
+                ),
+                "continue-on-error: true".to_string(),
+                "upload retry steps must not fail the job when an Actions cache upload fails"
+                    .to_string(),
+            ));
+        }
     }
 
-    let guard_ok = save_idx > 0 && {
-        let guard = &steps[save_idx - 1];
+    let first_save_idx = save_indices[0];
+    let guard_ok = first_save_idx > 0 && {
+        let guard = &steps[first_save_idx - 1];
         guard.name.as_deref() == Some("Check Actions cache capacity before saving")
             && guard.runs_capacity_guard
             && guard.continue_on_error.as_deref() != Some("true")
@@ -1667,7 +1660,7 @@ pub(crate) fn repo_cache_warm_composite_problems(content: &str) -> Vec<(String, 
     if !guard_ok {
         problems.push((
             "missing or misplaced capacity guard".to_string(),
-            "Check Actions cache capacity before saving (cache_capacity_guard.py) immediately before actions/cache/save".to_string(),
+            "Check Actions cache capacity before saving (cache_capacity_guard.py) immediately before first actions/cache/save".to_string(),
             "actions/cache/save in bazel-repo-cache-warm must be immediately preceded by the capacity guard".to_string(),
         ));
     }
@@ -1687,7 +1680,7 @@ pub(crate) fn repo_cache_warm_composite_problems(content: &str) -> Vec<(String, 
     } else {
         let prune_idx = prune_indices[0];
         let prune_step = &steps[prune_idx];
-        if prune_idx <= save_idx {
+        if prune_idx <= *save_indices.last().unwrap() {
             problems.push((
                 "prune runs before save".to_string(),
                 "prune step strictly after actions/cache/save".to_string(),
@@ -2621,6 +2614,7 @@ runs:
         key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
         restore-keys: |
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
     - uses: bazel-contrib/setup-bazel@abc # 0.19.2
       with:
         repository-cache: false
@@ -2634,7 +2628,6 @@ runs:
 
     #[test]
     fn repository_restore_rejects_old_state_and_save_regressions() {
-        // Exact pre-stage-2 setup-bazel/action.yml shape must fail every changed invariant.
         let old_state = "\
 runs:
   using: composite
@@ -2654,11 +2647,23 @@ runs:
         repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
         cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
 ";
-        let old_found: Vec<String> = repository_restore_problems(old_state)
-            .into_iter()
-            .map(|p| p.0)
-            .collect();
-        assert_eq!(old_found.len(), 5, "{old_found:?}");
+        assert_eq!(repository_restore_problems(old_state).len(), 5);
+
+        let swapped_rk = SETUP_BAZEL_GOOD.replace(
+            "          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-\n          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-",
+            "          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-\n          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-",
+        );
+        assert!(repository_restore_problems(&swapped_rk)
+            .iter()
+            .any(|p| p.0.starts_with("restore-keys:")));
+
+        let missing_legacy_rk = SETUP_BAZEL_GOOD.replace(
+            "          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-\n",
+            "",
+        );
+        assert!(repository_restore_problems(&missing_legacy_rk)
+            .iter()
+            .any(|p| p.0.starts_with("restore-keys:")));
 
         let self_hosted_too = SETUP_BAZEL_GOOD.replace(
             "if: ${{ runner.environment == 'github-hosted' }}",
@@ -2685,7 +2690,6 @@ runs:
 
     #[test]
     fn repository_restore_rejects_the_incident_shape() {
-        // The 2026-11-06 shape: setup-bazel restores and saves everywhere, nothing else does.
         let incident = "\
     - uses: bazel-contrib/setup-bazel@abc # 0.19.1
       with:
@@ -2724,7 +2728,6 @@ runs:
             repository_restore_problems(&slow)[0].0,
             "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 12"
         );
-        // `~/` never matched bazel-repo-cache.yaml's $HOME path.
         let tilde = SETUP_BAZEL_GOOD.replace(
             "${{ steps.repo-cache.outputs.path }}",
             "~/.cache/bazel-repo",
@@ -2750,52 +2753,36 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@abc
       - uses: ./.github/actions/bazel-repo-cache-warm
         with:
           mode: verify
-          platform-os: linux
-          platform-arch: x64
-          targets: //...
   warm-linux-save:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     permissions:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@abc
       - uses: ./.github/actions/bazel-repo-cache-warm
         with:
           mode: save
-          platform-os: linux
-          platform-arch: x64
-          targets: //...
   warm-macos-verify:
     if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
     permissions:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@abc
       - uses: ./.github/actions/bazel-repo-cache-warm
         with:
           mode: verify
-          platform-os: darwin
-          platform-arch: arm64
-          targets: //apps/desktop/...
   warm-macos-save:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@abc
       - uses: ./.github/actions/bazel-repo-cache-warm
         with:
           mode: save
-          platform-os: darwin
-          platform-arch: arm64
-          targets: //apps/desktop/...
 ";
 
     const WARM_COMPOSITE_GOOD: &str = "\
@@ -2822,14 +2809,22 @@ runs:
       shell: bash
       run: |
         python3 .github/actions/setup-bazel/cache_capacity_guard.py
-    - id: cache-save
+    - id: cache-save-1
+      continue-on-error: true
       if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'
       uses: actions/cache/save@abc # v6
       with:
         path: ${{ env.REPO }}
         key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+    - id: cache-save-2
+      continue-on-error: true
+      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.cache-save-1.outcome != 'success'
+      uses: actions/cache/save@abc # v6
+      with:
+        path: ${{ env.REPO }}
+        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
     - name: Confirm saved cache and prune superseded same-platform entries
-      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.cache-save.outcome == 'success'
+      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && (steps.cache-save-1.outcome == 'success' || steps.cache-save-2.outcome == 'success')
       shell: bash
       run: |
         python3 .github/actions/setup-bazel/cache_prune.py
@@ -2841,53 +2836,47 @@ runs:
             repo_cache_warm_workflow_problems(WARM_WORKFLOW_GOOD),
             Vec::new()
         );
-
-        let top_level_write = WARM_WORKFLOW_GOOD.replacen("  actions: read", "  actions: write", 1);
-        assert!(repo_cache_warm_workflow_problems(&top_level_write)
-            .iter()
-            .any(|p| p.0 == "workflow permissions actions: write"));
-
-        let branch_dispatch_saves = WARM_WORKFLOW_GOOD.replacen(
-            "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
-            "if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
-            1,
-        );
-        assert!(repo_cache_warm_workflow_problems(&branch_dispatch_saves)
-            .iter()
-            .any(|p| p.0.starts_with("warm-linux-save if:")));
-
-        let or_bypass = WARM_WORKFLOW_GOOD.replacen(
-            "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
-            "if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
-            1,
-        );
-        assert!(repo_cache_warm_workflow_problems(&or_bypass)
-            .iter()
-            .any(|p| p.0.starts_with("warm-linux-save if:")));
-
-        let save_without_write = WARM_WORKFLOW_GOOD.replacen(
-            "  warm-linux-save:\n    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')\n    permissions:\n      contents: read\n      actions: write",
-            "  warm-linux-save:\n    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')\n    permissions:\n      contents: read\n      actions: read",
-            1,
-        );
-        assert!(repo_cache_warm_workflow_problems(&save_without_write)
-            .iter()
-            .any(|p| p.0.starts_with("warm-linux-save permissions:")));
-
-        let verify_with_write = WARM_WORKFLOW_GOOD.replacen(
-            "  warm-linux-verify:\n    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'\n    permissions:\n      contents: read\n      actions: read",
-            "  warm-linux-verify:\n    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'\n    permissions:\n      contents: read\n      actions: write",
-            1,
-        );
-        assert!(repo_cache_warm_workflow_problems(&verify_with_write)
-            .iter()
-            .any(|p| p.0 == "warm-linux-verify permissions actions: write"));
-
-        let verify_runs_save =
-            WARM_WORKFLOW_GOOD.replacen("          mode: verify", "          mode: save", 1);
-        assert!(repo_cache_warm_workflow_problems(&verify_runs_save)
-            .iter()
-            .any(|p| p.0 == "warm-linux-verify saves or prunes caches"));
+        let has_prob = |doc: &str, needle: &str| {
+            repo_cache_warm_workflow_problems(doc)
+                .iter()
+                .any(|p| p.0.contains(needle))
+        };
+        assert!(has_prob(
+            &WARM_WORKFLOW_GOOD.replacen("  actions: read", "  actions: write", 1),
+            "workflow permissions actions: write"
+        ));
+        assert!(has_prob(
+            &WARM_WORKFLOW_GOOD.replacen(
+                "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+                "github.event_name == 'push'",
+                1
+            ),
+            "warm-linux-save if:"
+        ));
+        assert!(has_prob(
+            &WARM_WORKFLOW_GOOD.replacen(
+                "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+                "github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
+                1
+            ),
+            "warm-linux-save if:"
+        ));
+        assert!(has_prob(
+            &WARM_WORKFLOW_GOOD.replacen("      actions: write", "      actions: read", 1),
+            "warm-linux-save permissions:"
+        ));
+        assert!(has_prob(
+            &WARM_WORKFLOW_GOOD.replacen(
+                "  warm-linux-verify:\n    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'\n    permissions:\n      contents: read\n      actions: read",
+                "  warm-linux-verify:\n    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'\n    permissions:\n      contents: read\n      actions: write",
+                1
+            ),
+            "warm-linux-verify permissions actions: write"
+        ));
+        assert!(has_prob(
+            &WARM_WORKFLOW_GOOD.replacen("mode: verify", "mode: save", 1),
+            "warm-linux-verify saves or prunes caches"
+        ));
     }
 
     #[test]
@@ -2896,78 +2885,74 @@ runs:
             repo_cache_warm_composite_problems(WARM_COMPOSITE_GOOD),
             Vec::new()
         );
-
-        let with_perms = format!("permissions:\n  actions: write\n{WARM_COMPOSITE_GOOD}");
-        assert!(repo_cache_warm_composite_problems(&with_perms)
-            .iter()
-            .any(|p| p.0 == "permissions: in composite"));
-
-        let old_key = WARM_COMPOSITE_GOOD.replace("-repository-full-", "-repository-");
-        assert!(repo_cache_warm_composite_problems(&old_key)
-            .iter()
-            .any(|p| p.0.starts_with("save key:")));
-
-        let pr_saves = WARM_COMPOSITE_GOOD.replace(
-            "if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'",
-            "if: steps.cache-lookup.outputs.cache-hit != 'true'",
-        );
-        assert!(repo_cache_warm_composite_problems(&pr_saves)
-            .iter()
-            .any(|p| p.0.starts_with("save if:")));
-
-        let no_offline = WARM_COMPOSITE_GOOD.replace("--repository_disable_download ", "");
-        assert!(repo_cache_warm_composite_problems(&no_offline)
-            .iter()
-            .any(|p| p.0 == "missing --repository_disable_download"));
-
-        let setup_saves = WARM_COMPOSITE_GOOD.replace(
-            "cache-save: ${{ inputs.mode == 'save' }}",
-            "cache-save: true",
-        );
-        assert!(repo_cache_warm_composite_problems(&setup_saves)
-            .iter()
-            .any(|p| p.0 == "cache-save: true"));
-
-        let setup_never_saves = WARM_COMPOSITE_GOOD.replace(
-            "cache-save: ${{ inputs.mode == 'save' }}",
-            "cache-save: false",
-        );
-        assert!(repo_cache_warm_composite_problems(&setup_never_saves)
-            .iter()
-            .any(|p| p.0 == "cache-save: false"));
-
-        let setup_cache_save_unset =
-            WARM_COMPOSITE_GOOD.replace("        cache-save: ${{ inputs.mode == 'save' }}\n", "");
-        assert!(repo_cache_warm_composite_problems(&setup_cache_save_unset)
-            .iter()
-            .any(|p| p.0 == "cache-save: unset"));
-
-        let bazelisk_disabled =
-            WARM_COMPOSITE_GOOD.replace("bazelisk-cache: true", "bazelisk-cache: false");
-        assert!(repo_cache_warm_composite_problems(&bazelisk_disabled)
-            .iter()
-            .any(|p| p.0 == "bazelisk-cache: false"));
-
-        let bazelisk_unset = WARM_COMPOSITE_GOOD.replace("        bazelisk-cache: true\n", "");
-        assert!(repo_cache_warm_composite_problems(&bazelisk_unset)
-            .iter()
-            .any(|p| p.0 == "bazelisk-cache: unset"));
-
-        let continue_guard = WARM_COMPOSITE_GOOD.replace(
-            "      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py",
-            "      continue-on-error: true\n      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py",
-        );
-        assert!(repo_cache_warm_composite_problems(&continue_guard)
-            .iter()
-            .any(|p| p.0 == "missing or misplaced capacity guard"));
-
-        let prune_before_save = WARM_COMPOSITE_GOOD.replace(
-            "    - id: cache-save",
-            "    - name: Early prune\n      if: inputs.mode == 'save'\n      run: python3 .github/actions/setup-bazel/cache_prune.py\n    - id: cache-save",
-        );
-        assert!(repo_cache_warm_composite_problems(&prune_before_save)
-            .iter()
-            .any(|p| p.0.contains("prune")));
+        let has_prob = |doc: &str, needle: &str| {
+            repo_cache_warm_composite_problems(doc)
+                .iter()
+                .any(|p| p.0.contains(needle))
+        };
+        assert!(has_prob(
+            &format!("permissions:\n  actions: write\n{WARM_COMPOSITE_GOOD}"),
+            "permissions: in composite"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace("-repository-full-", "-repository-"),
+            "save key:"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace(
+                "if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'",
+                "if: steps.cache-lookup.outputs.cache-hit != 'true'"
+            ),
+            "save if:"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace("      continue-on-error: true\n", ""),
+            "save continue-on-error:"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace("--repository_disable_download ", ""),
+            "missing --repository_disable_download"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace(
+                "cache-save: ${{ inputs.mode == 'save' }}",
+                "cache-save: true"
+            ),
+            "cache-save: true"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace(
+                "cache-save: ${{ inputs.mode == 'save' }}",
+                "cache-save: false"
+            ),
+            "cache-save: false"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace("        cache-save: ${{ inputs.mode == 'save' }}\n", ""),
+            "cache-save: unset"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace("bazelisk-cache: true", "bazelisk-cache: false"),
+            "bazelisk-cache: false"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace("        bazelisk-cache: true\n", ""),
+            "bazelisk-cache: unset"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace(
+                "      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py",
+                "      continue-on-error: true\n      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py"
+            ),
+            "missing or misplaced capacity guard"
+        ));
+        assert!(has_prob(
+            &WARM_COMPOSITE_GOOD.replace(
+                "    - id: cache-save-1",
+                "    - name: Early prune\n      if: inputs.mode == 'save'\n      run: python3 .github/actions/setup-bazel/cache_prune.py\n    - id: cache-save-1"
+            ),
+            "prune"
+        ));
     }
 
     #[test]

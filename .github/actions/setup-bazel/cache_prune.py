@@ -1,75 +1,22 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-"""Confirm a newly saved `-repository-full-` cache entry, then prune superseded and legacy ones.
-
-Only deletes same-platform `setup-bazel-1-<platform>-repository-full-<hash>`
-entries with a different lock hash and same-platform legacy partial
-`setup-bazel-1-<platform>-repository-<hex>` entries, and ONLY after
-`GET /actions/caches?key=<new>` confirms the newly saved entry exists. Never
-deletes on non-main refs.
-"""
+"""Confirm a newly saved `-repository-full-` cache entry on refs/heads/main, then prune superseded and legacy ones."""
 
 import argparse
 import os
 import sys
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from cache_capacity_guard import (
-    _NEXT_LINK_RE,
-    _github_get_json,
+    GitHubCacheApi,
+    _write_lines,
     full_repo_cache_prefix,
     is_legacy_partial_repo_cache_key,
     is_superseded_full_repo_cache_key,
 )
-
-
-class GitHubCacheApi:
-    """Thin GitHub Actions cache REST API client for list/confirm/delete."""
-
-    def __init__(self, api_url, repo, token):
-        self.api_url = api_url.rstrip("/")
-        self.repo = repo
-        self.token = token
-
-    def list_caches(self, key=None):
-        """Return cache entries from `GET /repos/{repo}/actions/caches`."""
-        url = f"{self.api_url}/repos/{self.repo}/actions/caches?per_page=100"
-        if key is not None:
-            url += f"&key={urllib.parse.quote(key, safe='')}"
-        entries = []
-        while url:
-            headers, payload = _github_get_json(url, self.token)
-            if not isinstance(payload, dict) or not isinstance(
-                payload.get("actions_caches"), list
-            ):
-                raise ValueError("actions/caches response missing actions_caches list")
-            entries.extend(payload["actions_caches"])
-            link_header = headers.get("Link") or headers.get("link") or ""
-            m = _NEXT_LINK_RE.search(link_header)
-            url = m.group(1) if m else None
-        return entries
-
-    def delete_cache(self, cache_id):
-        """Delete a cache entry by numeric id via `DELETE /repos/{repo}/actions/caches/{id}`."""
-        url = f"{self.api_url}/repos/{self.repo}/actions/caches/{cache_id}"
-        req = urllib.request.Request(
-            url,
-            method="DELETE",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {self.token}",
-                "User-Agent": "vitruvian-core-cache-prune",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            resp.read()
 
 
 def confirm_and_prune_superseded_caches(
@@ -80,7 +27,7 @@ def confirm_and_prune_superseded_caches(
     retry_delay_seconds=2.0,
     sleep_fn=time.sleep,
 ):
-    """Confirm `new_key` exists, then delete superseded full and legacy partial same-platform entries."""
+    """Confirm `new_key` exists on `refs/heads/main`, then delete superseded and legacy same-platform entries."""
     if not platform or not current_lock_hash:
         raise ValueError("platform and current_lock_hash must be non-empty")
 
@@ -94,7 +41,12 @@ def confirm_and_prune_superseded_caches(
         except Exception as exc:
             last_error = str(exc)
             entries = []
-        if any(isinstance(e, dict) and e.get("key") == new_key for e in entries):
+        if any(
+            isinstance(e, dict)
+            and e.get("key") == new_key
+            and e.get("ref") == "refs/heads/main"
+            for e in entries
+        ):
             confirmed = True
             break
         if attempt < max_confirm_attempts and retry_delay_seconds > 0:
@@ -108,7 +60,7 @@ def confirm_and_prune_superseded_caches(
             "deleted": [],
             "errors": [],
             "warning": (
-                f"New cache key {new_key!r} was not confirmed by GET /actions/caches "
+                f"New cache key {new_key!r} on refs/heads/main was not confirmed by GET /actions/caches "
                 f"after {max_confirm_attempts} attempt(s){detail}; deleting nothing."
             ),
         }
@@ -159,13 +111,6 @@ def confirm_and_prune_superseded_caches(
     }
 
 
-def _write_summary(summary_file, line):
-    if not summary_file:
-        return
-    with open(summary_file, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
-
-
 def _parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
@@ -200,7 +145,7 @@ def main(argv=None, sleep_fn=time.sleep):
     if args.ref != "refs/heads/main":
         msg = f"Refusing to prune caches on non-main ref ({args.ref!r}); deleting nothing."
         print(f"::warning::{msg}", flush=True)
-        _write_summary(args.summary_file, msg)
+        _write_lines(args.summary_file, [msg])
         return 0
 
     if not args.repo or "/" not in args.repo:
@@ -237,7 +182,7 @@ def main(argv=None, sleep_fn=time.sleep):
 
     if not result["confirmed"]:
         print(f"::warning::{result['warning']}", flush=True)
-        _write_summary(args.summary_file, result["warning"])
+        _write_lines(args.summary_file, [result["warning"]])
         return 0
 
     for err in result["errors"]:
@@ -265,7 +210,7 @@ def main(argv=None, sleep_fn=time.sleep):
         )
 
     print(msg, flush=True)
-    _write_summary(args.summary_file, msg)
+    _write_lines(args.summary_file, [msg])
     return 0
 
 

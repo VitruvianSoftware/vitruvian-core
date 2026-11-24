@@ -28,6 +28,11 @@ py_test(
         "cache_capacity_guard_test.py",
     ],
     args = ["$(rootpath cache_capacity_guard_test.py)"],
+    data = ["//:.github/actions/bazel-repo-cache-warm/action.yml"],
+    env = {
+        "WARM_COMPOSITE_ACTION_PATH": "$(rootpath //:.github/actions/bazel-repo-cache-warm/action.yml)",
+    },
+    deps = ["@pip//pyyaml"],
 )
 
 py_test(
@@ -66,6 +71,20 @@ py_test(
     env = {
         "SETUP_BAZEL_ACTION_PATH": "$(rootpath action.yml)",
         "WARM_COMPOSITE_ACTION_PATH": "$(rootpath //:.github/actions/bazel-repo-cache-warm/action.yml)",
+    },
+    deps = ["@pip//pyyaml"],
+)
+
+py_test(
+    name = "bazel_repo_cache_workflow_test",
+    size = "small",
+    srcs = [
+        "bazel_repo_cache_workflow_test.py",
+    ],
+    args = ["$(rootpath bazel_repo_cache_workflow_test.py)"],
+    data = ["//:.github/workflows/bazel-repo-cache.yaml"],
+    env = {
+        "BAZEL_REPO_CACHE_WORKFLOW_PATH": "$(rootpath //:.github/workflows/bazel-repo-cache.yaml)",
     },
     deps = ["@pip//pyyaml"],
 )

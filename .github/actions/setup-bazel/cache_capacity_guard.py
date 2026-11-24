@@ -1,15 +1,14 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-"""Fail-safe Actions cache capacity guard for bazel-repo-cache.yaml.
+"""Pre-save Actions cache capacity guard for bazel-repo-cache.yaml.
 
-Reads the repository's current Actions cache usage, lists active cache entries
-to subtract same-platform legacy partial `setup-bazel-1-<platform>-repository-<hex>`
-entries and same-platform superseded `setup-bazel-1-<platform>-repository-full-<hex>`
-entries (which are replaced/pruned once the new `-repository-full-` entry lands),
-reads the confirmed cache limit from `ACTIONS_CACHE_LIMIT_CONFIRMED_GB`, and skips
-saving with exit 0 (printing a warning and one-line summary) if the variable is
-missing, invalid, or smaller than `needed`.
+Reads active Actions cache usage and entries, checks `usage + archive <= limit`
+against `ACTIONS_CACHE_LIMIT_CONFIRMED_GB` (GB = 1,000,000,000 B), and when
+over limit deletes ONLY as many same-platform replaceable entries as needed
+BEFORE saving (legacy partial `-repository-<hex>` first, then superseded
+`-repository-full-<hash>` largest first). If it still does not fit even after
+deleting all replaceable same-platform entries, deletes nothing and skips save.
 """
 
 import argparse
@@ -18,7 +17,6 @@ import os
 import re
 import sys
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -48,8 +46,7 @@ def is_legacy_partial_repo_cache_key(key, platform):
     prefix = legacy_partial_repo_cache_prefix(platform)
     if not key.startswith(prefix):
         return False
-    suffix = key[len(prefix) :]
-    return bool(_HEX_RE.fullmatch(suffix))
+    return bool(_HEX_RE.fullmatch(key[len(prefix) :]))
 
 
 def is_superseded_full_repo_cache_key(key, platform, current_lock_hash):
@@ -82,110 +79,94 @@ def parse_limit_gb_var(raw):
     return val, None
 
 
-def compute_needed_bytes(
+def _require_non_negative_int(value, label):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a non-negative int, got {value!r}")
+    return value
+
+
+def select_pre_save_deletions(
     total_active_bytes,
     caches,
     archive_bytes,
+    limit_bytes,
     platform="",
     current_lock_hash="",
 ):
-    """Return `(needed_bytes, legacy_bytes, matched_legacy, superseded_bytes, matched_superseded)`."""
-    if (
-        isinstance(total_active_bytes, bool)
-        or not isinstance(total_active_bytes, int)
-        or total_active_bytes < 0
-    ):
-        raise ValueError(
-            f"total_active_bytes must be a non-negative int, got {total_active_bytes!r}"
-        )
-    if (
-        isinstance(archive_bytes, bool)
-        or not isinstance(archive_bytes, int)
-        or archive_bytes < 0
-    ):
-        raise ValueError(
-            f"archive_bytes must be a non-negative int, got {archive_bytes!r}"
-        )
+    """Plan pre-save deletions: returns `(fits, planned_deletions, real_peak_bytes)`."""
+    _require_non_negative_int(total_active_bytes, "total_active_bytes")
+    _require_non_negative_int(archive_bytes, "archive_bytes")
+    _require_non_negative_int(limit_bytes, "limit_bytes")
 
-    matched_legacy = []
-    legacy_bytes = 0
-    matched_superseded = []
-    superseded_bytes = 0
+    direct_peak = total_active_bytes + archive_bytes
+    if direct_peak <= limit_bytes:
+        return True, [], direct_peak
 
+    candidates = []
     for entry in caches:
         if not isinstance(entry, dict):
             continue
         key = entry.get("key", "")
         if is_legacy_partial_repo_cache_key(key, platform):
-            size = entry.get("size_in_bytes")
-            if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-                raise ValueError(
-                    f"invalid size_in_bytes for legacy cache {key!r}: {size!r}"
-                )
-            matched_legacy.append((key, size))
-            legacy_bytes += size
+            priority = 0
         elif is_superseded_full_repo_cache_key(key, platform, current_lock_hash):
-            size = entry.get("size_in_bytes")
-            if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-                raise ValueError(
-                    f"invalid size_in_bytes for superseded cache {key!r}: {size!r}"
-                )
-            matched_superseded.append((key, size))
-            superseded_bytes += size
+            priority = 1
+        else:
+            continue
+        size = _require_non_negative_int(
+            entry.get("size_in_bytes"), f"size_in_bytes for cache {key!r}"
+        )
+        cache_id = entry.get("id")
+        if isinstance(cache_id, bool) or not isinstance(cache_id, int):
+            raise ValueError(f"invalid id for replaceable cache {key!r}: {cache_id!r}")
+        candidates.append((priority, -size, cache_id, key, size))
 
-    effective_active_bytes = max(
-        0, total_active_bytes - legacy_bytes - superseded_bytes
-    )
-    needed_bytes = effective_active_bytes + archive_bytes
-    return (
-        needed_bytes,
-        legacy_bytes,
-        matched_legacy,
-        superseded_bytes,
-        matched_superseded,
-    )
+    candidates.sort()
+    ordered_replaced = [
+        {"id": cid, "key": key, "size_in_bytes": size}
+        for _prio, _neg_size, cid, key, size in candidates
+    ]
+
+    total_replaced = sum(item["size_in_bytes"] for item in ordered_replaced)
+    if total_active_bytes - total_replaced + archive_bytes > limit_bytes:
+        return False, [], direct_peak
+
+    planned = []
+    deleted_bytes = 0
+    for item in ordered_replaced:
+        planned.append(item)
+        deleted_bytes += item["size_in_bytes"]
+        if total_active_bytes - deleted_bytes + archive_bytes <= limit_bytes:
+            break
+
+    return True, planned, max(0, total_active_bytes - deleted_bytes) + archive_bytes
 
 
-def evaluate_capacity(
+def prepare_capacity_for_save(
     total_active_bytes,
     caches,
     archive_bytes,
     limit_gb_raw,
     platform="",
     current_lock_hash="",
+    delete_fn=None,
 ):
-    """Decide whether saving `archive_bytes` fits within `limit_gb_raw`."""
-    (
-        needed_bytes,
-        legacy_bytes,
-        matched_legacy,
-        superseded_bytes,
-        matched_superseded,
-    ) = compute_needed_bytes(
-        total_active_bytes,
-        caches,
-        archive_bytes,
-        platform=platform,
-        current_lock_hash=current_lock_hash,
-    )
-    effective_active_bytes = max(
-        0, total_active_bytes - legacy_bytes - superseded_bytes
-    )
-    limit_gb, limit_error = parse_limit_gb_var(limit_gb_raw)
-    plat_label = platform or "unknown"
+    """Evaluate pre-save capacity and delete only the minimum needed replaceable entries."""
+    _require_non_negative_int(total_active_bytes, "total_active_bytes")
+    _require_non_negative_int(archive_bytes, "archive_bytes")
 
+    plat_label = platform or "unknown"
+    limit_gb, limit_error = parse_limit_gb_var(limit_gb_raw)
     report = {
-        "total_active_bytes": total_active_bytes,
-        "legacy_bytes": legacy_bytes,
-        "matched_legacy": matched_legacy,
-        "superseded_bytes": superseded_bytes,
-        "matched_superseded": matched_superseded,
-        "effective_active_bytes": effective_active_bytes,
+        "usage_before_bytes": total_active_bytes,
         "archive_bytes": archive_bytes,
-        "needed_bytes": needed_bytes,
         "limit_gb": limit_gb,
         "limit_bytes": None,
         "limit_error": limit_error,
+        "deleted": [],
+        "deleted_bytes": 0,
+        "delete_errors": [],
+        "real_peak_bytes": total_active_bytes + archive_bytes,
         "reason": "",
         "message": "",
     }
@@ -194,27 +175,70 @@ def evaluate_capacity(
         detail = limit_error or "ACTIONS_CACHE_LIMIT_CONFIRMED_GB is not set"
         report["reason"] = "invalid_limit_var"
         report["message"] = (
-            f"Cache save skipped ({plat_label}): {detail} "
-            f"(needed {needed_bytes} bytes)."
+            f"Cache save skipped ({plat_label}): {detail}; deleting nothing."
         )
         return False, report
 
     limit_bytes = limit_gb * BYTES_PER_GB
     report["limit_bytes"] = limit_bytes
 
-    if limit_bytes < needed_bytes:
+    fits, planned, _ = select_pre_save_deletions(
+        total_active_bytes=total_active_bytes,
+        caches=caches,
+        archive_bytes=archive_bytes,
+        limit_bytes=limit_bytes,
+        platform=platform,
+        current_lock_hash=current_lock_hash,
+    )
+    if not fits:
         report["reason"] = "insufficient_capacity"
         report["message"] = (
-            f"Cache save skipped ({plat_label}): configured limit "
-            f"{limit_bytes} bytes ({limit_gb} GB) is below needed "
-            f"{needed_bytes} bytes ({needed_bytes / BYTES_PER_GB:.2f} GB)."
+            f"Cache save skipped ({plat_label}): usage {total_active_bytes} B + archive "
+            f"{archive_bytes} B exceeds limit {limit_bytes} B ({limit_gb} GB) even after "
+            f"all replaceable {plat_label} entries; deleting nothing."
+        )
+        return False, report
+
+    if planned and delete_fn is None:
+        raise ValueError("delete_fn is required when pre-save deletions are needed")
+
+    deleted = []
+    deleted_bytes = 0
+    delete_errors = []
+    for item in planned:
+        try:
+            delete_fn(item["id"])
+            deleted.append((item["id"], item["key"], item["size_in_bytes"]))
+            deleted_bytes += item["size_in_bytes"]
+        except Exception as exc:
+            delete_errors.append(
+                f"Failed to delete cache id={item['id']} key={item['key']!r}: {exc}"
+            )
+
+    real_peak_bytes = max(0, total_active_bytes - deleted_bytes) + archive_bytes
+    report["deleted"] = deleted
+    report["deleted_bytes"] = deleted_bytes
+    report["delete_errors"] = delete_errors
+    report["real_peak_bytes"] = real_peak_bytes
+
+    if real_peak_bytes > limit_bytes:
+        report["reason"] = "delete_failed_insufficient_capacity"
+        report["message"] = (
+            f"Cache save skipped ({plat_label}): pre-save peak {real_peak_bytes} B "
+            f"still exceeds limit {limit_bytes} B ({limit_gb} GB) after "
+            f"{len(delete_errors)} deletion error(s)."
         )
         return False, report
 
     report["reason"] = "ok"
     report["message"] = (
-        f"Actions cache limit {limit_bytes} bytes ({limit_gb} GB) covers "
-        f"needed {needed_bytes} bytes ({needed_bytes / BYTES_PER_GB:.2f} GB)."
+        f"Pre-save check passed ({plat_label}): real peak {real_peak_bytes} B "
+        f"({real_peak_bytes / BYTES_PER_GB:.2f} GB) <= limit {limit_bytes} B ({limit_gb} GB)"
+        + (
+            f" after deleting {len(deleted)} entry(s) (-{deleted_bytes} B)."
+            if deleted
+            else "."
+        )
     )
     return True, report
 
@@ -232,138 +256,70 @@ def _github_get_json(url, token):
         },
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
-        raw = resp.read().decode("utf-8")
-        return resp.headers, json.loads(raw)
+        return resp.headers, json.loads(resp.read().decode("utf-8"))
 
 
-def fetch_usage(api_url, repo, token):
-    """Read `active_caches_size_in_bytes` from `GET /repos/{owner}/{repo}/actions/cache/usage`."""
-    base = api_url.rstrip("/")
-    url = f"{base}/repos/{repo}/actions/cache/usage"
-    _, payload = _github_get_json(url, token)
-    if not isinstance(payload, dict):
-        raise ValueError("cache/usage response must be a JSON object")
-    val = payload.get("active_caches_size_in_bytes")
-    if isinstance(val, bool) or not isinstance(val, int) or val < 0:
-        raise ValueError(
-            f"cache/usage response missing non-negative integer active_caches_size_in_bytes: {val!r}"
+class GitHubCacheApi:
+    """Thin GitHub Actions cache REST API client shared by guard and prune."""
+
+    def __init__(self, api_url, repo, token):
+        self.api_url = api_url.rstrip("/")
+        self.repo = repo
+        self.token = token
+
+    def get_usage(self):
+        """Read `active_caches_size_in_bytes` from `GET /repos/{repo}/actions/cache/usage`."""
+        _, payload = _github_get_json(
+            f"{self.api_url}/repos/{self.repo}/actions/cache/usage", self.token
         )
-    return val
-
-
-def fetch_all_caches(api_url, repo, token):
-    """Read all cache entries from `GET /repos/{owner}/{repo}/actions/caches?per_page=100`."""
-    base = api_url.rstrip("/")
-    url = f"{base}/repos/{repo}/actions/caches?per_page=100"
-    entries = []
-    while url:
-        headers, payload = _github_get_json(url, token)
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("actions_caches"), list
-        ):
-            raise ValueError("actions/caches response missing actions_caches list")
-        entries.extend(payload["actions_caches"])
-        link_header = headers.get("Link") or headers.get("link") or ""
-        m = _NEXT_LINK_RE.search(link_header)
-        url = m.group(1) if m else None
-    return entries
-
-
-def _fmt_gb(num_bytes):
-    return f"{num_bytes / BYTES_PER_GB:.2f} GB"
-
-
-def _format_report_lines(platform, ok, report):
-    limit_str = (
-        f"{report['limit_bytes']:,} bytes ({report['limit_gb']} GB)"
-        if report["limit_bytes"] is not None
-        else f"unconfigured ({report['limit_error']})"
-    )
-    legacy_detail = (
-        ", ".join(f"{k}: {s:,} B" for k, s in report["matched_legacy"])
-        if report["matched_legacy"]
-        else "none"
-    )
-    superseded_detail = (
-        ", ".join(f"{k}: {s:,} B" for k, s in report["matched_superseded"])
-        if report["matched_superseded"]
-        else "none"
-    )
-    status = "ALLOWED" if ok else "SKIPPED"
-    stdout_lines = [
-        f"Actions cache capacity check ({platform}): {status}",
-        f"  Current active usage (actions/cache/usage): {report['total_active_bytes']:,} bytes ({_fmt_gb(report['total_active_bytes'])})",
-        f"  Same-platform legacy partial repository caches subtracted: {report['legacy_bytes']:,} bytes ({legacy_detail})",
-        f"  Superseded same-platform full caches subtracted: {report['superseded_bytes']:,} bytes ({superseded_detail})",
-        f"  Effective active usage after eviction/replacement: {report['effective_active_bytes']:,} bytes ({_fmt_gb(report['effective_active_bytes'])})",
-        f"  This platform archive size (ARCHIVE_BYTES): {report['archive_bytes']:,} bytes ({_fmt_gb(report['archive_bytes'])})",
-        f"  Needed capacity: {report['needed_bytes']:,} bytes ({_fmt_gb(report['needed_bytes'])})",
-        f"  Confirmed repo cache limit (ACTIONS_CACHE_LIMIT_CONFIRMED_GB): {limit_str}",
-        f"  Result: {report['message']}",
-    ]
-    md_lines = [
-        "",
-        f"#### Actions cache capacity check ({platform}): {status}",
-        "",
-        "| Metric | Bytes | Size (SI GB) |",
-        "|---|---:|---:|",
-        f"| Current active usage (`actions/cache/usage`) | {report['total_active_bytes']:,} | {_fmt_gb(report['total_active_bytes'])} |",
-        f"| Same-platform legacy partial repo caches subtracted | -{report['legacy_bytes']:,} | -{_fmt_gb(report['legacy_bytes'])} |",
-        f"| Superseded same-platform full caches subtracted | -{report['superseded_bytes']:,} | -{_fmt_gb(report['superseded_bytes'])} |",
-        f"| Effective active usage | {report['effective_active_bytes']:,} | {_fmt_gb(report['effective_active_bytes'])} |",
-        f"| This platform archives (`ARCHIVE_BYTES`) | {report['archive_bytes']:,} | {_fmt_gb(report['archive_bytes'])} |",
-        f"| **Needed total** | **{report['needed_bytes']:,}** | **{_fmt_gb(report['needed_bytes'])}** |",
-        f"| **Confirmed repo cache limit** | **{report['limit_bytes']:,}** | **{report['limit_gb']} GB** |",
-        "",
-        f"**Verdict:** {report['message']}",
-        "",
-    ]
-    return stdout_lines, md_lines
-
-
-def _write_summary(summary_file, lines):
-    if not summary_file:
-        return
-    with open(summary_file, "a", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-
-
-def _write_output(output_file, key, value):
-    if not output_file:
-        return
-    with open(output_file, "a", encoding="utf-8") as f:
-        f.write(f"{key}={value}\n")
-
-
-def _parse_args(argv):
-    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
-    p.add_argument("--archive-bytes", default=os.environ.get("ARCHIVE_BYTES", ""))
-    default_platform = (
-        "-".join(
-            part
-            for part in (
-                os.environ.get("PLATFORM_OS", ""),
-                os.environ.get("PLATFORM_ARCH", ""),
+        if not isinstance(payload, dict):
+            raise ValueError("cache/usage response must be a JSON object")
+        val = payload.get("active_caches_size_in_bytes")
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            raise ValueError(
+                f"cache/usage response missing non-negative integer active_caches_size_in_bytes: {val!r}"
             )
-            if part
+        return val
+
+    def list_caches(self, key=None):
+        """Return cache entries from `GET /repos/{repo}/actions/caches`."""
+        url = f"{self.api_url}/repos/{self.repo}/actions/caches?per_page=100"
+        if key is not None:
+            url += f"&key={urllib.parse.quote(key, safe='')}"
+        entries = []
+        while url:
+            headers, payload = _github_get_json(url, self.token)
+            if not isinstance(payload, dict) or not isinstance(
+                payload.get("actions_caches"), list
+            ):
+                raise ValueError("actions/caches response missing actions_caches list")
+            entries.extend(payload["actions_caches"])
+            link_header = headers.get("Link") or headers.get("link") or ""
+            m = _NEXT_LINK_RE.search(link_header)
+            url = m.group(1) if m else None
+        return entries
+
+    def delete_cache(self, cache_id):
+        """Delete a cache entry by numeric id via `DELETE /repos/{repo}/actions/caches/{id}`."""
+        req = urllib.request.Request(
+            f"{self.api_url}/repos/{self.repo}/actions/caches/{cache_id}",
+            method="DELETE",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {self.token}",
+                "User-Agent": "vitruvian-core-cache-capacity-guard",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
         )
-        or "unknown"
-    )
-    p.add_argument("--platform", default=default_platform)
-    p.add_argument("--lock-hash", default=os.environ.get("LOCK_HASH", ""))
-    p.add_argument(
-        "--limit-gb",
-        default=os.environ.get("ACTIONS_CACHE_LIMIT_CONFIRMED_GB", ""),
-    )
-    p.add_argument(
-        "--api-url",
-        default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
-    )
-    p.add_argument("--token", default=os.environ.get("GH_TOKEN", ""))
-    p.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
-    p.add_argument("--output-file", default=os.environ.get("GITHUB_OUTPUT", ""))
-    return p.parse_args(argv)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp.read()
+
+
+def _write_lines(path, lines):
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 def _retry_api_read(
@@ -390,34 +346,66 @@ def _retry_api_read(
     raise last_exc
 
 
+def _parse_args(argv):
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    p.add_argument("--archive-bytes", default=os.environ.get("ARCHIVE_BYTES", ""))
+    default_platform = (
+        "-".join(
+            part
+            for part in (
+                os.environ.get("PLATFORM_OS", ""),
+                os.environ.get("PLATFORM_ARCH", ""),
+            )
+            if part
+        )
+        or "unknown"
+    )
+    p.add_argument("--platform", default=default_platform)
+    p.add_argument("--lock-hash", default=os.environ.get("LOCK_HASH", ""))
+    p.add_argument("--ref", default=os.environ.get("GITHUB_REF", ""))
+    p.add_argument(
+        "--limit-gb",
+        default=os.environ.get("ACTIONS_CACHE_LIMIT_CONFIRMED_GB", ""),
+    )
+    p.add_argument(
+        "--api-url",
+        default=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+    )
+    p.add_argument("--token", default=os.environ.get("GH_TOKEN", ""))
+    p.add_argument("--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", ""))
+    p.add_argument("--output-file", default=os.environ.get("GITHUB_OUTPUT", ""))
+    return p.parse_args(argv)
+
+
 def main(argv=None, sleep_fn=time.sleep):
     args = _parse_args(argv)
-    summary_file = args.summary_file
 
     def fail_early(msg):
-        _write_output(args.output_file, "allow_save", "false")
+        _write_lines(args.output_file, ["allow_save=false"])
         print(f"::error::{msg}", file=sys.stderr, flush=True)
-        _write_summary(
-            summary_file,
-            [
-                "",
-                f"#### Actions cache capacity check ({args.platform}): ERROR",
-                "",
-                f"**Error:** {msg}",
-                "",
-            ],
+        _write_lines(
+            args.summary_file,
+            [f"Actions cache capacity check ({args.platform}): ERROR - {msg}"],
         )
         return 1
 
     def skip_save(msg):
-        _write_output(args.output_file, "allow_save", "false")
+        _write_lines(args.output_file, ["allow_save=false"])
         print(f"::warning::{msg}", flush=True)
-        _write_summary(summary_file, [msg])
+        _write_lines(args.summary_file, [msg])
         return 0
+
+    if args.ref != "refs/heads/main":
+        return skip_save(
+            f"Cache save skipped ({args.platform}): non-main ref ({args.ref!r}); deleting nothing."
+        )
 
     _, limit_error = parse_limit_gb_var(args.limit_gb)
     if limit_error is not None:
-        return skip_save(f"Cache save skipped ({args.platform}): {limit_error}.")
+        return skip_save(
+            f"Cache save skipped ({args.platform}): {limit_error}; deleting nothing."
+        )
 
     if not args.repo or "/" not in args.repo:
         return fail_early(
@@ -436,49 +424,48 @@ def main(argv=None, sleep_fn=time.sleep):
             f"ARCHIVE_BYTES/--archive-bytes is missing or invalid ({args.archive_bytes!r}); save is aborted."
         )
 
+    api = GitHubCacheApi(args.api_url, args.repo, args.token)
     try:
-        total_active_bytes = _retry_api_read(
-            lambda: fetch_usage(args.api_url, args.repo, args.token),
-            sleep_fn=sleep_fn,
-        )
+        total_active_bytes = _retry_api_read(api.get_usage, sleep_fn=sleep_fn)
     except Exception as exc:
         return skip_save(
             f"Cache save skipped ({args.platform}): failed to read Actions cache usage "
-            f"from GET /repos/{args.repo}/actions/cache/usage after "
-            f"{DEFAULT_API_READ_ATTEMPTS} attempts ({exc})."
+            f"after {DEFAULT_API_READ_ATTEMPTS} attempts ({exc}); deleting nothing."
         )
 
     try:
-        caches = _retry_api_read(
-            lambda: fetch_all_caches(args.api_url, args.repo, args.token),
-            sleep_fn=sleep_fn,
-        )
+        caches = _retry_api_read(api.list_caches, sleep_fn=sleep_fn)
     except Exception as exc:
         return skip_save(
             f"Cache save skipped ({args.platform}): failed to list Actions caches "
-            f"from GET /repos/{args.repo}/actions/caches after "
-            f"{DEFAULT_API_READ_ATTEMPTS} attempts ({exc})."
+            f"after {DEFAULT_API_READ_ATTEMPTS} attempts ({exc}); deleting nothing."
         )
 
-    ok, report = evaluate_capacity(
+    ok, report = prepare_capacity_for_save(
         total_active_bytes=total_active_bytes,
         caches=caches,
         archive_bytes=archive_bytes,
         limit_gb_raw=args.limit_gb,
         platform=args.platform,
         current_lock_hash=args.lock_hash,
+        delete_fn=api.delete_cache,
     )
-    stdout_lines, md_lines = _format_report_lines(args.platform, ok, report)
-    print("\n".join(stdout_lines), flush=True)
+    for err in report["delete_errors"]:
+        print(f"::warning::{err}", flush=True)
+
+    print(
+        f"Actions cache capacity check ({args.platform}): {'ALLOWED' if ok else 'SKIPPED'} "
+        f"| usage={report['usage_before_bytes']} deleted={report['deleted_bytes']} "
+        f"archive={report['archive_bytes']} real_peak={report['real_peak_bytes']} "
+        f"limit={report['limit_bytes']}",
+        flush=True,
+    )
 
     if not ok:
-        _write_output(args.output_file, "allow_save", "false")
-        print(f"::warning::{report['message']}", flush=True)
-        _write_summary(summary_file, [report["message"]])
-        return 0
+        return skip_save(report["message"])
 
-    _write_output(args.output_file, "allow_save", "true")
-    _write_summary(summary_file, md_lines)
+    _write_lines(args.output_file, ["allow_save=true"])
+    _write_lines(args.summary_file, [report["message"]])
     return 0
 
 
