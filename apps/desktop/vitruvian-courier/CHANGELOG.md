@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.42](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.41...vitruvian-courier-v0.3.42) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** a test copy folder short enough for the engine's socket ([#5478](https://github.com/VitruvianSoftware/vitruvian-core/issues/5478)) ([e1ef80d](https://github.com/VitruvianSoftware/vitruvian-core/commit/e1ef80d39e29b7de00836fe0bd298501cd8d07a4))
+* **vitruvian-courier:** long chat names truncate instead of hiding the chat header ([#5481](https://github.com/VitruvianSoftware/vitruvian-core/issues/5481)) ([9035e98](https://github.com/VitruvianSoftware/vitruvian-core/commit/9035e9863f9fab4d7b108edc0fb7632fcceccffc))
+
 ## [0.3.41](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.40...vitruvian-courier-v0.3.41) (2026-11-24)
 
 
