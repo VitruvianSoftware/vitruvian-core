@@ -54,9 +54,70 @@ if [[ ! "${ACTIONS_CACHE_LIMIT_POLL_INTERVAL_SECONDS}" =~ ^[1-9][0-9]*$ ]]; then
 	exit 1
 fi
 
+org="${REPO%%/*}"
+if [[ -z "${org}" || "${org}" == "${REPO}" ]]; then
+	echo "::error::REPO must be in owner/name format (got '${REPO}')" >&2
+	exit 1
+fi
+
 put_body="$(printf '{"max_cache_size_gb":%s}' "${limit_gb}")"
+org_failed=0
+skip_repo_put=0
+org_limit_gb=""
+
+if org_get_out="$("$GH" api \
+	-H "Accept: application/vnd.github+json" \
+	-H "X-GitHub-Api-Version: 2022-11-28" \
+	"orgs/${org}/actions/cache/storage-limit" \
+	--jq '.max_cache_size_gb' 2>&1)" && [[ -n "${org_get_out}" && "${org_get_out}" != *$'\n'* && "${org_get_out}" =~ ^[1-9][0-9]*$ ]]; then
+	org_limit_gb="${org_get_out}"
+	if [ "${org_limit_gb}" -lt "${limit_gb}" ]; then
+		if printf '%s' "${put_body}" | "$GH" api --method PUT \
+			-H "Accept: application/vnd.github+json" \
+			-H "X-GitHub-Api-Version: 2022-11-28" \
+			"orgs/${org}/actions/cache/storage-limit" \
+			--input - >/dev/null 2>&1; then
+			org_deadline=$((SECONDS + ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS))
+			org_confirmed=0
+			org_got=""
+			while true; do
+				if org_got="$("$GH" api \
+					-H "Accept: application/vnd.github+json" \
+					-H "X-GitHub-Api-Version: 2022-11-28" \
+					"orgs/${org}/actions/cache/storage-limit" \
+					--jq '.max_cache_size_gb' 2>/dev/null)" && [ "${org_got}" = "${limit_gb}" ]; then
+					org_confirmed=1
+					break
+				fi
+				now="$SECONDS"
+				if [ "${now}" -ge "${org_deadline}" ]; then
+					break
+				fi
+				remaining=$((org_deadline - now))
+				sleep_for="${ACTIONS_CACHE_LIMIT_POLL_INTERVAL_SECONDS}"
+				if [ "${sleep_for}" -gt "${remaining}" ]; then
+					sleep_for="${remaining}"
+				fi
+				sleep "${sleep_for}"
+			done
+			if [ "${org_confirmed}" -eq 0 ]; then
+				echo "::error::Organization ${org} Actions cache storage limit is '${org_got}', want '${limit_gb}' after ${ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS}s" >&2
+				org_failed=1
+				skip_repo_put=1
+			fi
+		else
+			echo "::error::Organization ${org} Actions cache storage limit is ${org_limit_gb} GB and ${REPO} cannot exceed it; the App needs organization Administration write permission, or a maintainer can raise it under organization Settings -> Actions -> General" >&2
+			org_failed=1
+		fi
+	fi
+else
+	echo "::warning::Could not read organization ${org} Actions cache storage limit; continuing to repository limit for ${REPO}" >&2
+fi
+
 put_failed=0
-if ! put_out="$(printf '%s' "${put_body}" | "$GH" api --method PUT \
+if [ "${skip_repo_put}" -eq 1 ]; then
+	put_failed=1
+elif ! put_out="$(printf '%s' "${put_body}" | "$GH" api --method PUT \
 	-H "Accept: application/vnd.github+json" \
 	-H "X-GitHub-Api-Version: 2022-11-28" \
 	"repos/${REPO}/actions/cache/storage-limit" \
@@ -95,7 +156,10 @@ if [ "${put_failed}" -eq 0 ]; then
 			--repo "${REPO}" \
 			--body "${limit_gb}"
 		echo "Actions cache storage limit confirmed for ${REPO}: ${limit_gb} GB"
-		exit 0
+		if [ "${org_failed}" -eq 0 ]; then
+			exit 0
+		fi
+		exit 1
 	fi
 
 	echo "::error::Actions cache storage limit for ${REPO} is '${got}', want '${limit_gb}' after ${ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS}s" >&2
