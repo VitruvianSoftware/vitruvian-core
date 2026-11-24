@@ -84,7 +84,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         internal var hasCustomMakeConnection: Bool { customMakeConnection != nil }
         /// Builds the `AgentConnection` for a turn. Defaults to `AntigravityACPConnection` when
         /// `spec.provider` is Antigravity with `.acp` selected, `ClaudeSDKConnection` when it is
-        /// Claude with `.claudeSDK` selected, and `CommandLineConnection` otherwise.
+        /// Claude or Ollama (claude) with `.claudeSDK` selected, and `CommandLineConnection` otherwise.
         public var makeConnection: (AgentConnectionSpec) -> any AgentConnection {
             get {
                 if let customMakeConnection { return customMakeConnection }
@@ -93,7 +93,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     if spec.provider.route == .antigravity && spec.provider.connection == .acp {
                         return AntigravityACPConnection(spec: spec, environment: current)
                     }
-                    if spec.provider.route == .claude && spec.provider.connection == .claudeSDK {
+                    if spec.provider.runsOnClaudeSDK {
                         return ClaudeSDKConnection(spec: spec, environment: current)
                     }
                     return CommandLineConnection(spec: spec, environment: current)

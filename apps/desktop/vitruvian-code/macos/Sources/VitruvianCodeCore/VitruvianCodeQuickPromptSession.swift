@@ -248,6 +248,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var liveConnection: (any PersistentAgentConnection)?
     private var liveConnectionProviderID: UUID?
     private var liveConnectionKind: AgentConnectionKind?
+    /// The model an Ollama (claude) live connection was started with: Ollama's model is set
+    /// when the helper starts (`OllamaClaude`), so a chat that switches model gets a new
+    /// connection, which resumes the same conversation. Nil for every other connection.
+    private var liveConnectionOllamaModel: String?
     private var liveConnectionWorktree: Bool?
     /// The folder the live connection was started in. A connection runs where
     /// it started, so one started for another folder is not reused.
@@ -600,7 +604,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // Claude on the Agent SDK sends everything as events, so its transcript is not followed:
         // following it too would show each message twice (docs/designs/vitruvian-code-acp.md,
         // "Transcript follower in live chats").
-        if effectiveProvider.route == .claude && effectiveProvider.connection == .claudeSDK {
+        if effectiveProvider.runsOnClaudeSDK {
             stopTranscriptFollower()
             return
         }
@@ -873,6 +877,17 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if chatConnectionOverride != nil {
             persistCurrentChatConnectionOverride()
         }
+    }
+
+    /// The model an Ollama (claude) chat on the Agent SDK starts its connection with, as
+    /// `ClaudeSDKConnection` picks it; nil for any other provider or connection.
+    static func ollamaSDKModel(
+        provider: VitruvianCodeCLIProvider,
+        configuration: VitruvianCodeConfiguration,
+        ollamaDefaultModel: String
+    ) -> String? {
+        guard provider.route == .ollama, provider.runsOnClaudeSDK else { return nil }
+        return OllamaClaude.model(configured: configuration.model, ollamaDefaultModel: ollamaDefaultModel)
     }
 
     /// Effective connection kind for this chat (`chatConnectionOverride` wins over provider setting).
@@ -1286,6 +1301,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
            reusable.isConnected,
            liveConnectionProviderID == effectiveProv.id,
            liveConnectionKind == effectiveProv.connection,
+           liveConnectionOllamaModel == Self.ollamaSDKModel(
+               provider: effectiveProv, configuration: configuration, ollamaDefaultModel: ollamaDefaultModel),
            liveConnectionWorktree == wantsWorktree,
            // A worktree connection keeps the worktree rule; any other runs
            // only in the folder it was started in.
@@ -1552,6 +1569,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             liveConnection = persistent
             liveConnectionProviderID = effectiveProv.id
             liveConnectionKind = effectiveProv.connection
+            liveConnectionOllamaModel = Self.ollamaSDKModel(
+                provider: effectiveProv, configuration: configuration, ollamaDefaultModel: ollamaDefaultModel)
             liveConnectionWorktree = (liveWorktreePath != nil && resolvedDirectory == liveWorktreePath)
             liveConnectionDirectory = resolvedDirectory
             lastLaunchDirectory = resolvedDirectory
@@ -2099,6 +2118,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         connection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
+        liveConnectionOllamaModel = nil
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask?.cancel()
@@ -2172,6 +2192,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
+        liveConnectionOllamaModel = nil
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask = nil

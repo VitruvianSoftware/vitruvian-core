@@ -3216,6 +3216,66 @@ final class EngineHostTests: XCTestCase {
         XCTAssertTrue(commandLine.programRuns.isEmpty)
     }
 
+    // MARK: - Ollama (claude) on the Agent SDK
+
+    /// The connection the engine builds for a chat, with the rig's program lookup and
+    /// `OLLAMA_HOST`; nothing is started.
+    private func ollamaRigConnection(
+        _ rig: Rig,
+        provider: VitruvianCodeCLIProvider,
+        model: String,
+        ollamaDefaultModel: String = VitruvianCodeSupport.ollamaFallbackModel
+    ) -> any AgentConnection {
+        var configuration = VitruvianCodeConfiguration(activeProvider: provider)
+        configuration.model = model
+        return rig.environment.makeConnection(AgentConnectionSpec(
+            kind: provider.connection ?? .commandLine,
+            provider: provider,
+            configuration: configuration,
+            agentPath: "/opt/homebrew/bin/ollama",
+            workingDirectory: rig.home,
+            ollamaDefaultModel: ollamaDefaultModel,
+            environment: rig.processEnvironment
+        ))
+    }
+
+    func testAnOllamaChatOnTheSDKGetsTheHelperPointedAtTheOllamaServer() throws {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.executables = [rig.home + "/.local/bin/claude", "/opt/homebrew/bin/ollama"]
+        rig.processEnvironment = ["PATH": "/usr/bin", "HOME": rig.home, "OLLAMA_HOST": "0.0.0.0:11500"]
+        var ollama = VitruvianCodeCLIProvider.ollama
+        ollama.connection = .claudeSDK
+
+        let connection = try XCTUnwrap(ollamaRigConnection(rig, provider: ollama, model: "qwen3") as? ClaudeSDKConnection)
+        let launch = connection.launchSpecUsed
+        XCTAssertEqual(launch.environment["ANTHROPIC_BASE_URL"], "http://127.0.0.1:11500", "from the OLLAMA_HOST the ollama program reads")
+        XCTAssertEqual(launch.environment["ANTHROPIC_AUTH_TOKEN"], OllamaClaude.authTokenPlaceholder)
+        XCTAssertEqual(launch.environment["ANTHROPIC_API_KEY"], "")
+        XCTAssertEqual(launch.environment["ANTHROPIC_DEFAULT_OPUS_MODEL"], "qwen3")
+
+        // With no model chosen, the one the chat found with `ollama list`.
+        let listed = try XCTUnwrap(ollamaRigConnection(rig, provider: ollama, model: "", ollamaDefaultModel: "llama3.2")
+            as? ClaudeSDKConnection)
+        XCTAssertEqual(listed.launchSpecUsed.environment["CLAUDE_CODE_SUBAGENT_MODEL"], "llama3.2")
+    }
+
+    func testOllamaVariablesAreNotSetForClaudeOrForOllamaOnTheCommandLine() throws {
+        let rig = Rig()
+        defer { rig.tearDown() }
+        rig.executables = [rig.home + "/.local/bin/claude", "/opt/homebrew/bin/ollama"]
+        rig.processEnvironment = ["PATH": "/usr/bin", "HOME": rig.home, "OLLAMA_HOST": "gpu.lan:9999"]
+        var claude = VitruvianCodeCLIProvider.claude
+        claude.connection = .claudeSDK
+
+        let sdk = try XCTUnwrap(ollamaRigConnection(rig, provider: claude, model: "qwen3") as? ClaudeSDKConnection)
+        for key in OllamaClaude.environment(serverURL: "x", model: "y").keys {
+            XCTAssertNil(sdk.launchSpecUsed.environment[key], "\(key) for plain Claude")
+        }
+        XCTAssertTrue(ollamaRigConnection(rig, provider: .ollama, model: "qwen3") is CommandLineConnection,
+                      "Ollama keeps today's `ollama launch claude` unless the SDK is chosen")
+    }
+
     func testPerProviderModelSelectionAndCatalog() async {
         let rig = Rig()
         defer { rig.tearDown() }

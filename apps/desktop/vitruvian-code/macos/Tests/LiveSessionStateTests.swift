@@ -1081,6 +1081,54 @@ final class LiveSessionStateTests: XCTestCase {
         await session.stopAll()
     }
 
+    /// Ollama (claude) on the Agent SDK sets its model when the helper starts (`OllamaClaude`), so
+    /// a model change mid-chat starts a new connection that resumes the same conversation, and
+    /// the same model keeps the connection.
+    func testAnOllamaChatOnTheSDKGetsANewConnectionWhenItsModelChanges() async throws {
+        let connections = LiveStateLockedBox<[LiveStateMockConnection]>([])
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let conn = LiveStateMockConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        })
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        var ollama = VitruvianCodeCLIProvider.ollama
+        ollama.connection = .claudeSDK
+        var qwen = VitruvianCodeConfiguration(
+            workingDirectory: "/tmp/folder-a", approvalMode: .standard, activeProvider: ollama)
+        qwen.model = "qwen3"
+        var llama = qwen
+        llama.model = "llama3.2"
+
+        session.send("One", configuration: qwen, agentPath: "/fake/ollama")
+        try await waitUntil("conn1 prompts") { connections.value.first?.promptCalls.count == 1 }
+        let conn1 = connections.value[0]
+        XCTAssertEqual(conn1.spec.configuration.model, "qwen3")
+        conn1.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-1"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 1 done") { !session.isRunning }
+
+        session.send("Two", configuration: qwen, agentPath: "/fake/ollama")
+        try await waitUntil("reused prompt") { conn1.promptCalls.count == 2 }
+        XCTAssertEqual(connections.value.count, 1, "the same model keeps the connection")
+        conn1.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-1"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 2 done") { !session.isRunning }
+
+        session.send("Three", configuration: llama, agentPath: "/fake/ollama")
+        try await waitUntil("conn2 prompts") { connections.value.count == 2 && connections.value[1].promptCalls.count == 1 }
+        let conn2 = connections.value[1]
+        XCTAssertEqual(conn2.spec.configuration.model, "llama3.2")
+        XCTAssertEqual(conn2.startCalls.first?.resumeSessionID, "mock-live-1", "the conversation carries on")
+        XCTAssertEqual(conn1.promptCalls.count, 2)
+        try await waitUntil("old connection stopped") { conn1.stopCount >= 1 }
+        conn2.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-1"))
+        conn2.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 3 done") { !session.isRunning }
+        await session.stopAll()
+    }
+
     func testForcedFreshSessionInWorktreeShowsTranscriptNoticeAndResetsLiveState() async throws {
         let tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("wt-fresh-notice-\(UUID().uuidString)", isDirectory: true)
