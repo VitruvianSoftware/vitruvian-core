@@ -879,7 +879,7 @@ jobs:
 
       - name: Set up Go
         if: steps.key.outputs.present == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
           go-version-file: infrastructure/pulumi/platform/pagerduty/go.mod
           cache-dependency-path: infrastructure/pulumi/platform/pagerduty/go.sum
@@ -967,7 +967,7 @@ jobs:
 
       - name: Set up Go
         if: steps.key.outputs.present == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
           go-version-file: infrastructure/pulumi/platform/stripe/go.mod
           cache-dependency-path: infrastructure/pulumi/platform/stripe/go.sum
@@ -1073,7 +1073,7 @@ jobs:
 
       - name: Set up Go
         if: steps.key.outputs.present == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/setup-go
         with:
           go-version-file: infrastructure/pulumi/platform/stripe/go.mod
           cache-dependency-path: infrastructure/pulumi/platform/stripe/go.sum
