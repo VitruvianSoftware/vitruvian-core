@@ -129,7 +129,10 @@ func New(s *store.Store, d Dispatcher, p Publisher, log zerolog.Logger) *Server 
 		// (guard) is the same with Remote Access off, and must let any Host through with it on.
 		DisableLocalhostProtection: true,
 		MaxRequestBodyBytes:        MaxBodyBytes,
-		SessionTimeout:             time.Hour,
+		// Stateless: tools are static and every request authenticates its own bearer token. Without in-memory
+		// sessions, long-lived MCP clients survive Vitruvian Courier restarts, updates, and idle periods
+		// instead of failing with 404 "session not found".
+		Stateless: true,
 	})
 	authed := auth.RequireBearerToken(srv.verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(streamable)
 	mux := http.NewServeMux()
@@ -199,8 +202,8 @@ func (s *Server) Apply(ctx context.Context, cfg Config) Status {
 	if idle <= 0 {
 		idle = IdleTimeout
 	}
-	// IdleTimeout closes a kept-alive connection that has sat with no request; a response still being written (the
-	// MCP SDK's long-lived GET stream) is not idle, so it isn't cut.
+	// IdleTimeout closes a kept-alive connection that has sat with no request; a response still being written is
+	// not idle, so in-flight requests aren't cut.
 	s.srv = &http.Server{Handler: s.http, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: idle}
 	s.served = make(chan struct{})
 	go func(srv *http.Server, done chan struct{}) {
@@ -306,8 +309,7 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 	})
 }
 
-// verify hands the token requireToken found to the MCP SDK, which keeps each session to the token that began it
-// and gives each tool call the request's TokenInfo.
+// verify hands the token requireToken found to the MCP SDK so each tool call gets the request's TokenInfo.
 func (s *Server) verify(ctx context.Context, _ string, _ *http.Request) (*auth.TokenInfo, error) {
 	tok, ok := ctx.Value(tokenKey{}).(store.APIToken)
 	if !ok {
