@@ -181,7 +181,7 @@ jobs:
             git diff --quiet "$base" refs/remotes/origin/main -- "${price_files[@]}" || base_current=$?
             case "$same:$base_current" in
               0:0)
-                failing="$(gh pr view "$existing" --json statusCheckRollup --jq '[.statusCheckRollup[] | select((.conclusion // "") | test("FAILURE|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE"))] | length')"
+                failing="$(gh pr view "$existing" --json statusCheckRollup --jq '[(.statusCheckRollup // [])[] | ((.conclusion // .state) // "") | select(test("^(FAILURE|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE|ERROR)$"))] | length')"
                 if [ "$failing" != "0" ]; then
                   echo "::warning::PR #${existing} is unchanged but has $failing failing check(s); re-run them or close the PR to rebuild it."
                 fi
