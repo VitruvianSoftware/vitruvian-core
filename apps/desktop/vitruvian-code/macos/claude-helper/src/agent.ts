@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import {
   agent,
@@ -140,6 +141,25 @@ export interface ClaudeHelperAgentOptions {
   readonly createCanUseToolFn?: typeof createCanUseToolHandler;
   readonly generateSessionIdFn?: () => string;
   readonly supportedModelsTimeoutMs?: number;
+  /** Whether a managed `managed-mcp.json` is installed; tests replace it. */
+  readonly hasManagedMcpConfigFn?: () => boolean;
+}
+
+/** Where Claude Code reads an administrator's managed MCP config on macOS. */
+export const MANAGED_MCP_CONFIG_PATH =
+  "/Library/Application Support/ClaudeCode/managed-mcp.json";
+
+/**
+ * True when an administrator installed `managed-mcp.json`. It already excludes every other MCP
+ * config and Claude Code refuses `--strict-mcp-config` with it, so the flag is left off then, as
+ * T3 Code's `hasClaudeManagedMcpConfig` (`apps/server/src/provider/Drivers/ClaudeHome.ts`) does.
+ */
+export function hasManagedMcpConfig(): boolean {
+  try {
+    return existsSync(MANAGED_MCP_CONFIG_PATH);
+  } catch {
+    return false;
+  }
 }
 
 interface ActiveTurn {
@@ -704,6 +724,7 @@ export class ClaudeHelperAgent {
   readonly createCanUseToolFn: typeof createCanUseToolHandler;
   readonly generateSessionIdFn: () => string;
   readonly supportedModelsTimeoutMs: number;
+  readonly hasManagedMcpConfigFn: () => boolean;
   private secrets: SecretsPayload = {};
   /** The `claude` version found at initialize; null until then or when `--version` failed. */
   private claudeVersion: string | null = null;
@@ -724,6 +745,8 @@ export class ClaudeHelperAgent {
     this.generateSessionIdFn = options.generateSessionIdFn ?? randomUUID;
     this.supportedModelsTimeoutMs =
       options.supportedModelsTimeoutMs ?? DEFAULT_SUPPORTED_MODELS_TIMEOUT_MS;
+    this.hasManagedMcpConfigFn =
+      options.hasManagedMcpConfigFn ?? hasManagedMcpConfig;
   }
 
   async initialize(params: InitializeRequest): Promise<InitializeResponse> {
@@ -1096,6 +1119,10 @@ export class ClaudeHelperAgent {
       pathToClaudeCodeExecutable: this.claudePath,
       includePartialMessages: true,
       settingSources: ["user", "project", "local"],
+      // The app's merged list is the only MCP config: Claude must not load `~/.claude.json`'s
+      // or `.mcp.json`'s servers itself, which would run a server the user switched off, or a
+      // project's servers the user has not approved, and start the rest twice.
+      ...(this.hasManagedMcpConfigFn() ? {} : { strictMcpConfig: true }),
       canUseTool: input.canUseTool,
       ...sdkPermissionOptionsForMode(input.mode),
       ...(input.resume

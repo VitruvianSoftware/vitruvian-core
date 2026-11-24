@@ -206,6 +206,10 @@ public enum Words {
         "mcpProblemURL",
         "mcpProblemSecret",
         "mcpSaveFailed",
+        "projectMCPTitle",
+        "projectMCPExplanation",
+        "projectMCPAllow",
+        "projectMCPNotNow",
     ]
 
     public static func text(_ key: String, _ language: String) -> String {
@@ -397,6 +401,10 @@ public enum Words {
             "mcpProblemURL": "Enter an http or https URL.",
             "mcpProblemSecret": "A secret’s name can’t be empty or contain = or a line break.",
             "mcpSaveFailed": "The server’s secrets could not be saved.",
+            "projectMCPTitle": "This project wants to start MCP servers",
+            "projectMCPExplanation": "From the folder’s .mcp.json. They run on your Mac with your rights. The chat goes on without them until you allow them.",
+            "projectMCPAllow": "Allow",
+            "projectMCPNotNow": "Not now",
         ],
         "pt-BR": [
             "quickPromptTitle": "Prompt rápido do agente",
@@ -570,6 +578,10 @@ public enum Words {
             "mcpProblemURL": "Digite uma URL http ou https.",
             "mcpProblemSecret": "O nome de um segredo não pode ser vazio nem conter = ou quebra de linha.",
             "mcpSaveFailed": "Não foi possível salvar os segredos do servidor.",
+            "projectMCPTitle": "Este projeto quer iniciar servidores MCP",
+            "projectMCPExplanation": "Do .mcp.json da pasta. Eles rodam no seu Mac com as suas permissões. O chat continua sem eles até você permitir.",
+            "projectMCPAllow": "Permitir",
+            "projectMCPNotNow": "Agora não",
         ],
         "tr": [
             "quickPromptTitle": "Ajan Hızlı İstemi",
@@ -743,6 +755,10 @@ public enum Words {
             "mcpProblemURL": "http veya https ile başlayan bir URL girin.",
             "mcpProblemSecret": "Gizli değerin adı boş olamaz, = veya satır sonu içeremez.",
             "mcpSaveFailed": "Sunucunun gizli değerleri kaydedilemedi.",
+            "projectMCPTitle": "Bu proje MCP sunucuları başlatmak istiyor",
+            "projectMCPExplanation": "Klasörün .mcp.json dosyasından. Mac’inizde sizin yetkilerinizle çalışırlar. Siz izin verene kadar sohbet onlarsız sürer.",
+            "projectMCPAllow": "İzin ver",
+            "projectMCPNotNow": "Şimdi değil",
         ],
         "ru": [
             "quickPromptTitle": "Быстрый запрос к агенту",
@@ -916,6 +932,10 @@ public enum Words {
             "mcpProblemURL": "Введите адрес http или https.",
             "mcpProblemSecret": "Имя секрета не может быть пустым и содержать = или перевод строки.",
             "mcpSaveFailed": "Не удалось сохранить секреты сервера.",
+            "projectMCPTitle": "Этот проект хочет запустить серверы MCP",
+            "projectMCPExplanation": "Из файла .mcp.json в папке. Они работают на вашем Mac с вашими правами. Пока вы не разрешите, чат продолжается без них.",
+            "projectMCPAllow": "Разрешить",
+            "projectMCPNotNow": "Не сейчас",
         ],
         "es": [
             "quickPromptTitle": "Prompt rápido del agente",
@@ -1089,6 +1109,10 @@ public enum Words {
             "mcpProblemURL": "Escribe una URL http o https.",
             "mcpProblemSecret": "El nombre de un secreto no puede estar vacío ni contener = o un salto de línea.",
             "mcpSaveFailed": "No se pudieron guardar los secretos del servidor.",
+            "projectMCPTitle": "Este proyecto quiere iniciar servidores MCP",
+            "projectMCPExplanation": "Del .mcp.json de la carpeta. Se ejecutan en tu Mac con tus permisos. El chat sigue sin ellos hasta que los permitas.",
+            "projectMCPAllow": "Permitir",
+            "projectMCPNotNow": "Ahora no",
         ],
         "sk": [
             "quickPromptTitle": "Rýchla výzva agentovi",
@@ -1262,6 +1286,10 @@ public enum Words {
             "mcpProblemURL": "Zadajte adresu http alebo https.",
             "mcpProblemSecret": "Názov tajomstva nesmie byť prázdny ani obsahovať = či zalomenie riadka.",
             "mcpSaveFailed": "Tajomstvá servera sa nepodarilo uložiť.",
+            "projectMCPTitle": "Tento projekt chce spustiť servery MCP",
+            "projectMCPExplanation": "Zo súboru .mcp.json v priečinku. Bežia na vašom Macu s vašimi právami. Kým ich nepovolíte, chat pokračuje bez nich.",
+            "projectMCPAllow": "Povoliť",
+            "projectMCPNotNow": "Teraz nie",
         ],
         "de": [
             "quickPromptTitle": "Agent-Schnell-Prompt",
@@ -1435,6 +1463,10 @@ public enum Words {
             "mcpProblemURL": "Gib eine http- oder https-Adresse ein.",
             "mcpProblemSecret": "Der Name eines Geheimnisses darf nicht leer sein und kein = oder Zeilenende enthalten.",
             "mcpSaveFailed": "Die Geheimnisse des Servers konnten nicht gespeichert werden.",
+            "projectMCPTitle": "Dieses Projekt möchte MCP-Server starten",
+            "projectMCPExplanation": "Aus der .mcp.json des Ordners. Sie laufen auf deinem Mac mit deinen Rechten. Bis du sie erlaubst, läuft der Chat ohne sie weiter.",
+            "projectMCPAllow": "Erlauben",
+            "projectMCPNotNow": "Nicht jetzt",
         ],
         "fr": [
             "quickPromptTitle": "Prompt rapide de l’agent",
@@ -1608,6 +1640,10 @@ public enum Words {
             "mcpProblemURL": "Saisissez une adresse http ou https.",
             "mcpProblemSecret": "Le nom d’un secret ne peut pas être vide ni contenir = ou un saut de ligne.",
             "mcpSaveFailed": "Les secrets du serveur n’ont pas pu être enregistrés.",
+            "projectMCPTitle": "Ce projet veut lancer des serveurs MCP",
+            "projectMCPExplanation": "Depuis le .mcp.json du dossier. Ils tournent sur votre Mac avec vos droits. Le chat continue sans eux tant que vous ne les autorisez pas.",
+            "projectMCPAllow": "Autoriser",
+            "projectMCPNotNow": "Pas maintenant",
         ],
         "it": [
             "quickPromptTitle": "Prompt rapido dell’agente",
@@ -1781,6 +1817,10 @@ public enum Words {
             "mcpProblemURL": "Inserisci un indirizzo http o https.",
             "mcpProblemSecret": "Il nome di un segreto non può essere vuoto né contenere = o un a capo.",
             "mcpSaveFailed": "Impossibile salvare i segreti del server.",
+            "projectMCPTitle": "Questo progetto vuole avviare server MCP",
+            "projectMCPExplanation": "Dal .mcp.json della cartella. Girano sul tuo Mac con i tuoi permessi. La chat continua senza di loro finché non li consenti.",
+            "projectMCPAllow": "Consenti",
+            "projectMCPNotNow": "Non ora",
         ],
         "ja": [
             "quickPromptTitle": "エージェントのクイックプロンプト",
@@ -1954,6 +1994,10 @@ public enum Words {
             "mcpProblemURL": "http または https の URL を入力してください。",
             "mcpProblemSecret": "秘密の名前は空にできず、= や改行を含められません。",
             "mcpSaveFailed": "サーバーの秘密を保存できませんでした。",
+            "projectMCPTitle": "このプロジェクトが MCP サーバーを起動しようとしています",
+            "projectMCPExplanation": "フォルダーの .mcp.json からです。あなたの権限で Mac 上で実行されます。許可するまでチャットはそれらなしで続きます。",
+            "projectMCPAllow": "許可",
+            "projectMCPNotNow": "今はしない",
         ],
         "ko": [
             "quickPromptTitle": "에이전트 빠른 프롬프트",
@@ -2127,6 +2171,10 @@ public enum Words {
             "mcpProblemURL": "http 또는 https URL을 입력하세요.",
             "mcpProblemSecret": "비밀 이름은 비워 둘 수 없으며 = 또는 줄바꿈을 포함할 수 없습니다.",
             "mcpSaveFailed": "서버의 비밀을 저장할 수 없습니다.",
+            "projectMCPTitle": "이 프로젝트가 MCP 서버를 시작하려고 합니다",
+            "projectMCPExplanation": "폴더의 .mcp.json에서 가져왔습니다. 사용자 권한으로 Mac에서 실행됩니다. 허용할 때까지 채팅은 이 서버 없이 계속됩니다.",
+            "projectMCPAllow": "허용",
+            "projectMCPNotNow": "나중에",
         ],
         "uk": [
             "quickPromptTitle": "Швидкий запит до агента",
@@ -2300,6 +2348,10 @@ public enum Words {
             "mcpProblemURL": "Введіть адресу http або https.",
             "mcpProblemSecret": "Назва секрету не може бути порожньою чи містити = або розрив рядка.",
             "mcpSaveFailed": "Не вдалося зберегти секрети сервера.",
+            "projectMCPTitle": "Цей проєкт хоче запустити сервери MCP",
+            "projectMCPExplanation": "З файлу .mcp.json у теці. Вони працюють на вашому Mac із вашими правами. Доки ви не дозволите, чат триває без них.",
+            "projectMCPAllow": "Дозволити",
+            "projectMCPNotNow": "Не зараз",
         ],
         "zh-Hans": [
             "quickPromptTitle": "智能体快速提问",
@@ -2473,6 +2525,10 @@ public enum Words {
             "mcpProblemURL": "请输入 http 或 https 地址。",
             "mcpProblemSecret": "机密名称不能为空，也不能包含 = 或换行。",
             "mcpSaveFailed": "无法保存服务器的机密。",
+            "projectMCPTitle": "此项目想要启动 MCP 服务器",
+            "projectMCPExplanation": "来自该文件夹的 .mcp.json。它们以你的权限在你的 Mac 上运行。在你允许之前，聊天会在没有它们的情况下继续。",
+            "projectMCPAllow": "允许",
+            "projectMCPNotNow": "以后再说",
         ],
         "zh-TW": [
             "quickPromptTitle": "代理程式快速提問",
@@ -2646,6 +2702,10 @@ public enum Words {
             "mcpProblemURL": "請輸入 http 或 https 位址。",
             "mcpProblemSecret": "機密名稱不能空白，也不能包含 = 或換行。",
             "mcpSaveFailed": "無法儲存伺服器的機密。",
+            "projectMCPTitle": "此專案想要啟動 MCP 伺服器",
+            "projectMCPExplanation": "來自該資料夾的 .mcp.json。它們以你的權限在你的 Mac 上執行。在你允許之前，聊天會在沒有它們的情況下繼續。",
+            "projectMCPAllow": "允許",
+            "projectMCPNotNow": "稍後再說",
         ],
         "zh-HK": [
             "quickPromptTitle": "代理程式快速提問",
@@ -2819,6 +2879,10 @@ public enum Words {
             "mcpProblemURL": "請輸入 http 或 https 位址。",
             "mcpProblemSecret": "機密名稱唔可以留空，亦唔可以包含 = 或者換行。",
             "mcpSaveFailed": "儲存唔到伺服器嘅機密。",
+            "projectMCPTitle": "呢個專案想啟動 MCP 伺服器",
+            "projectMCPExplanation": "嚟自個資料夾嘅 .mcp.json。佢哋會用你嘅權限喺你部 Mac 上運行。喺你允許之前，傾偈會冇佢哋咁繼續。",
+            "projectMCPAllow": "允許",
+            "projectMCPNotNow": "遲啲先",
         ],
     ]
 }

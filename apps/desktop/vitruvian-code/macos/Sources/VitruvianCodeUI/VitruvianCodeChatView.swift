@@ -229,6 +229,17 @@ public struct VitruvianCodeChatView: View {
                     .padding(.top, 6)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                if let approval = session.projectMCPApproval {
+                    AgentProjectMCPApprovalView(
+                        approval: approval,
+                        strings: strings,
+                        onAllow: { session.answerProjectMCPApproval(allow: true) },
+                        onNotNow: { session.answerProjectMCPApproval(allow: false) }
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 if let limit = session.liveState.usageLimit {
                     AgentUsageLimitBannerView(
                         limit: limit,

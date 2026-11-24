@@ -32,7 +32,8 @@ final class MCPSettingsPageTests: XCTestCase {
                         "mcpName", "mcpTransport", "mcpTransportStdio", "mcpTransportHTTP", "mcpCommand", "mcpArguments",
                         "mcpURL", "mcpSecretEnvironment", "mcpSecretHeader", "mcpSecretCaption", "mcpSecretsKept",
                         "mcpClearSecrets", "mcpEnabled", "mcpSaveServer", "mcpRemove", "mcpCancel", "mcpProblemName",
-                        "mcpProblemDuplicate", "mcpProblemCommand", "mcpProblemURL", "mcpProblemSecret", "mcpSaveFailed"]
+                        "mcpProblemDuplicate", "mcpProblemCommand", "mcpProblemURL", "mcpProblemSecret", "mcpSaveFailed",
+                        "projectMCPTitle", "projectMCPExplanation", "projectMCPAllow", "projectMCPNotNow"]
 
     func testTheMCPWordsExistAndTranslateInAllFifteenLanguages() {
         for key in keys {

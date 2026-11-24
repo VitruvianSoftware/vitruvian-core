@@ -9639,6 +9639,7 @@ var TerminalHandle = class _TerminalHandle {
 
 // apps/desktop/vitruvian-code/macos/claude-helper/src/agent.ts
 import { randomUUID } from "node:crypto";
+import { existsSync as existsSync2 } from "node:fs";
 
 // node_modules/.aspect_rules_js/@anthropic-ai+claude-agent-sdk@0.3.326_1271099569/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs
 import { createRequire as pee } from "node:module";
@@ -44040,6 +44041,14 @@ var SUPPORTED_IMAGE_MIME_TYPES = /* @__PURE__ */ new Set([
   "image/webp"
 ]);
 var AUTH_MESSAGE_PATTERN = /authentication_failed|auth_required|not logged in|invalid api key|claude auth login|unauthorized/i;
+var MANAGED_MCP_CONFIG_PATH = "/Library/Application Support/ClaudeCode/managed-mcp.json";
+function hasManagedMcpConfig() {
+  try {
+    return existsSync2(MANAGED_MCP_CONFIG_PATH);
+  } catch {
+    return false;
+  }
+}
 var AsyncPushQueue = class {
   buffer = [];
   waiters = [];
@@ -44449,6 +44458,7 @@ var ClaudeHelperAgent = class {
   createCanUseToolFn;
   generateSessionIdFn;
   supportedModelsTimeoutMs;
+  hasManagedMcpConfigFn;
   secrets = {};
   /** The `claude` version found at initialize; null until then or when `--version` failed. */
   claudeVersion = null;
@@ -44466,6 +44476,7 @@ var ClaudeHelperAgent = class {
     this.createCanUseToolFn = options.createCanUseToolFn ?? createCanUseToolHandler;
     this.generateSessionIdFn = options.generateSessionIdFn ?? randomUUID;
     this.supportedModelsTimeoutMs = options.supportedModelsTimeoutMs ?? DEFAULT_SUPPORTED_MODELS_TIMEOUT_MS;
+    this.hasManagedMcpConfigFn = options.hasManagedMcpConfigFn ?? hasManagedMcpConfig;
   }
   async initialize(params) {
     void params;
@@ -44768,6 +44779,10 @@ var ClaudeHelperAgent = class {
       pathToClaudeCodeExecutable: this.claudePath,
       includePartialMessages: true,
       settingSources: ["user", "project", "local"],
+      // The app's merged list is the only MCP config: Claude must not load `~/.claude.json`'s
+      // or `.mcp.json`'s servers itself, which would run a server the user switched off, or a
+      // project's servers the user has not approved, and start the rest twice.
+      ...this.hasManagedMcpConfigFn() ? {} : { strictMcpConfig: true },
       canUseTool: input.canUseTool,
       ...sdkPermissionOptionsForMode(input.mode),
       ...input.resume ? { resume: input.sessionId } : { sessionId: input.sessionId },

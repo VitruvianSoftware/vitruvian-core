@@ -294,6 +294,8 @@ function createConnectedHarness(options: ClaudeHelperAgentOptions): Harness {
   // the oldest claude that takes MCP servers over stdin.
   const { app } = createClaudeHelperApp({
     detectVersionFn: async () => "2.1.326",
+    // Hermetic too: the test machine's own managed MCP config must not decide.
+    hasManagedMcpConfigFn: () => false,
     ...options,
   });
   const receivedUpdates: SessionNotification[] = [];
@@ -448,6 +450,54 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
     }
   });
 
+  test("strict MCP config is left off when a managed managed-mcp.json is installed, and kept on resume", async () => {
+    for (const managed of [false, true]) {
+      const queryCalls: FakeQueryHandle[] = [];
+      const queryFn: QueryFn = ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+        });
+        queryCalls.push(handle);
+        return sdkQuery;
+      };
+      const harness = createConnectedHarness({
+        claudePath: "/opt/bin/claude",
+        baseEnv: { PATH: "/usr/bin" },
+        hasManagedMcpConfigFn: () => managed,
+        queryFn,
+      });
+      try {
+        await harness.client.request("initialize", {
+          protocolVersion: 1,
+          clientCapabilities: {},
+        });
+        await harness.client.request("session/new", {
+          cwd: "/workspace/repo",
+          mcpServers: [
+            { name: "docs", command: "docs-mcp", args: [], env: [] },
+          ],
+        });
+        await harness.client.request("session/resume", {
+          sessionId: "550e8400-e29b-41d4-a716-446655440001",
+          cwd: "/workspace/repo",
+          mcpServers: [],
+        });
+        expect(queryCalls.length).toBeGreaterThanOrEqual(2);
+        for (const call of queryCalls) {
+          expect(call.options!.strictMcpConfig).toBe(
+            managed ? undefined : true,
+          );
+        }
+        expect(Object.keys(queryCalls[0].options!.mcpServers ?? {})).toEqual([
+          "docs",
+        ]);
+      } finally {
+        await harness.close();
+      }
+    }
+  });
+
   test("session/new passes generated UUID as sessionId, required SDK flags, and handles delayed supportedModels", async () => {
     const queryCalls: FakeQueryHandle[] = [];
     const deferredModels = createDeferred<ModelInfo[]>();
@@ -504,6 +554,8 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       expect(opts.pathToClaudeCodeExecutable).toBe("/opt/bin/claude");
       expect(opts.includePartialMessages).toBe(true);
       expect(opts.settingSources).toEqual(["user", "project", "local"]);
+      // Only the app's MCP list: Claude must not load ~/.claude.json's or .mcp.json's servers.
+      expect(opts.strictMcpConfig).toBe(true);
       expect(typeof opts.canUseTool).toBe("function");
       expect(opts.permissionMode).toBe("default");
       expect(opts.allowDangerouslySkipPermissions).toBeUndefined();

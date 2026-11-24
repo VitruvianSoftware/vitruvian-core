@@ -303,6 +303,89 @@ public struct AgentCompactionChipView: View {
     }
 }
 
+/// Asks whether a project's `.mcp.json` servers may run, naming each and what it runs. The chat
+/// does not wait for the answer: until Allow, live turns run without them.
+public struct AgentProjectMCPApprovalView: View {
+    public let approval: AgentMCPProjectApproval
+    public let strings: VitruvianCodeChatStrings
+    public let onAllow: () -> Void
+    public let onNotNow: () -> Void
+
+    public init(
+        approval: AgentMCPProjectApproval,
+        strings: VitruvianCodeChatStrings,
+        onAllow: @escaping () -> Void,
+        onNotNow: @escaping () -> Void
+    ) {
+        self.approval = approval
+        self.strings = strings
+        self.onAllow = onAllow
+        self.onNotNow = onNotNow
+    }
+
+    public var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.orange)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(strings.projectMCPTitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.primary)
+                ForEach(Array(approval.servers.enumerated()), id: \.offset) { _, server in
+                    AgentBannerLogic.verbatimText("\(server.name) · \(server.detail)")
+                        .font(.system(size: 10.5, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(server.detail)
+                }
+                Text(strings.projectMCPExplanation)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                onNotNow()
+            } label: {
+                Text(strings.projectMCPNotNow)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                onAllow()
+            } label: {
+                Text(strings.projectMCPAllow)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(VitruvianCodeTheme.warmCoral)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(VitruvianCodeTheme.warmCoral.opacity(0.15)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.09))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.28), lineWidth: 0.75)
+        )
+    }
+}
+
 /// Banner showing an active Claude usage limit, local reset time, live countdown, and Resume gate.
 public struct AgentUsageLimitBannerView: View {
     public let limit: AgentLiveState.UsageLimit

@@ -139,6 +139,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     @Published public private(set) var isRunning = false
     /// True while at least one tool approval card in the conversation is awaiting a decision.
     @Published public private(set) var hasPendingApproval = false
+    /// A project's `.mcp.json` servers waiting for the user's Allow or Not now, shown in the chat.
+    /// The live turn runs without them meanwhile; it never waits for the answer.
+    @Published public private(set) var projectMCPApproval: AgentMCPProjectApproval?
     /// The tool the agent is using right now, if any.
     @Published public private(set) var activity: String?
     @Published public private(set) var conversationID: String?
@@ -257,6 +260,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// to another folder while idle still starts fresh there.
     private var lastLaunchDirectory: String?
     private var liveEventDrainTask: Task<Void, Never>?
+    /// The user allowed a project's MCP servers: the next turn opens a fresh live connection
+    /// (resuming the conversation) so they are passed.
+    private var mcpServersChangedSinceLiveStart = false
     private var idleShutdownTask: Task<Void, Never>?
     private var pendingConnectionStops: [UUID: Task<Void, Never>] = [:]
     public private(set) var liveWorktreePath: String?
@@ -1287,6 +1293,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
            liveConnectionProviderID == effectiveProv.id,
            liveConnectionKind == effectiveProv.connection,
            liveConnectionWorktree == wantsWorktree,
+           !mcpServersChangedSinceLiveStart,
            // A worktree connection keeps the worktree rule; any other runs
            // only in the folder it was started in.
            wantsWorktree || liveConnectionDirectory == directory,
@@ -1511,6 +1518,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             workingDirectory: resolvedDirectory,
             target: AgentMCPTarget.of(effectiveProv, kind: effectiveProv.connection)
         )
+        if !isCustomCommand {
+            projectMCPApproval = mcp.pendingApproval
+            mcpServersChangedSinceLiveStart = false
+        }
         let sessionRequest = AgentSessionRequest(
             workingDirectory: resolvedDirectory,
             mcpServers: mcp.servers,
@@ -2187,6 +2198,16 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask = nil
+    }
+
+    /// The user's answer to the project's MCP servers: kept for that project and that set of
+    /// servers. Allowed servers reach the agent from the next turn, which reconnects for them.
+    public func answerProjectMCPApproval(allow: Bool) {
+        guard let approval = projectMCPApproval, var settings = host.mcpSettings else { return }
+        AgentMCPServers.record(approval, allowed: allow, in: &settings)
+        host.mcpSettings = settings
+        projectMCPApproval = nil
+        if allow { mcpServersChangedSinceLiveStart = true }
     }
 
     private func retireLiveConnection() {

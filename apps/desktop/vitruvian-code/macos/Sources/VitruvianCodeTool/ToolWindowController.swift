@@ -233,6 +233,8 @@ final class ToolWindowController: NSObject, NSWindowDelegate, NSApplicationDeleg
         (\.contextCompacted, "contextCompacted"), (\.compactionFailed, "compactionFailed"),
         (\.compactionStopped, "compactionStopped"), (\.compactionSuggestion, "compactionSuggestion"),
         (\.compactAction, "compactAction"), (\.keepAction, "keepAction"),
+        (\.projectMCPTitle, "projectMCPTitle"), (\.projectMCPExplanation, "projectMCPExplanation"),
+        (\.projectMCPAllow, "projectMCPAllow"), (\.projectMCPNotNow, "projectMCPNotNow"),
         (\.usageLimitReached, "usageLimitReached"), (\.usageLimitResetsAtPrefix, "usageLimitResetsAtPrefix"),
         (\.usageLimitReady, "usageLimitReady"), (\.usageLimitResume, "usageLimitResume"),
         (\.useCommandLineForChat, "useCommandLineForChat"), (\.helperCrashTitle, "helperCrashTitle"),

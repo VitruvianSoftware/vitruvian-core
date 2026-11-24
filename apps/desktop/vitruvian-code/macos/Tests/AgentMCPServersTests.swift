@@ -163,6 +163,8 @@ final class AgentMCPServersTests: XCTestCase {
             settings: AgentMCPSettings(servers: [app, other]),
             secrets: { $0 == app.id ? .init(environment: ["APP_KEY": "a-555"]) : .init() },
             projectConfig: project,
+            projectPath: work.path,
+            claudeChoice: AgentMCPClaudeProjectChoice(enableAll: true, enabled: [], disabled: []),
             target: .builtIn,
             processEnvironment: [:]
         )
@@ -212,7 +214,9 @@ final class AgentMCPServersTests: XCTestCase {
         var settings = AgentMCPSettings(servers: [server])
         let ask = { (settings: AgentMCPSettings, target: AgentMCPTarget) in
             AgentMCPServers.sessionServers(settings: settings, secrets: { _ in .init(environment: ["K": "v-888"]) },
-                                           projectConfig: project, target: target, processEnvironment: [:])
+                                           projectConfig: project, projectPath: "/p",
+                                           claudeChoice: AgentMCPClaudeProjectChoice(enableAll: true, enabled: [], disabled: []),
+                                           target: target, processEnvironment: [:])
         }
         XCTAssertFalse(settings.allowsServers(forRegistryAgent: "opencode"), "off by default")
         XCTAssertEqual(ask(settings, .registry(agentID: "opencode")), .init(), "not even the project's")
@@ -258,7 +262,10 @@ final class AgentMCPServersTests: XCTestCase {
     }
 
     func testALiveAgyChatStartsWithTheMergedList() async throws {
-        try writeClaudeJSON()
+        // Claude Code already allowed this project's `docs` server, so the app does not ask.
+        try writeClaudeJSON(Self.claudeJSON.replacingOccurrences(
+            of: #""/somewhere": {"#,
+            with: #""\#(work.path)": { "enabledMcpjsonServers": ["docs"] }, "/somewhere": {"#))
         try #"{ "mcpServers": { "docs": { "command": "project-docs" } } }"#
             .write(to: work.appendingPathComponent(".mcp.json"), atomically: true, encoding: .utf8)
         var env = environment()
@@ -284,6 +291,114 @@ final class AgentMCPServersTests: XCTestCase {
             .http(name: "remote", url: "https://mcp.example.com/v1"),
         ])
         XCTAssertEqual(request.mcpSecrets, ["remote": .init(headers: ["Authorization": "Bearer remote-secret-222"])])
+        XCTAssertNil(session.projectMCPApproval, "Claude Code's answer was honoured, so nothing is asked")
+        session.stop()
+        for connection in made { await connection.stop() }
+    }
+
+    // MARK: - Approving a project's servers
+
+    private static let projectJSON = """
+    { "mcpServers": {
+        "build": { "command": "./tools/build-mcp", "args": ["--serve"] },
+        "web": { "type": "http", "url": "https://web.example.com/mcp" }
+    } }
+    """
+
+    func testAProjectsServersWaitForTheUsersAnswerAndTheSessionGoesOnWithoutThem() {
+        let app = AgentMCPServer(name: "docs", transport: .stdio, command: "docs-mcp")
+        let got = AgentMCPServers.sessionServers(settings: AgentMCPSettings(servers: [app]), secrets: { _ in .init() },
+                                                 projectConfig: Self.projectJSON, projectPath: "/repo",
+                                                 target: .builtIn, processEnvironment: [:])
+        XCTAssertEqual(got.servers, [.stdio(name: "docs", command: "docs-mcp")], "only the app's own")
+        let pending = try? XCTUnwrap(got.pendingApproval)
+        XCTAssertEqual(pending?.projectPath, "/repo")
+        XCTAssertEqual(pending?.servers, [
+            .init(name: "build", detail: "./tools/build-mcp --serve"),
+            .init(name: "web", detail: "https://web.example.com/mcp"),
+        ])
+    }
+
+    func testAnAnswerIsKeptPerProjectAndAskedAgainWhenTheServersChange() throws {
+        var settings = AgentMCPSettings()
+        let ask = { (settings: AgentMCPSettings, config: String, path: String) in
+            AgentMCPServers.sessionServers(settings: settings, secrets: { _ in .init() }, projectConfig: config,
+                                           projectPath: path, target: .builtIn, processEnvironment: [:])
+        }
+        let first = try XCTUnwrap(ask(settings, Self.projectJSON, "/repo").pendingApproval)
+        AgentMCPServers.record(first, allowed: true, in: &settings)
+        let allowed = ask(settings, Self.projectJSON, "/repo")
+        XCTAssertNil(allowed.pendingApproval)
+        XCTAssertEqual(allowed.servers.map(\.name), ["build", "web"])
+        XCTAssertNotNil(ask(settings, Self.projectJSON, "/other-repo").pendingApproval, "the answer is per project")
+
+        let changed = Self.projectJSON.replacingOccurrences(of: "--serve", with: "--serve --evil")
+        XCTAssertEqual(ask(settings, changed, "/repo").servers, [], "a changed command is not run on the old answer")
+        let again = try XCTUnwrap(ask(settings, changed, "/repo").pendingApproval)
+        AgentMCPServers.record(again, allowed: false, in: &settings)
+        let refused = ask(settings, changed, "/repo")
+        XCTAssertNil(refused.pendingApproval, "Not now is an answer too")
+        XCTAssertEqual(refused.servers, [])
+    }
+
+    func testClaudeCodesRecordedChoiceForTheProjectIsHonoured() throws {
+        let claude = """
+        { "projects": {
+            "/all": { "enableAllProjectMcpServers": true, "disabledMcpjsonServers": ["web"] },
+            "/some": { "enabledMcpjsonServers": ["build"] },
+            "/none": { "disabledMcpjsonServers": ["build", "web"] },
+            "/empty": { "enabledMcpjsonServers": [], "disabledMcpjsonServers": [] }
+        } }
+        """
+        let ask = { (path: String) in
+            AgentMCPServers.sessionServers(
+                settings: AgentMCPSettings(), secrets: { _ in .init() }, projectConfig: Self.projectJSON, projectPath: path,
+                claudeChoice: AgentMCPServers.claudeProjectChoice(fromConfigJSON: claude, projectPath: path),
+                target: .builtIn, processEnvironment: [:])
+        }
+        XCTAssertEqual(ask("/all").servers.map(\.name), ["build"], "all on, but web is off by name")
+        XCTAssertNil(ask("/all").pendingApproval)
+        XCTAssertEqual(ask("/some").servers.map(\.name), ["build"])
+        XCTAssertEqual(ask("/some").pendingApproval?.servers.map(\.name), ["web"], "web has no answer yet")
+        XCTAssertEqual(ask("/none").servers, [])
+        XCTAssertNil(ask("/none").pendingApproval)
+        XCTAssertNil(AgentMCPServers.claudeProjectChoice(fromConfigJSON: claude, projectPath: "/empty"), "empty lists decide nothing")
+        XCTAssertNotNil(AgentMCPServers.claudeProjectChoice(fromConfigJSON: claude, projectPath: "/some/"), "the path is standardised")
+    }
+
+    func testALiveChatAsksBeforeTheTurnAndAllowReconnectsWithTheServers() async throws {
+        try Self.projectJSON.write(to: work.appendingPathComponent(".mcp.json"), atomically: true, encoding: .utf8)
+        var env = environment()
+        var made: [MCPRecordingConnection] = []
+        env.makeConnection = { _ in
+            let connection = MCPRecordingConnection()
+            made.append(connection)
+            return connection
+        }
+        let host = MCPTestHost()
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: host)
+        session.takeCheckpoint = { _ in nil }
+        var agy = VitruvianCodeCLIProvider.antigravity
+        agy.connection = .acp
+        let configuration = VitruvianCodeConfiguration(workingDirectory: work.path, activeProvider: agy)
+
+        session.send("first", configuration: configuration, agentPath: "/fake/agy")
+        XCTAssertEqual(session.projectMCPApproval?.servers.map(\.name), ["build", "web"], "asked before the turn")
+        for _ in 0..<2000 where made.first?.starts.isEmpty ?? true { await Task.yield() }
+        XCTAssertEqual(try XCTUnwrap(made.first?.starts.first).mcpServers, [], "the turn ran without them")
+        for _ in 0..<2000 where session.isRunning { await Task.yield() }
+
+        session.answerProjectMCPApproval(allow: true)
+        XCTAssertNil(session.projectMCPApproval)
+        XCTAssertEqual(host.mcpSettings?.projectDecisions[work.path]?.allowed, true, "kept for the project")
+
+        session.send("second", configuration: configuration, agentPath: "/fake/agy")
+        for _ in 0..<2000 where made.count < 2 || made[1].starts.isEmpty { await Task.yield() }
+        XCTAssertEqual(made.count, 2, "a fresh connection, for the newly allowed servers")
+        let second = try XCTUnwrap(made.last?.starts.first)
+        XCTAssertEqual(second.mcpServers.map(\.name), ["build", "web"])
+        XCTAssertEqual(second.resumeSessionID, "live-1", "the conversation goes on")
+        XCTAssertNil(session.projectMCPApproval, "not asked again")
         session.stop()
         for connection in made { await connection.stop() }
     }
@@ -373,7 +488,10 @@ private final class MCPRecordingConnection: PersistentAgentConnection {
         return "live-1"
     }
 
-    func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason { .endTurn }
+    func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {
+        continuation.yield(.finished(status: "completed", response: "ok", error: nil, conversationID: "live-1"))
+        return .endTurn
+    }
     func cancel() async {}
     func answer(_ requestID: String, _ choice: AgentAnswer) async throws {}
     func setConfigOption(_ id: String, _ value: AgentConfigValue) async throws -> [AgentConfigOption] { [] }

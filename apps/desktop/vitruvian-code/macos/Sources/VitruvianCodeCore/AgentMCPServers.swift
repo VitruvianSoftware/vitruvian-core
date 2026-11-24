@@ -97,15 +97,20 @@ public struct AgentMCPSettings: Codable, Equatable, Sendable {
     /// Registry agents the user allowed to receive these servers, by agent ID. Off for every
     /// agent until the user turns it on (design section 2). Read by `AgentMCPTarget.registry`.
     public var registryAgentsAllowed: [String: Bool]
+    /// The user's answer to each project's `.mcp.json`, by project folder. An answer holds only
+    /// for the server set it was given for (`AgentMCPProjectDecision.signature`).
+    public var projectDecisions: [String: AgentMCPProjectDecision]
 
     public init(
         servers: [AgentMCPServer] = [],
         importedClaudeCode: Bool = false,
-        registryAgentsAllowed: [String: Bool] = [:]
+        registryAgentsAllowed: [String: Bool] = [:],
+        projectDecisions: [String: AgentMCPProjectDecision] = [:]
     ) {
         self.servers = servers
         self.importedClaudeCode = importedClaudeCode
         self.registryAgentsAllowed = registryAgentsAllowed
+        self.projectDecisions = projectDecisions
     }
 
     /// Every key may be missing, as in a file a later version reads.
@@ -114,13 +119,63 @@ public struct AgentMCPSettings: Codable, Equatable, Sendable {
         servers = try container.decodeIfPresent([AgentMCPServer].self, forKey: .servers) ?? []
         importedClaudeCode = try container.decodeIfPresent(Bool.self, forKey: .importedClaudeCode) ?? false
         registryAgentsAllowed = try container.decodeIfPresent([String: Bool].self, forKey: .registryAgentsAllowed) ?? [:]
+        projectDecisions = try container.decodeIfPresent([String: AgentMCPProjectDecision].self,
+                                                         forKey: .projectDecisions) ?? [:]
     }
 
-    private enum CodingKeys: String, CodingKey { case servers, importedClaudeCode, registryAgentsAllowed }
+    private enum CodingKeys: String, CodingKey {
+        case servers, importedClaudeCode, registryAgentsAllowed, projectDecisions
+    }
 
     /// Whether the user turned MCP servers on for this registry agent. False unless they did.
     public func allowsServers(forRegistryAgent agentID: String) -> Bool {
         registryAgentsAllowed[agentID] == true
+    }
+}
+
+/// The user's answer to a project's `.mcp.json`: allowed or not, for one set of servers.
+public struct AgentMCPProjectDecision: Codable, Equatable, Sendable {
+    /// `AgentMCPServers.signature(of:)` of the servers the answer was given for. When the file
+    /// changes what it runs, the signature no longer matches and the user is asked again.
+    public var signature: String
+    public var allowed: Bool
+
+    public init(signature: String, allowed: Bool) {
+        self.signature = signature
+        self.allowed = allowed
+    }
+}
+
+/// A project's `.mcp.json` servers that wait for the user's answer, shown in the chat before a
+/// live turn starts. The turn runs without them until the user allows them.
+public struct AgentMCPProjectApproval: Equatable, Sendable {
+    public struct Server: Equatable, Sendable {
+        public var name: String
+        /// What it runs or where it connects: "npx -y server" or a URL.
+        public var detail: String
+    }
+
+    /// The project folder the answer is kept for.
+    public var projectPath: String
+    public var servers: [Server]
+    public var signature: String
+}
+
+/// What `~/.claude.json` records for a project, as Claude Code decided it
+/// (`projects[<path>].enableAllProjectMcpServers`, `enabledMcpjsonServers`, `disabledMcpjsonServers`).
+public struct AgentMCPClaudeProjectChoice: Equatable, Sendable {
+    public var enableAll: Bool
+    public var enabled: Set<String>
+    public var disabled: Set<String>
+
+    /// Whether Claude Code has an answer for this server: on, by name or for all; or off.
+    public func decides(_ name: String) -> Bool {
+        enableAll || enabled.contains(name) || disabled.contains(name)
+    }
+
+    /// Whether that answer is on. Off by name wins over on for all.
+    public func allows(_ name: String) -> Bool {
+        !disabled.contains(name) && (enableAll || enabled.contains(name))
     }
 }
 
@@ -311,14 +366,91 @@ public enum AgentMCPServers {
     public struct SessionServers: Equatable, Sendable {
         public var servers: [AgentSessionRequest.MCPServer]
         public var secrets: [String: AgentSessionRequest.MCPServerSecrets]
+        /// Project servers left out because the user has not answered for them yet.
+        public var pendingApproval: AgentMCPProjectApproval?
 
-        public init(servers: [AgentSessionRequest.MCPServer] = [], secrets: [String: AgentSessionRequest.MCPServerSecrets] = [:]) {
+        public init(servers: [AgentSessionRequest.MCPServer] = [], secrets: [String: AgentSessionRequest.MCPServerSecrets] = [:],
+                    pendingApproval: AgentMCPProjectApproval? = nil) {
             self.servers = servers
             self.secrets = secrets
+            self.pendingApproval = pendingApproval
         }
     }
 
-    /// The enabled servers of the app's list, then the project's `.mcp.json`; a project server
+    /// What `~/.claude.json` records for the project at `projectPath`, or nil when it records
+    /// nothing about its `.mcp.json`.
+    public static func claudeProjectChoice(fromConfigJSON text: String?, projectPath: String) -> AgentMCPClaudeProjectChoice? {
+        guard let text, let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let projects = root["projects"] as? [String: Any] else { return nil }
+        let wanted = (projectPath as NSString).standardizingPath
+        guard let key = projects.keys.first(where: { ($0 as NSString).standardizingPath == wanted }),
+              let project = projects[key] as? [String: Any] else { return nil }
+        let names = { (key: String) in Set((project[key] as? [Any])?.compactMap { $0 as? String } ?? []) }
+        let choice = AgentMCPClaudeProjectChoice(
+            enableAll: project["enableAllProjectMcpServers"] as? Bool == true,
+            enabled: names("enabledMcpjsonServers"),
+            disabled: names("disabledMcpjsonServers")
+        )
+        return choice.enableAll || !choice.enabled.isEmpty || !choice.disabled.isEmpty ? choice : nil
+    }
+
+    /// A stable fingerprint of what a set of project servers runs: each one's name, transport,
+    /// command, arguments and URL, sorted by name. Secret values are not in it.
+    public static func signature(of entries: [AgentMCPConfigEntry]) -> String {
+        entries.sorted { $0.name < $1.name }.map { entry in
+            ([entry.name, entry.transport.rawValue, entry.command, entry.url] + entry.arguments)
+                .map { $0.replacingOccurrences(of: "\u{1F}", with: " ") }
+                .joined(separator: "\u{1F}")
+        }.joined(separator: "\u{1E}")
+    }
+
+    /// The project servers the user (or Claude Code, for this project) has allowed, and the
+    /// ones still waiting for an answer.
+    public static func approvedProjectEntries(
+        _ entries: [AgentMCPConfigEntry],
+        projectPath: String,
+        settings: AgentMCPSettings,
+        claudeChoice: AgentMCPClaudeProjectChoice?
+    ) -> (allowed: [AgentMCPConfigEntry], pending: AgentMCPProjectApproval?) {
+        var allowed: [AgentMCPConfigEntry] = []
+        var undecided: [AgentMCPConfigEntry] = []
+        for entry in entries {
+            if let claudeChoice, claudeChoice.decides(entry.name) {
+                if claudeChoice.allows(entry.name) { allowed.append(entry) }
+            } else {
+                undecided.append(entry)
+            }
+        }
+        guard !undecided.isEmpty else { return (allowed, nil) }
+        let signature = signature(of: undecided)
+        if let decision = settings.projectDecisions[projectPath], decision.signature == signature {
+            return (decision.allowed ? allowed + undecided : allowed, nil)
+        }
+        let request = AgentMCPProjectApproval(
+            projectPath: projectPath,
+            servers: undecided.map { entry in
+                AgentMCPProjectApproval.Server(
+                    name: entry.name,
+                    detail: entry.transport == .http
+                        ? entry.url
+                        : ([entry.command] + [AgentMCPServers.joinArguments(entry.arguments)])
+                            .filter { !$0.isEmpty }.joined(separator: " ")
+                )
+            },
+            signature: signature
+        )
+        return (allowed, request)
+    }
+
+    /// Keeps the user's answer to `approval` for its project.
+    public static func record(_ approval: AgentMCPProjectApproval, allowed: Bool, in settings: inout AgentMCPSettings) {
+        settings.projectDecisions[approval.projectPath] = AgentMCPProjectDecision(signature: approval.signature,
+                                                                                  allowed: allowed)
+    }
+
+    /// The enabled servers of the app's list, then the project's `.mcp.json` servers that were allowed
+    /// (`approvedProjectEntries`; the rest come back in `pendingApproval`); a project server
     /// replaces an app server of the same name, as project scope overrides user scope in Claude
     /// Code. A disabled app server is not passed. `${VAR}` and `${VAR:-default}` in a command,
     /// argument, URL, environment value or header are filled in from `processEnvironment`, as
@@ -328,6 +460,8 @@ public enum AgentMCPServers {
         settings: AgentMCPSettings,
         secrets: (UUID) -> AgentSessionRequest.MCPServerSecrets,
         projectConfig: String?,
+        projectPath: String = "",
+        claudeChoice: AgentMCPClaudeProjectChoice? = nil,
         target: AgentMCPTarget,
         processEnvironment: [String: String]
     ) -> SessionServers {
@@ -353,14 +487,18 @@ public enum AgentMCPServers {
                 headers: secret.headers
             ))
         }
-        for entry in entries(fromConfigJSON: projectConfig ?? "") {
+        // A project's servers run only once the user (or Claude Code, for this project) allowed
+        // them: a cloned repository's `.mcp.json` can start any command.
+        let project = approvedProjectEntries(entries(fromConfigJSON: projectConfig ?? ""), projectPath: projectPath,
+                                             settings: settings, claudeChoice: claudeChoice)
+        for entry in project.allowed {
             if let index = ordered.firstIndex(where: { $0.name == entry.name }) {
                 ordered[index] = entry
             } else {
                 ordered.append(entry)
             }
         }
-        var result = SessionServers()
+        var result = SessionServers(pendingApproval: project.pending)
         for entry in ordered {
             let fill = { (text: String) in expand(text, environment: processEnvironment) }
             switch entry.transport {
@@ -400,6 +538,9 @@ public enum AgentMCPServers {
             settings: settings,
             secrets: { secrets.mcpSecrets(for: $0) },
             projectConfig: environment.fileExists(projectPath) ? environment.readFile(projectPath) : nil,
+            projectPath: workingDirectory,
+            claudeChoice: claudeProjectChoice(fromConfigJSON: environment.readFile(claudeUserConfigPath(home: environment.home)),
+                                              projectPath: workingDirectory),
             target: target,
             processEnvironment: environment.processEnvironment
         )
