@@ -119,6 +119,14 @@ case "${cmd}" in
                     echo "${FAKE_GET_VALUE:-10}"
                     exit 0
                     ;;
+                fail)
+                    echo 'gh: Internal Server Error (HTTP 500)' >&2
+                    exit 1
+                    ;;
+                invalid)
+                    echo "${FAKE_GET_VALUE:-null}"
+                    exit 0
+                    ;;
                 *)
                     echo "unknown FAKE_GET_MODE=${FAKE_GET_MODE:-}" >&2
                     exit 98
@@ -156,6 +164,23 @@ assert_no_var_set() {
 	fi
 }
 
+assert_var_set() {
+	local expected="$1"
+	local var_lines want got_var
+	if [ ! -s "${var_log}" ]; then
+		fail "expected variable set to ${expected}, got no variable set"
+	fi
+	var_lines="$(wc -l <"${var_log}" | tr -d ' ')"
+	if [ "${var_lines}" -ne 1 ]; then
+		fail "expected exactly 1 variable set call, got ${var_lines}: $(cat "${var_log}")"
+	fi
+	want="VARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body ${expected}"
+	got_var="$(<"${var_log}")"
+	if [ "${got_var}" != "${want}" ]; then
+		fail "got variable set '${got_var}', want '${want}'"
+	fi
+}
+
 run_case() {
 	local limit_file="$1"
 	GH="${fake_gh}" \
@@ -173,28 +198,64 @@ case "${case_name}" in
 put_402)
 	printf '15\n' >"${limit_file}"
 	export FAKE_PUT_MODE=402
+	export FAKE_GET_MODE=mismatch
+	export FAKE_GET_VALUE=10
 	if run_case "${limit_file}"; then
 		fail "expected non-zero exit on 402"
 	fi
 	grep -q '402' "${case_dir}/stderr" || fail "stderr missing 402: $(cat "${case_dir}/stderr")"
 	grep -q 'Payment required' "${case_dir}/stderr" || fail "stderr missing payment message: $(cat "${case_dir}/stderr")"
 	grep -q '^PUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}$' "${call_log}" || fail "expected PUT call, got: $(cat "${call_log}")"
-	if grep -q '^GET ' "${call_log}"; then
-		fail "unexpected GET call after PUT 402"
+	get_count="$(grep -c '^GET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit$' "${call_log}" || true)"
+	if [ "${get_count}" -ne 1 ]; then
+		fail "expected exactly 1 GET call after PUT 402, got ${get_count}: $(cat "${call_log}")"
 	fi
-	assert_no_var_set
+	assert_var_set 10
 	;;
 put_403)
 	printf '15\n' >"${limit_file}"
 	export FAKE_PUT_MODE=403
+	export FAKE_GET_MODE=mismatch
+	export FAKE_GET_VALUE=10
 	if run_case "${limit_file}"; then
 		fail "expected non-zero exit on 403"
 	fi
 	grep -q '403' "${case_dir}/stderr" || fail "stderr missing 403: $(cat "${case_dir}/stderr")"
 	grep -q '^PUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}$' "${call_log}" || fail "expected PUT call, got: $(cat "${call_log}")"
-	if grep -q '^GET ' "${call_log}"; then
-		fail "unexpected GET call after PUT 403"
+	get_count="$(grep -c '^GET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit$' "${call_log}" || true)"
+	if [ "${get_count}" -ne 1 ]; then
+		fail "expected exactly 1 GET call after PUT 403, got ${get_count}: $(cat "${call_log}")"
 	fi
+	assert_var_set 10
+	;;
+put_refused_live_get_fails)
+	printf '15\n' >"${limit_file}"
+	export FAKE_PUT_MODE=402
+	export FAKE_GET_MODE=fail
+	if run_case "${limit_file}"; then
+		fail "expected non-zero exit when PUT 402 and GET fails"
+	fi
+	grep -q '^PUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}$' "${call_log}" || fail "expected PUT call, got: $(cat "${call_log}")"
+	get_count="$(grep -c '^GET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit$' "${call_log}" || true)"
+	if [ "${get_count}" -ne 1 ]; then
+		fail "expected exactly 1 GET call when GET fails, got ${get_count}: $(cat "${call_log}")"
+	fi
+	grep -q 'unchanged' "${case_dir}/stderr" || fail "stderr missing unchanged message: $(cat "${case_dir}/stderr")"
+	assert_no_var_set
+
+	rm -f "${call_log}" "${var_log}"
+	export FAKE_PUT_MODE=402
+	export FAKE_GET_MODE=invalid
+	export FAKE_GET_VALUE=null
+	if run_case "${limit_file}"; then
+		fail "expected non-zero exit when PUT 402 and GET returns invalid"
+	fi
+	grep -q '^PUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}$' "${call_log}" || fail "expected PUT call, got: $(cat "${call_log}")"
+	get_count="$(grep -c '^GET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit$' "${call_log}" || true)"
+	if [ "${get_count}" -ne 1 ]; then
+		fail "expected exactly 1 GET call when GET returns invalid, got ${get_count}: $(cat "${call_log}")"
+	fi
+	grep -q 'unchanged' "${case_dir}/stderr" || fail "stderr missing unchanged message: $(cat "${case_dir}/stderr")"
 	assert_no_var_set
 	;;
 readback_timeout)
@@ -209,7 +270,7 @@ readback_timeout)
 	fi
 	grep -q '^PUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}$' "${call_log}" || fail "expected PUT call"
 	grep -q '^GET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit$' "${call_log}" || fail "expected GET call"
-	assert_no_var_set
+	assert_var_set 10
 	;;
 invalid_file)
 	export FAKE_PUT_MODE=ok

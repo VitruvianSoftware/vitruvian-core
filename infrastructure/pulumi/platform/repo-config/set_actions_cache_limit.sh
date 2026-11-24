@@ -55,46 +55,67 @@ if [[ ! "${ACTIONS_CACHE_LIMIT_POLL_INTERVAL_SECONDS}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 put_body="$(printf '{"max_cache_size_gb":%s}' "${limit_gb}")"
+put_failed=0
 if ! put_out="$(printf '%s' "${put_body}" | "$GH" api --method PUT \
 	-H "Accept: application/vnd.github+json" \
 	-H "X-GitHub-Api-Version: 2022-11-28" \
 	"repos/${REPO}/actions/cache/storage-limit" \
 	--input - 2>&1)"; then
 	echo "::error::PUT repos/${REPO}/actions/cache/storage-limit failed: ${put_out}" >&2
-	exit 1
+	put_failed=1
 fi
 
-deadline=$((SECONDS + ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS))
-confirmed=0
-got=""
-while true; do
-	if got="$("$GH" api \
-		-H "Accept: application/vnd.github+json" \
-		-H "X-GitHub-Api-Version: 2022-11-28" \
-		"repos/${REPO}/actions/cache/storage-limit" \
-		--jq '.max_cache_size_gb')" && [ "${got}" = "${limit_gb}" ]; then
-		confirmed=1
-		break
-	fi
-	now="$SECONDS"
-	if [ "${now}" -ge "${deadline}" ]; then
-		break
-	fi
-	remaining=$((deadline - now))
-	sleep_for="${ACTIONS_CACHE_LIMIT_POLL_INTERVAL_SECONDS}"
-	if [ "${sleep_for}" -gt "${remaining}" ]; then
-		sleep_for="${remaining}"
-	fi
-	sleep "${sleep_for}"
-done
+if [ "${put_failed}" -eq 0 ]; then
+	deadline=$((SECONDS + ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS))
+	confirmed=0
+	got=""
+	while true; do
+		if got="$("$GH" api \
+			-H "Accept: application/vnd.github+json" \
+			-H "X-GitHub-Api-Version: 2022-11-28" \
+			"repos/${REPO}/actions/cache/storage-limit" \
+			--jq '.max_cache_size_gb')" && [ "${got}" = "${limit_gb}" ]; then
+			confirmed=1
+			break
+		fi
+		now="$SECONDS"
+		if [ "${now}" -ge "${deadline}" ]; then
+			break
+		fi
+		remaining=$((deadline - now))
+		sleep_for="${ACTIONS_CACHE_LIMIT_POLL_INTERVAL_SECONDS}"
+		if [ "${sleep_for}" -gt "${remaining}" ]; then
+			sleep_for="${remaining}"
+		fi
+		sleep "${sleep_for}"
+	done
 
-if [ "${confirmed}" -eq 1 ]; then
-	"$GH" variable set ACTIONS_CACHE_LIMIT_CONFIRMED_GB \
+	if [ "${confirmed}" -eq 1 ]; then
+		"$GH" variable set ACTIONS_CACHE_LIMIT_CONFIRMED_GB \
+			--repo "${REPO}" \
+			--body "${limit_gb}"
+		echo "Actions cache storage limit confirmed for ${REPO}: ${limit_gb} GB"
+		exit 0
+	fi
+
+	echo "::error::Actions cache storage limit for ${REPO} is '${got}', want '${limit_gb}' after ${ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS}s" >&2
+fi
+
+live_gb=""
+if live_gb="$("$GH" api \
+	-H "Accept: application/vnd.github+json" \
+	-H "X-GitHub-Api-Version: 2022-11-28" \
+	"repos/${REPO}/actions/cache/storage-limit" \
+	--jq '.max_cache_size_gb' 2>/dev/null)" && [[ -n "${live_gb}" && "${live_gb}" != *$'\n'* && "${live_gb}" =~ ^[1-9][0-9]*$ ]]; then
+	if "$GH" variable set ACTIONS_CACHE_LIMIT_CONFIRMED_GB \
 		--repo "${REPO}" \
-		--body "${limit_gb}"
-	echo "Actions cache storage limit confirmed for ${REPO}: ${limit_gb} GB"
-	exit 0
+		--body "${live_gb}"; then
+		echo "Reconciled ACTIONS_CACHE_LIMIT_CONFIRMED_GB for ${REPO} to live limit: ${live_gb} GB" >&2
+	else
+		echo "::warning::Failed to update ACTIONS_CACHE_LIMIT_CONFIRMED_GB to live limit ${live_gb} GB for ${REPO}" >&2
+	fi
+else
+	echo "Live Actions cache storage limit unavailable for ${REPO} (got '${live_gb}'); leaving ACTIONS_CACHE_LIMIT_CONFIRMED_GB unchanged" >&2
 fi
 
-echo "::error::Actions cache storage limit for ${REPO} is '${got}', want '${limit_gb}' after ${ACTIONS_CACHE_LIMIT_TIMEOUT_SECONDS}s" >&2
 exit 1
