@@ -1093,7 +1093,8 @@ struct StepMeta {
     name: Option<String>,
     continue_on_error: Option<String>,
     runs_capacity_guard: bool,
-    job_index: usize,
+    runs_prune: bool,
+    warm_mode: Option<String>,
 }
 
 /// Every step's `uses:`, `if:`, `with.key:`, `name:`, and `continue-on-error:`
@@ -1101,7 +1102,6 @@ struct StepMeta {
 fn composite_steps(content: &str) -> Vec<StepMeta> {
     let mut steps: Vec<StepMeta> = Vec::new();
     let mut step_indent: Option<usize> = None;
-    let mut job_index: usize = 0;
     for raw in content.lines() {
         let line = raw.trim_end_matches('\r');
         let s = strip(line);
@@ -1122,13 +1122,13 @@ fn composite_steps(content: &str) -> Vec<StepMeta> {
                     || rest.starts_with("continue-on-error:")
                 {
                     step_indent = Some(ind);
-                    steps.push(StepMeta {
-                        job_index,
-                        ..StepMeta::default()
-                    });
+                    steps.push(StepMeta::default());
                     let last = steps.last_mut().unwrap();
                     if rest.contains("cache_capacity_guard.py") {
                         last.runs_capacity_guard = true;
+                    }
+                    if rest.contains("cache_prune.py") {
+                        last.runs_prune = true;
                     }
                     apply_step_key(last, rest);
                     continue;
@@ -1140,14 +1140,16 @@ fn composite_steps(content: &str) -> Vec<StepMeta> {
                 if s.contains("cache_capacity_guard.py") {
                     last.runs_capacity_guard = true;
                 }
+                if s.contains("cache_prune.py") {
+                    last.runs_prune = true;
+                }
                 if ind == si + 2 {
                     apply_step_key(last, s);
-                } else if ind == si + 4 && s.starts_with("key:") {
+                } else if ind == si + 4 && (s.starts_with("key:") || s.starts_with("mode:")) {
                     apply_step_key(last, s);
                 }
             } else if ind <= si && !s.starts_with("- ") {
                 step_indent = None;
-                job_index += 1;
             }
         }
     }
@@ -1161,6 +1163,8 @@ fn apply_step_key(step: &mut StepMeta, kv: &str) {
         step.if_expr = Some(v.split(" #").next().unwrap_or("").trim().to_string());
     } else if let Some(v) = kv.strip_prefix("key:") {
         step.key = Some(v.trim().to_string());
+    } else if let Some(v) = kv.strip_prefix("mode:") {
+        step.warm_mode = Some(unquote(v.split(" #").next().unwrap_or("")).to_string());
     } else if let Some(v) = kv.strip_prefix("name:") {
         step.name = Some(unquote(v.split(" #").next().unwrap_or("")).to_string());
     } else if let Some(v) = kv.strip_prefix("continue-on-error:") {
@@ -1168,11 +1172,203 @@ fn apply_step_key(step: &mut StepMeta, kv: &str) {
     }
 }
 
-/// Validate `.github/workflows/bazel-repo-cache.yaml` as the sole writer of
-/// the Bazel repository cache.
+fn has_top_level_or(expr: &str) -> bool {
+    let bytes = expr.as_bytes();
+    let mut depth = 0i32;
+    let mut in_single = false;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' => in_single = !in_single,
+            b'(' if !in_single => depth += 1,
+            b')' if !in_single => depth -= 1,
+            b'|' if !in_single && depth == 0 && i + 1 < bytes.len() && bytes[i + 1] == b'|' => {
+                return true;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    false
+}
+
+/// True when a save job's `if:` requires `github.ref == 'refs/heads/main'`
+/// without a top-level `||` escape hatch.
+pub(crate) fn save_job_if_guarded(expr: &str) -> bool {
+    let norm: String = expr
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace('"', "'");
+    let bare = norm.trim_start_matches("${{").trim_end_matches("}}").trim();
+    (bare.contains("github.ref == 'refs/heads/main'")
+        || bare.contains("'refs/heads/main' == github.ref"))
+        && !has_top_level_or(bare)
+}
+
+#[derive(Debug, Default)]
+struct WarmJobInfo {
+    id: String,
+    if_expr: Option<String>,
+    permissions: Vec<(String, String)>,
+    steps: Vec<StepMeta>,
+}
+
+struct ParsedWarmWorkflow {
+    workflow_permissions: Vec<(String, String)>,
+    jobs: Vec<WarmJobInfo>,
+}
+
+fn parse_perm_kv(s: &str) -> Option<(String, String)> {
+    let (k, v) = s.split_once(':')?;
+    let key = k.trim().to_string();
+    let val = v.split('#').next().unwrap_or("").trim().to_string();
+    if key.is_empty() || val.is_empty() {
+        return None;
+    }
+    Some((key, val))
+}
+
+fn parse_repo_cache_workflow(content: &str) -> ParsedWarmWorkflow {
+    let mut workflow_permissions = Vec::new();
+    let mut jobs = Vec::new();
+
+    let mut in_top_perms = false;
+    let mut in_jobs = false;
+    let mut current_job: Option<WarmJobInfo> = None;
+    let mut in_job_perms = false;
+    let mut in_job_steps = false;
+    let mut step_indent: Option<usize> = None;
+
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let ind = indent(line);
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+
+        if ind == 0 {
+            in_top_perms = false;
+            if let Some(j) = current_job.take() {
+                jobs.push(j);
+            }
+            in_jobs = false;
+            in_job_perms = false;
+            in_job_steps = false;
+            step_indent = None;
+
+            if s.starts_with("permissions:") {
+                if strip(&s["permissions:".len()..]).is_empty() {
+                    in_top_perms = true;
+                }
+            } else if s.starts_with("jobs:") && strip(&s["jobs:".len()..]).is_empty() {
+                in_jobs = true;
+            }
+            continue;
+        }
+
+        if in_top_perms {
+            if let Some(kv) = parse_perm_kv(s) {
+                workflow_permissions.push(kv);
+            }
+            continue;
+        }
+
+        if !in_jobs {
+            continue;
+        }
+
+        if ind == 2 && s.ends_with(':') {
+            if let Some(j) = current_job.take() {
+                jobs.push(j);
+            }
+            let id = s.trim_end_matches(':').trim().to_string();
+            current_job = Some(WarmJobInfo {
+                id,
+                ..WarmJobInfo::default()
+            });
+            in_job_perms = false;
+            in_job_steps = false;
+            step_indent = None;
+            continue;
+        }
+
+        let Some(job) = current_job.as_mut() else {
+            continue;
+        };
+
+        if ind == 4 {
+            in_job_perms = false;
+            in_job_steps = false;
+            step_indent = None;
+            if let Some(rest) = s.strip_prefix("if:") {
+                job.if_expr = Some(rest.split(" #").next().unwrap_or("").trim().to_string());
+            } else if s.starts_with("permissions:") && strip(&s["permissions:".len()..]).is_empty()
+            {
+                in_job_perms = true;
+            } else if s.starts_with("steps:") && strip(&s["steps:".len()..]).is_empty() {
+                in_job_steps = true;
+            }
+            continue;
+        }
+
+        if in_job_perms && ind >= 6 {
+            if let Some(kv) = parse_perm_kv(s) {
+                job.permissions.push(kv);
+            }
+            continue;
+        }
+
+        if in_job_steps && ind >= 6 {
+            if let Some(rest) = s.strip_prefix("- ") {
+                if step_indent.is_none() || step_indent == Some(ind) {
+                    step_indent = Some(ind);
+                    job.steps.push(StepMeta::default());
+                    let last = job.steps.last_mut().unwrap();
+                    if rest.contains("cache_capacity_guard.py") {
+                        last.runs_capacity_guard = true;
+                    }
+                    if rest.contains("cache_prune.py") {
+                        last.runs_prune = true;
+                    }
+                    apply_step_key(last, rest);
+                    continue;
+                }
+            }
+            if let (Some(si), Some(last)) = (step_indent, job.steps.last_mut()) {
+                if ind > si {
+                    if s.contains("cache_capacity_guard.py") {
+                        last.runs_capacity_guard = true;
+                    }
+                    if s.contains("cache_prune.py") {
+                        last.runs_prune = true;
+                    }
+                    if ind == si + 2 {
+                        apply_step_key(last, s);
+                    } else if ind == si + 4 && (s.starts_with("key:") || s.starts_with("mode:")) {
+                        apply_step_key(last, s);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(j) = current_job.take() {
+        jobs.push(j);
+    }
+
+    ParsedWarmWorkflow {
+        workflow_permissions,
+        jobs,
+    }
+}
+
+/// Validate `.github/workflows/bazel-repo-cache.yaml` split verify/save jobs,
+/// `actions: write` isolation, and `refs/heads/main` gating.
 pub(crate) fn repo_cache_warm_workflow_problems(content: &str) -> Vec<(String, String, String)> {
     let mut problems = Vec::new();
-    let steps = composite_steps(content);
+    let parsed = parse_repo_cache_workflow(content);
 
     for v in yaml_values_of(content, "cache-save") {
         if v != "false" {
@@ -1193,92 +1389,171 @@ pub(crate) fn repo_cache_warm_workflow_problems(content: &str) -> Vec<(String, S
         }
     }
 
-    let save_indices: Vec<usize> = steps
+    if parsed
+        .workflow_permissions
         .iter()
-        .enumerate()
-        .filter(|(_, s)| s.uses.starts_with("actions/cache/save@"))
-        .map(|(i, _)| i)
-        .collect();
-    if save_indices.len() < 2 {
+        .any(|(k, v)| k == "actions" && v == "write")
+    {
         problems.push((
-            format!("{} actions/cache/save step(s)", save_indices.len()),
-            "2 actions/cache/save steps (warm-linux and warm-macos) with -repository-full- key".to_string(),
-            "bazel-repo-cache.yaml must save the verified repository cache for both warm-linux and warm-macos".to_string(),
+            "workflow permissions actions: write".to_string(),
+            "workflow permissions actions: read".to_string(),
+            "top-level workflow permissions must never grant actions: write; only the main-only save jobs may hold actions: write".to_string(),
         ));
     }
-    for &idx in &save_indices {
-        let s = &steps[idx];
-        let if_ok = s.if_expr.as_deref().is_some_and(|e| {
-            e.contains("github.event_name != 'pull_request'") && e.contains("cache-hit != 'true'")
+
+    let mut save_jobs = 0usize;
+    let mut verify_jobs = 0usize;
+
+    for job in &parsed.jobs {
+        let has_save_step = job.steps.iter().any(|s| {
+            s.uses.starts_with("actions/cache/save@") || s.uses.starts_with("actions/cache@")
         });
-        if !if_ok {
-            problems.push((
-                format!("save if: {}", s.if_expr.as_deref().unwrap_or("unset")),
-                "if: github.event_name != 'pull_request' && ...cache-hit != 'true'".to_string(),
-                "pull_request runs must be verify-only and cache hits must never overwrite"
-                    .to_string(),
-            ));
+        let has_prune_step = job.steps.iter().any(|s| s.runs_prune);
+        let warm_modes: Vec<&str> = job
+            .steps
+            .iter()
+            .filter(|s| s.uses == "./.github/actions/bazel-repo-cache-warm")
+            .map(|s| s.warm_mode.as_deref().unwrap_or(""))
+            .collect();
+        let calls_warm_save = warm_modes.iter().any(|&m| m != "verify");
+        let is_save_job = has_save_step || has_prune_step || calls_warm_save;
+        let is_verify_job =
+            job.id.contains("verify") || (!calls_warm_save && warm_modes.contains(&"verify"));
+        let has_actions_write = job
+            .permissions
+            .iter()
+            .any(|(k, v)| k == "actions" && v == "write");
+
+        if is_save_job {
+            save_jobs += 1;
         }
-        if !s.key.as_deref().is_some_and(has_full_repo_hash_key) {
-            problems.push((
-                format!("save key: {}", s.key.as_deref().unwrap_or("unset")),
-                "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
-                "warm workflow must save under the `-repository-full-` key matching setup-bazel".to_string(),
-            ));
+        if is_verify_job {
+            verify_jobs += 1;
         }
-        let guard_ok = idx > 0 && {
-            let guard = &steps[idx - 1];
-            guard.job_index == s.job_index
-                && guard.name.as_deref() == Some("Check Actions cache capacity before saving")
-                && guard.runs_capacity_guard
-                && guard.continue_on_error.as_deref() != Some("true")
-                && guard.if_expr.as_deref().is_some_and(|e| {
-                    e.contains("github.event_name != 'pull_request'")
-                        && e.contains("cache-hit != 'true'")
-                })
-        };
-        if !guard_ok {
-            let found = if idx == 0 || steps[idx - 1].job_index != s.job_index {
-                "no preceding guard step in job".to_string()
-            } else {
-                let g = &steps[idx - 1];
-                format!(
-                    "preceding step {:?} (runs_guard={}, continue_on_error={:?}, if={:?})",
-                    g.name.as_deref().unwrap_or("<unnamed>"),
-                    g.runs_capacity_guard,
-                    g.continue_on_error,
-                    g.if_expr
-                )
-            };
+
+        if has_actions_write {
+            if is_verify_job {
+                problems.push((
+                    format!("{} permissions actions: write", job.id),
+                    "actions: read".to_string(),
+                    "verify jobs must never hold actions: write".to_string(),
+                ));
+            }
+            if !job.if_expr.as_deref().is_some_and(save_job_if_guarded) {
+                problems.push((
+                    format!(
+                        "{} if: {}",
+                        job.id,
+                        job.if_expr.as_deref().unwrap_or("unset")
+                    ),
+                    "if containing github.ref == 'refs/heads/main'".to_string(),
+                    "any job holding actions: write must be gated to refs/heads/main so PRs and branch dispatches never hold write power".to_string(),
+                ));
+            }
+        }
+
+        if is_save_job {
+            if !job.if_expr.as_deref().is_some_and(save_job_if_guarded) {
+                problems.push((
+                    format!(
+                        "{} if: {}",
+                        job.id,
+                        job.if_expr.as_deref().unwrap_or("unset")
+                    ),
+                    "if containing github.ref == 'refs/heads/main'".to_string(),
+                    "save and prune jobs must only run on refs/heads/main (never on pull_request or branch workflow_dispatch)".to_string(),
+                ));
+            }
+            let exact_save_perms = job.permissions.len() == 2
+                && job
+                    .permissions
+                    .iter()
+                    .any(|(k, v)| k == "actions" && v == "write")
+                && job
+                    .permissions
+                    .iter()
+                    .any(|(k, v)| k == "contents" && v == "read");
+            if !exact_save_perms {
+                problems.push((
+                    format!("{} permissions: {:?}", job.id, job.permissions),
+                    "contents: read, actions: write".to_string(),
+                    "save jobs must declare exact permissions contents: read and actions: write"
+                        .to_string(),
+                ));
+            }
+        }
+
+        if is_verify_job && (has_save_step || has_prune_step || calls_warm_save) {
             problems.push((
-                found,
-                "Check Actions cache capacity before saving (cache_capacity_guard.py) immediately before actions/cache/save".to_string(),
-                "every save step in bazel-repo-cache.yaml must be immediately preceded by the fail-safe capacity guard step".to_string(),
+                format!("{} saves or prunes caches", job.id),
+                "mode: verify without save or prune".to_string(),
+                "verify jobs must never save or delete caches".to_string(),
             ));
         }
     }
 
-    let lookup_steps: Vec<&StepMeta> = steps
-        .iter()
-        .filter(|s| s.uses.starts_with("actions/cache/restore@"))
-        .collect();
-    if lookup_steps.is_empty()
-        || !lookup_steps
-            .iter()
-            .all(|s| s.key.as_deref().is_some_and(has_full_repo_hash_key))
+    if save_jobs < 2 {
+        problems.push((
+            format!("{} save job(s)", save_jobs),
+            "2 save jobs (warm-linux-save and warm-macos-save)".to_string(),
+            "bazel-repo-cache.yaml must define main-only save jobs for both Linux and macOS"
+                .to_string(),
+        ));
+    }
+    if verify_jobs < 2 {
+        problems.push((
+            format!("{} verify job(s)", verify_jobs),
+            "2 verify jobs (warm-linux-verify and warm-macos-verify)".to_string(),
+            "bazel-repo-cache.yaml must define read-only verify jobs for both Linux and macOS"
+                .to_string(),
+        ));
+    }
+
+    problems
+}
+
+/// Validate `.github/actions/bazel-repo-cache-warm/action.yml` shared composite.
+pub(crate) fn repo_cache_warm_composite_problems(content: &str) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let steps = composite_steps(content);
+
+    if content
+        .lines()
+        .map(strip)
+        .any(|l| !l.starts_with('#') && l.starts_with("permissions:"))
     {
         problems.push((
-            "missing or mismatched lookup key".to_string(),
-            "actions/cache/restore lookup-only with -repository-full- key".to_string(),
-            "warm workflow must check for an existing exact `-repository-full-` entry before saving".to_string(),
+            "permissions: in composite".to_string(),
+            "no permissions block in composite".to_string(),
+            "composite actions must not declare permissions; permissions belong to the calling job"
+                .to_string(),
         ));
+    }
+
+    for v in yaml_values_of(content, "cache-save") {
+        if v != "false" {
+            problems.push((
+                format!("cache-save: {}", v),
+                "cache-save: false".to_string(),
+                "setup-bazel inside bazel-repo-cache-warm must not auto-save; only the verified actions/cache/save step may write".to_string(),
+            ));
+        }
+    }
+    for v in yaml_values_of(content, "repository-cache") {
+        if v != "false" {
+            problems.push((
+                format!("repository-cache: {}", v),
+                "repository-cache: false".to_string(),
+                "bazel-repo-cache-warm must start from an empty repository cache instead of restoring via setup-bazel".to_string(),
+            ));
+        }
     }
 
     if !content.contains("--repo_contents_cache=") {
         problems.push((
             "missing --repo_contents_cache=".to_string(),
             "--repo_contents_cache= outside REPO".to_string(),
-            "warm workflow must keep extracted contents outside the saved archive directory"
+            "warm composite must keep extracted contents outside the saved archive directory"
                 .to_string(),
         ));
     }
@@ -1286,16 +1561,137 @@ pub(crate) fn repo_cache_warm_workflow_problems(content: &str) -> Vec<(String, S
         problems.push((
             "missing --repository_disable_download".to_string(),
             "--repository_disable_download".to_string(),
-            "warm workflow must prove offline completeness before saving".to_string(),
+            "warm composite must prove offline completeness before saving".to_string(),
         ));
+    }
+
+    let lookup_steps: Vec<&StepMeta> = steps
+        .iter()
+        .filter(|s| s.uses.starts_with("actions/cache/restore@"))
+        .collect();
+    if lookup_steps.is_empty()
+        || !lookup_steps.iter().all(|s| {
+            s.key.as_deref().is_some_and(has_full_repo_hash_key)
+                && s.if_expr
+                    .as_deref()
+                    .is_some_and(|e| e.contains("inputs.mode == 'save'"))
+        })
+    {
+        problems.push((
+            "missing or unguarded lookup step".to_string(),
+            "actions/cache/restore lookup-only with inputs.mode == 'save' and -repository-full- key".to_string(),
+            "warm composite must check for an existing exact `-repository-full-` entry in save mode".to_string(),
+        ));
+    }
+
+    let save_indices: Vec<usize> = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.uses.starts_with("actions/cache/save@"))
+        .map(|(i, _)| i)
+        .collect();
+    if save_indices.len() != 1 {
+        problems.push((
+            format!("{} actions/cache/save step(s)", save_indices.len()),
+            "1 actions/cache/save step".to_string(),
+            "warm composite must contain one verified actions/cache/save step".to_string(),
+        ));
+        return problems;
+    }
+
+    let save_idx = save_indices[0];
+    let save_step = &steps[save_idx];
+    let save_if_ok = save_step.if_expr.as_deref().is_some_and(|e| {
+        e.contains("inputs.mode == 'save'")
+            && e.contains("cache-hit != 'true'")
+            && e.contains("allow_save == 'true'")
+    });
+    if !save_if_ok {
+        problems.push((
+            format!(
+                "save if: {}",
+                save_step.if_expr.as_deref().unwrap_or("unset")
+            ),
+            "if: inputs.mode == 'save' && ...cache-hit != 'true' && ...allow_save == 'true'"
+                .to_string(),
+            "save step must run only in save mode on a cache miss when capacity guard allows it"
+                .to_string(),
+        ));
+    }
+    if !save_step.key.as_deref().is_some_and(has_full_repo_hash_key) {
+        problems.push((
+            format!("save key: {}", save_step.key.as_deref().unwrap_or("unset")),
+            "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
+            "warm composite must save under the `-repository-full-` key matching setup-bazel"
+                .to_string(),
+        ));
+    }
+
+    let guard_ok = save_idx > 0 && {
+        let guard = &steps[save_idx - 1];
+        guard.name.as_deref() == Some("Check Actions cache capacity before saving")
+            && guard.runs_capacity_guard
+            && guard.continue_on_error.as_deref() != Some("true")
+            && guard.if_expr.as_deref().is_some_and(|e| {
+                e.contains("inputs.mode == 'save'") && e.contains("cache-hit != 'true'")
+            })
+    };
+    if !guard_ok {
+        problems.push((
+            "missing or misplaced capacity guard".to_string(),
+            "Check Actions cache capacity before saving (cache_capacity_guard.py) immediately before actions/cache/save".to_string(),
+            "actions/cache/save in bazel-repo-cache-warm must be immediately preceded by the capacity guard".to_string(),
+        ));
+    }
+
+    let prune_indices: Vec<usize> = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.runs_prune)
+        .map(|(i, _)| i)
+        .collect();
+    if prune_indices.len() != 1 {
+        problems.push((
+            format!("{} prune step(s)", prune_indices.len()),
+            "1 cache_prune.py step after actions/cache/save".to_string(),
+            "warm composite must confirm and prune superseded entries after saving".to_string(),
+        ));
+    } else {
+        let prune_idx = prune_indices[0];
+        let prune_step = &steps[prune_idx];
+        if prune_idx <= save_idx {
+            problems.push((
+                "prune runs before save".to_string(),
+                "prune step strictly after actions/cache/save".to_string(),
+                "superseded entries must never be deleted before the new entry is saved and confirmed".to_string(),
+            ));
+        }
+        let prune_if_ok = prune_step.if_expr.as_deref().is_some_and(|e| {
+            e.contains("inputs.mode == 'save'")
+                && e.contains("cache-hit != 'true'")
+                && e.contains("allow_save == 'true'")
+        });
+        if !prune_if_ok {
+            problems.push((
+                format!(
+                    "prune if: {}",
+                    prune_step.if_expr.as_deref().unwrap_or("unset")
+                ),
+                "if: inputs.mode == 'save' && ...cache-hit != 'true' && ...allow_save == 'true'"
+                    .to_string(),
+                "prune step must run only after an allowed save in save mode".to_string(),
+            ));
+        }
     }
 
     problems
 }
 
-/// Validate that any file OTHER than `.github/workflows/bazel-repo-cache.yaml`
-/// and `.github/actions/pins/action.yml` does not save the Bazel repository
-/// cache via `actions/cache/save` or `cache-save: != false`.
+/// Validate that any file OTHER than `.github/workflows/bazel-repo-cache.yaml`,
+/// `.github/actions/bazel-repo-cache-warm/action.yml`, and
+/// `.github/actions/pins/action.yml` does not save via `actions/cache`,
+/// `actions/cache/save`, or `cache-save: != false` (while `actions/cache/restore`
+/// remains allowed everywhere).
 pub(crate) fn unexpected_cache_save_problems(
     rel: &str,
     content: &str,
@@ -1314,21 +1710,45 @@ pub(crate) fn unexpected_cache_save_problems(
     let steps = composite_steps(content);
     let save_steps: Vec<&StepMeta> = steps
         .iter()
-        .filter(|s| s.uses.starts_with("actions/cache/save@"))
+        .filter(|s| {
+            s.uses.starts_with("actions/cache/save@") || s.uses.starts_with("actions/cache@")
+        })
         .collect();
     if !save_steps.is_empty() {
         // Generated presubmit.yaml saves the non-Bazel pipeline-rdeps-map JSON.
         let allowed_presubmit_rdeps = rel == ".github/workflows/presubmit.yaml"
             && save_steps.iter().all(|s| {
-                s.key
-                    .as_deref()
-                    .is_some_and(|k| k.starts_with("pipeline-rdeps-map-v1-"))
+                s.uses.starts_with("actions/cache/save@")
+                    && s.key
+                        .as_deref()
+                        .is_some_and(|k| k.starts_with("pipeline-rdeps-map-v1-"))
             });
-        if !allowed_presubmit_rdeps {
+        // LLVM toolchain extraction cache has its own MAY_SAVE conformance check (section 1a).
+        let allowed_llvm_composite = rel == ".github/actions/llvm-cache-restore/action.yml"
+            && save_steps
+                .iter()
+                .all(|s| s.uses.starts_with("actions/cache@"));
+        // ESP32 PlatformIO toolchain cache in vitruvian-deck workflows.
+        let allowed_platformio_cache = (rel == ".github/workflows/delivery-vitruvian-deck.yaml"
+            || rel == ".github/workflows/iot-vitruvian-deck.yaml")
+            && save_steps.iter().all(|s| {
+                s.uses.starts_with("actions/cache@")
+                    && s.key
+                        .as_deref()
+                        .is_some_and(|k| k.starts_with("platformio-"))
+            });
+        if !allowed_presubmit_rdeps && !allowed_llvm_composite && !allowed_platformio_cache {
+            let found_uses = save_steps
+                .iter()
+                .map(|s| s.uses.split('@').next().unwrap_or(&s.uses))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ");
             problems.push((
-                "actions/cache/save".to_string(),
+                found_uses,
                 "only in .github/workflows/bazel-repo-cache.yaml".to_string(),
-                "only bazel-repo-cache.yaml may call actions/cache/save; other workflows restore only".to_string(),
+                "only bazel-repo-cache.yaml (and its composite) may call actions/cache or actions/cache/save; other workflows must use actions/cache/restore".to_string(),
             ));
         }
     }
@@ -1467,7 +1887,7 @@ pub fn check_cache_save(ctx: &Context) {
             for (found, want, why) in repo_cache_warm_workflow_problems(&content) {
                 ctx.emit_fail(
                     "cachesave", warm_rel, &found, &want, &why,
-                    "keep bazel-repo-cache.yaml verify-only on pull_request, offline-verified, and keyed with -repository-full-",
+                    "split verify/save jobs, grant actions: write only to main save jobs, and call ./.github/actions/bazel-repo-cache-warm",
                 );
                 ok = false;
             }
@@ -1477,6 +1897,31 @@ pub fn check_cache_save(ctx: &Context) {
                 "cachesave", warm_rel, "missing", "verified warm workflow",
                 "the dedicated repository cache warm workflow is gone, so nothing writes -repository-full-",
                 "restore .github/workflows/bazel-repo-cache.yaml",
+            );
+            ok = false;
+        }
+    }
+
+    // 1c. .github/actions/bazel-repo-cache-warm/action.yml shares the warm/verify/save steps.
+    let warm_comp_rel = ".github/actions/bazel-repo-cache-warm/action.yml";
+    match fs::read_to_string(format!("{}/bazel-repo-cache-warm/action.yml", actions_dir)) {
+        Ok(content) => {
+            for (found, want, why) in repo_cache_warm_composite_problems(&content) {
+                ctx.emit_fail(
+                    "cachesave", warm_comp_rel, &found, &want, &why,
+                    "keep bazel-repo-cache-warm permission-free, offline-verified, capacity-guarded, and pruning only after confirmed save",
+                );
+                ok = false;
+            }
+        }
+        Err(_) => {
+            ctx.emit_fail(
+                "cachesave",
+                warm_comp_rel,
+                "missing",
+                "warm composite",
+                "the shared bazel-repo-cache-warm composite action is missing",
+                "restore .github/actions/bazel-repo-cache-warm/action.yml",
             );
             ok = false;
         }
@@ -1504,7 +1949,7 @@ pub fn check_cache_save(ctx: &Context) {
             Ok(c) => c,
             Err(_) => continue,
         };
-        if rel != warm_rel && uses_setup_bazel_directly(&content) {
+        if rel != warm_rel && rel != warm_comp_rel && uses_setup_bazel_directly(&content) {
             ctx.emit_fail(
                 "cachesave",
                 &rel,
@@ -1515,11 +1960,11 @@ pub fn check_cache_save(ctx: &Context) {
             );
             ok = false;
         }
-        if rel != warm_rel && rel != ".github/actions/pins/action.yml" {
+        if rel != warm_rel && rel != warm_comp_rel && rel != ".github/actions/pins/action.yml" {
             for (found, want, why) in unexpected_cache_save_problems(&rel, &content) {
                 ctx.emit_fail(
                     "cachesave", &rel, &found, &want, &why,
-                    "remove actions/cache/save and cache-save: true; only bazel-repo-cache.yaml saves the Bazel repository cache",
+                    "remove actions/cache, actions/cache/save, and cache-save: true; use actions/cache/restore",
                 );
                 ok = false;
             }
@@ -2266,57 +2711,100 @@ runs:
     }
 
     const WARM_WORKFLOW_GOOD: &str = "\
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-  warm-linux:
+  warm-linux-verify:
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - uses: bazel-contrib/setup-bazel@abc # 0.19.2
+      - uses: actions/checkout@abc
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          repository-cache: false
-          cache-save: false
-          bazelisk-cache: false
-      - run: bazel --output_base=\"$OB\" build --nobuild --repository_cache=\"$REPO\" --repo_contents_cache=\"$CONTENTS\" //...
-      - run: bazel --output_base=\"$OB2\" build --nobuild --repository_disable_download --repository_cache=\"$REPO\" --repo_contents_cache=\"$CONTENTS2\" //...
-      - id: cache-lookup
-        if: github.event_name != 'pull_request'
-        uses: actions/cache/restore@abc # v6
-        with:
-          lookup-only: true
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-linux-x64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-      - name: Check Actions cache capacity before saving
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          python3 .github/actions/setup-bazel/cache_capacity_guard.py
-      - if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@abc # v6
-        with:
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-linux-x64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-  warm-macos:
+          mode: verify
+          platform-os: linux
+          platform-arch: x64
+          targets: //...
+  warm-linux-save:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      actions: write
     steps:
-      - uses: bazel-contrib/setup-bazel@abc # 0.19.2
+      - uses: actions/checkout@abc
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          repository-cache: false
-          cache-save: false
-          bazelisk-cache: false
-      - id: cache-lookup
-        if: github.event_name != 'pull_request'
-        uses: actions/cache/restore@abc # v6
+          mode: save
+          platform-os: linux
+          platform-arch: x64
+          targets: //...
+  warm-macos-verify:
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@abc
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          lookup-only: true
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-darwin-arm64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-      - name: Check Actions cache capacity before saving
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          python3 .github/actions/setup-bazel/cache_capacity_guard.py
-      - if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@abc # v6
+          mode: verify
+          platform-os: darwin
+          platform-arch: arm64
+          targets: //apps/desktop/...
+  warm-macos-save:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@abc
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-darwin-arm64-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+          mode: save
+          platform-os: darwin
+          platform-arch: arm64
+          targets: //apps/desktop/...
+";
+
+    const WARM_COMPOSITE_GOOD: &str = "\
+runs:
+  using: composite
+  steps:
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.2
+      with:
+        repository-cache: false
+        cache-save: false
+        bazelisk-cache: false
+    - run: bazel --output_base=\"$OB\" build --nobuild --repository_cache=\"$REPO\" --repo_contents_cache=\"$CONTENTS\" //...
+    - run: bazel --output_base=\"$OB2\" build --nobuild --repository_disable_download --repository_cache=\"$REPO\" --repo_contents_cache=\"$CONTENTS2\" //...
+    - id: cache-lookup
+      if: inputs.mode == 'save'
+      uses: actions/cache/restore@abc # v6
+      with:
+        lookup-only: true
+        path: ${{ env.REPO }}
+        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+    - name: Check Actions cache capacity before saving
+      id: capacity-guard
+      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        python3 .github/actions/setup-bazel/cache_capacity_guard.py
+    - id: cache-save
+      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'
+      uses: actions/cache/save@abc # v6
+      with:
+        path: ${{ env.REPO }}
+        key: setup-bazel-1-${{ inputs.platform-os }}-${{ inputs.platform-arch }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+    - name: Confirm saved cache and prune superseded same-platform entries
+      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.cache-save.outcome == 'success'
+      shell: bash
+      run: |
+        python3 .github/actions/setup-bazel/cache_prune.py
 ";
 
     #[test]
@@ -2326,66 +2814,134 @@ jobs:
             Vec::new()
         );
 
-        let old_key = WARM_WORKFLOW_GOOD.replace("-repository-full-", "-repository-");
-        assert!(
-            repo_cache_warm_workflow_problems(&old_key)
-                .iter()
-                .any(|p| p.0.starts_with("save key:")),
-            "{:?}",
-            repo_cache_warm_workflow_problems(&old_key)
-        );
-
-        let pr_saves = WARM_WORKFLOW_GOOD.replace(
-            "if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'",
-            "if: steps.cache-lookup.outputs.cache-hit != 'true'",
-        );
-        assert!(repo_cache_warm_workflow_problems(&pr_saves)
+        let top_level_write = WARM_WORKFLOW_GOOD.replacen("  actions: read", "  actions: write", 1);
+        assert!(repo_cache_warm_workflow_problems(&top_level_write)
             .iter()
-            .any(|p| p.0.starts_with("save if:")));
+            .any(|p| p.0 == "workflow permissions actions: write"));
 
-        let no_offline = WARM_WORKFLOW_GOOD.replace("--repository_disable_download ", "");
-        assert!(repo_cache_warm_workflow_problems(&no_offline)
-            .iter()
-            .any(|p| p.0 == "missing --repository_disable_download"));
-
-        let setup_saves = WARM_WORKFLOW_GOOD.replace("cache-save: false", "cache-save: true");
-        assert!(repo_cache_warm_workflow_problems(&setup_saves)
-            .iter()
-            .any(|p| p.0 == "cache-save: true"));
-
-        let no_guard = WARM_WORKFLOW_GOOD.replacen(
-            "      - name: Check Actions cache capacity before saving\n        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'\n        shell: bash\n        run: |\n          python3 .github/actions/setup-bazel/cache_capacity_guard.py\n",
-            "",
+        let branch_dispatch_saves = WARM_WORKFLOW_GOOD.replacen(
+            "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+            "if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
             1,
         );
-        assert!(repo_cache_warm_workflow_problems(&no_guard)
+        assert!(repo_cache_warm_workflow_problems(&branch_dispatch_saves)
             .iter()
-            .any(|p| p.1.contains("Check Actions cache capacity before saving")));
+            .any(|p| p.0.starts_with("warm-linux-save if:")));
 
-        let continue_guard = WARM_WORKFLOW_GOOD.replacen(
-            "        shell: bash",
-            "        continue-on-error: true\n        shell: bash",
+        let or_bypass = WARM_WORKFLOW_GOOD.replacen(
+            "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+            "if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'",
             1,
         );
-        assert!(repo_cache_warm_workflow_problems(&continue_guard)
+        assert!(repo_cache_warm_workflow_problems(&or_bypass)
             .iter()
-            .any(|p| p.1.contains("Check Actions cache capacity before saving")));
+            .any(|p| p.0.starts_with("warm-linux-save if:")));
 
-        let wrong_script = WARM_WORKFLOW_GOOD.replacen("cache_capacity_guard.py", "echo ok", 1);
-        assert!(repo_cache_warm_workflow_problems(&wrong_script)
+        let save_without_write = WARM_WORKFLOW_GOOD.replacen(
+            "  warm-linux-save:\n    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')\n    permissions:\n      contents: read\n      actions: write",
+            "  warm-linux-save:\n    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')\n    permissions:\n      contents: read\n      actions: read",
+            1,
+        );
+        assert!(repo_cache_warm_workflow_problems(&save_without_write)
             .iter()
-            .any(|p| p.1.contains("Check Actions cache capacity before saving")));
+            .any(|p| p.0.starts_with("warm-linux-save permissions:")));
+
+        let verify_with_write = WARM_WORKFLOW_GOOD.replacen(
+            "  warm-linux-verify:\n    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'\n    permissions:\n      contents: read\n      actions: read",
+            "  warm-linux-verify:\n    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'\n    permissions:\n      contents: read\n      actions: write",
+            1,
+        );
+        assert!(repo_cache_warm_workflow_problems(&verify_with_write)
+            .iter()
+            .any(|p| p.0 == "warm-linux-verify permissions actions: write"));
+
+        let verify_runs_save =
+            WARM_WORKFLOW_GOOD.replacen("          mode: verify", "          mode: save", 1);
+        assert!(repo_cache_warm_workflow_problems(&verify_runs_save)
+            .iter()
+            .any(|p| p.0 == "warm-linux-verify saves or prunes caches"));
     }
 
     #[test]
-    fn unexpected_cache_save_rejects_saves_outside_warm_workflow() {
-        let rogue = "\
+    fn repo_cache_warm_composite_accepts_good_shape_and_rejects_drifts() {
+        assert_eq!(
+            repo_cache_warm_composite_problems(WARM_COMPOSITE_GOOD),
+            Vec::new()
+        );
+
+        let with_perms = format!("permissions:\n  actions: write\n{WARM_COMPOSITE_GOOD}");
+        assert!(repo_cache_warm_composite_problems(&with_perms)
+            .iter()
+            .any(|p| p.0 == "permissions: in composite"));
+
+        let old_key = WARM_COMPOSITE_GOOD.replace("-repository-full-", "-repository-");
+        assert!(repo_cache_warm_composite_problems(&old_key)
+            .iter()
+            .any(|p| p.0.starts_with("save key:")));
+
+        let pr_saves = WARM_COMPOSITE_GOOD.replace(
+            "if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'",
+            "if: steps.cache-lookup.outputs.cache-hit != 'true'",
+        );
+        assert!(repo_cache_warm_composite_problems(&pr_saves)
+            .iter()
+            .any(|p| p.0.starts_with("save if:")));
+
+        let no_offline = WARM_COMPOSITE_GOOD.replace("--repository_disable_download ", "");
+        assert!(repo_cache_warm_composite_problems(&no_offline)
+            .iter()
+            .any(|p| p.0 == "missing --repository_disable_download"));
+
+        let setup_saves = WARM_COMPOSITE_GOOD.replace("cache-save: false", "cache-save: true");
+        assert!(repo_cache_warm_composite_problems(&setup_saves)
+            .iter()
+            .any(|p| p.0 == "cache-save: true"));
+
+        let continue_guard = WARM_COMPOSITE_GOOD.replace(
+            "      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py",
+            "      continue-on-error: true\n      shell: bash\n      run: |\n        python3 .github/actions/setup-bazel/cache_capacity_guard.py",
+        );
+        assert!(repo_cache_warm_composite_problems(&continue_guard)
+            .iter()
+            .any(|p| p.0 == "missing or misplaced capacity guard"));
+
+        let prune_before_save = WARM_COMPOSITE_GOOD.replace(
+            "    - id: cache-save",
+            "    - name: Early prune\n      if: inputs.mode == 'save'\n      run: python3 .github/actions/setup-bazel/cache_prune.py\n    - id: cache-save",
+        );
+        assert!(repo_cache_warm_composite_problems(&prune_before_save)
+            .iter()
+            .any(|p| p.0.contains("prune")));
+    }
+
+    #[test]
+    fn unexpected_cache_save_rejects_actions_cache_and_save_outside_warm_workflow() {
+        let rogue_save = "\
     - uses: actions/cache/save@abc # v6
       with:
         path: ~/.cache/bazel-repo
         key: x
 ";
-        assert!(!unexpected_cache_save_problems(".github/workflows/ci.yaml", rogue).is_empty());
+        let rogue_rw = "\
+    - uses: actions/cache@abc # v6
+      with:
+        path: ~/.cache/bazel-repo
+        key: x
+";
+        let restore_only = "\
+    - uses: actions/cache/restore@abc # v6
+      with:
+        path: ~/.cache/bazel-repo
+        key: x
+";
+        assert!(
+            !unexpected_cache_save_problems(".github/workflows/ci.yaml", rogue_save).is_empty()
+        );
+        assert!(!unexpected_cache_save_problems(".github/workflows/ci.yaml", rogue_rw).is_empty());
+        assert_eq!(
+            unexpected_cache_save_problems(".github/workflows/ci.yaml", restore_only),
+            Vec::new()
+        );
         assert!(!unexpected_cache_save_problems(
             ".github/workflows/ci.yaml",
             "        cache-save: true\n"
@@ -2403,7 +2959,7 @@ jobs:
             unexpected_cache_save_problems(".github/workflows/presubmit.yaml", presubmit_ok),
             Vec::new()
         );
-        let presubmit_repo = format!("{presubmit_ok}{rogue}");
+        let presubmit_repo = format!("{presubmit_ok}{rogue_save}");
         assert!(!unexpected_cache_save_problems(
             ".github/workflows/presubmit.yaml",
             &presubmit_repo

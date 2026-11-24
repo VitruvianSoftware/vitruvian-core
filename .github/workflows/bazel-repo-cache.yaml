@@ -22,12 +22,9 @@ name: Bazel Repository Cache
 
 # The ONLY workflow that saves the Bazel repository download cache.
 #
-# Every other CI lane restores via ./.github/actions/setup-bazel (restore-only)
-# and reads the archive-only `...-repository-full-...` entries written here
-# after a clean-state offline completeness check (`--repository_disable_download`).
-# Separating `--repository_cache` (archives) from `--repo_contents_cache`
-# (extracted repos) ensures only archives are cached and legacy partial entries
-# (`...-repository-<hash>`) are never read.
+# Verify jobs run on pull_request and non-main branches with actions: read and
+# never save or delete. Save jobs hold actions: write and run ONLY on main
+# (push, schedule, or workflow_dispatch). Both share ./.github/actions/bazel-repo-cache-warm.
 
 on:
   push:
@@ -37,6 +34,7 @@ on:
       - "MODULE.bazel.lock"
       - ".bazelversion"
       - ".github/actions/setup-bazel/**"
+      - ".github/actions/bazel-repo-cache-warm/**"
       - ".github/workflows/bazel-repo-cache.yaml"
   pull_request:
     paths:
@@ -44,6 +42,7 @@ on:
       - "MODULE.bazel.lock"
       - ".bazelversion"
       - ".github/actions/setup-bazel/**"
+      - ".github/actions/bazel-repo-cache-warm/**"
       - ".github/workflows/bazel-repo-cache.yaml"
   schedule:
     # Daily, off the hour, to refresh evicted entries without overwriting hits.
@@ -55,923 +54,102 @@ permissions:
   actions: read
 
 jobs:
-  warm-linux:
-    name: warm-linux
+  warm-linux-verify:
+    name: warm-linux-verify
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-26.04
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
     concurrency:
-      group: bazel-repo-cache-linux-${{ github.ref }}
+      group: bazel-repo-cache-linux-verify-${{ github.ref }}
       cancel-in-progress: false
-    env:
-      MODE: ${{ github.event_name == 'pull_request' && 'verify' || 'save' }}
-      PLATFORM_OS: linux
-      PLATFORM_ARCH: x64
-      # Target list source: .github/workflows/periodic-full-sweep.yaml (bazel build //...,
-      # bazel test //...). ci.yaml's build-test runs //tools/ci:affected_targets
-      # (dynamic affected-target selection with a //... fallback), so the full-sweep
-      # pattern is the exact Linux CI build universe. No exclusions: hosted
-      # ubuntu-26.04 keeps $ANDROID_HOME (/usr/local/lib/android/sdk) intact, so
-      # Android targets analyze cleanly under //...
-      TARGETS: //...
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          extra-paths: |
-            /usr/share/swift
-            /usr/local/share/powershell
+          mode: verify
+          platform-os: linux
+          platform-arch: x64
+          # Target list source: .github/workflows/periodic-full-sweep.yaml (bazel build //...,
+          # bazel test //...). ci.yaml's build-test runs //tools/ci:affected_targets
+          # (dynamic affected-target selection with a //... fallback), so the full-sweep
+          # pattern is the exact Linux CI build universe.
+          targets: //...
 
-      - name: Install Bazelisk (no cache restore or save)
-        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
+  warm-linux-save:
+    name: warm-linux-save
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: bazel-repo-cache-linux-save-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository-cache: false
-          cache-save: false
-          bazelisk-cache: false
-          bazelrc: |
-            common --announce_rc --color=yes --curses=yes
-            common --show_progress_rate_limit=60 --show_timestamps
-            common --repo_env=GOPROXY=https://proxy.golang.org|direct
-
-      - name: Prepare clean warm directories
-        shell: bash
-        run: |
-          set -euo pipefail
-          REPO="${HOME}/.cache/bazel-repo"
-          CONTENTS="${RUNNER_TEMP}/warm-contents"
-          OB="${RUNNER_TEMP}/warm-ob"
-
-          if [ -e "$REPO" ]; then
-            if [ ! -d "$REPO" ] || [ -n "$(ls -A "$REPO")" ]; then
-              echo "::error::REPO directory '$REPO' already exists and is non-empty"
-              exit 1
-            fi
-          fi
-          if [ -e "$CONTENTS" ]; then
-            echo "::error::CONTENTS directory '$CONTENTS' already exists"
-            exit 1
-          fi
-          if [ -e "$OB" ]; then
-            echo "::error::OB directory '$OB' already exists"
-            exit 1
-          fi
-
-          mkdir -p "$REPO" "$CONTENTS" "$OB"
-          {
-            echo "REPO=$REPO"
-            echo "CONTENTS=$CONTENTS"
-            echo "OB=$OB"
-          } >> "$GITHUB_ENV"
-
-      - name: Online fill (download all external archives)
-        shell: bash
-        run: |
-          set -euo pipefail
-          IFS=' ' read -r -a targets <<< "$TARGETS"
-          if [ "$MODE" = "verify" ]; then
-            FILL_LOG="${RUNNER_TEMP}/online-fill.log"
-            echo "FILL_LOG=${FILL_LOG}" >> "$GITHUB_ENV"
-            bazel --output_base="$OB" build --nobuild \
-              --repository_cache="$REPO" \
-              --repo_contents_cache="$CONTENTS" \
-              "${targets[@]}" 2>&1 | tee "$FILL_LOG"
-          else
-            bazel --output_base="$OB" build --nobuild \
-              --repository_cache="$REPO" \
-              --repo_contents_cache="$CONTENTS" \
-              "${targets[@]}"
-          fi
-
-      - name: Measure archive vs contents sizes
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -e "${REPO}/contents" ]; then
-            echo "::error::${REPO}/contents exists; archive and contents caches were not kept separate"
-            exit 1
-          fi
-          if [ ! -d "${REPO}/content_addressable" ]; then
-            echo "::error::${REPO}/content_addressable is missing after online fill"
-            exit 1
-          fi
-
-          archive_size="$(du -sh "${REPO}/content_addressable" | cut -f1)"
-          archive_kb="$(du -sk "${REPO}/content_addressable" | cut -f1)"
-          archive_bytes=$((archive_kb * 1024))
-          contents_size="$(du -sh "$CONTENTS" | cut -f1)"
-          repo_total_size="$(du -sh "$REPO" | cut -f1)"
-
-          echo "Mode: ${MODE}"
-          echo "Archives (${REPO}/content_addressable): ${archive_size} (${archive_bytes} bytes)"
-          echo "Contents (${CONTENTS}): ${contents_size}"
-          echo "Total REPO (${REPO}): ${repo_total_size}"
-
-          {
-            echo "### Bazel Repository Cache (${PLATFORM_OS}-${PLATFORM_ARCH}, mode: ${MODE})"
-            echo ""
-            echo "| Store | Size |"
-            echo "|---|---|"
-            echo "| Archives (\`$REPO/content_addressable\`) | ${archive_size} (${archive_bytes} bytes) |"
-            echo "| Contents (\`$CONTENTS\`) | ${contents_size} |"
-            echo "| Total saved path (\`$REPO\`) | ${repo_total_size} |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          {
-            echo "ARCHIVE_SIZE=${archive_size}"
-            echo "ARCHIVE_BYTES=${archive_bytes}"
-          } >> "$GITHUB_ENV"
-
-      - name: Break down Linux archives (verify-only)
-        if: ${{ github.event_name == 'pull_request' && env.MODE == 'verify' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          breakdown_md="${RUNNER_TEMP}/linux-archive-breakdown.md"
-          BREAKDOWN_MD="$breakdown_md" python3 - <<'PY'
-          # Mapping method: combines (1) parsing the online-fill log (`Fetching repository @@...`
-          # and `Fetching https://...; <size>` lines after stripping ANSI/CR) with (2) exact
-          # CAS sha256 (and base64 SRI `sha256-...`) resolution against MODULE.bazel.lock,
-          # maven_install.json, workspace files, and `$OB/external/` (marker/rule metadata and
-          # `.bzl`/`.json` distribution tables such as llvm_distributions_data).
-          # Why: setup-bazel sets `--curses=yes --show_progress_rate_limit=60`, which truncates
-          # long URLs/repo names with `...` and omits fast downloads from terminal output, so
-          # sha256 cross-referencing recovers exact un-truncated origin URLs and repo names while
-          # the online-fill log validates and fills in any dynamic fetches.
-          import base64
-          import glob
-          import json
-          import os
-          import re
-          import urllib.parse
-
-          repo_dir = os.environ["REPO"]
-          cas_root = os.path.join(repo_dir, "content_addressable")
-          ob_dir = os.environ.get("OB", "")
-          fill_log = os.environ.get("FILL_LOG", "")
-          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
-          breakdown_path = os.environ["BREAKDOWN_MD"]
-
-          archives = []
-          for path in glob.glob(os.path.join(cas_root, "*", "*", "file")):
-              parts = path.split(os.sep)
-              digest = parts[-2]
-              algo = parts[-3]
-              try:
-                  size = os.path.getsize(path)
-              except OSError:
-                  continue
-              archives.append({"algo": algo, "sha": digest, "size": size, "path": path})
-
-          archives.sort(key=lambda x: x["size"], reverse=True)
-          cas_shas = {a["sha"] for a in archives if a["algo"] == "sha256"}
-
-          # sha -> list of (repo, url)
-          mappings = {}
-
-          def add_map(sha, repo_name, url):
-              if not sha:
-                  return
-              sha = sha.lower()
-              mappings.setdefault(sha, [])
-              pair = (repo_name or "", url or "")
-              if pair not in mappings[sha]:
-                  mappings[sha].append(pair)
-
-          def sri_to_hex(sri):
-              if isinstance(sri, str) and sri.startswith("sha256-"):
-                  try:
-                      return base64.b64decode(sri[7:]).hex()
-                  except Exception:
-                      return ""
-              return ""
-
-          # 1. MODULE.bazel.lock
-          if os.path.isfile("MODULE.bazel.lock"):
-              try:
-                  with open("MODULE.bazel.lock", "r", encoding="utf-8") as f:
-                      lock = json.load(f)
-                  for url, sha in lock.get("registryFileHashes", {}).items():
-                      if isinstance(sha, str):
-                          add_map(sha, "bcr", url)
-                  for ext_id, ext_data in lock.get("moduleExtensions", {}).items():
-                      if not isinstance(ext_data, dict):
-                          continue
-                      for _factors, fdata in ext_data.items():
-                          if not isinstance(fdata, dict):
-                              continue
-                          for rname, rspec in fdata.get("generatedRepoSpecs", {}).items():
-                              attrs = rspec.get("attributes", {})
-                              sha = attrs.get("sha256", "") or sri_to_hex(attrs.get("integrity", ""))
-                              urls = attrs.get("urls") or ([attrs["url"]] if "url" in attrs else [])
-                              repo_label = f"@@{ext_id}+{rname}"
-                              if urls:
-                                  for u in urls:
-                                      add_map(sha, repo_label, u)
-                              elif sha:
-                                  add_map(sha, repo_label, "")
-              except Exception as exc:
-                  print(f"Warning: failed reading MODULE.bazel.lock: {exc}")
-
-          # 2. maven_install.json
-          if os.path.isfile("maven_install.json"):
-              try:
-                  with open("maven_install.json", "r", encoding="utf-8") as f:
-                      mav = json.load(f)
-                  repos = mav.get("repositories", {})
-                  repo_urls = list(repos.keys()) if isinstance(repos, dict) else []
-                  default_maven = repo_urls[0] if repo_urls else "https://repo1.maven.org/maven2/"
-                  for coord, art in mav.get("artifacts", {}).items():
-                      shasums = art.get("shasums", {})
-                      ver = art.get("version", "")
-                      parts = coord.split(":")
-                      if len(parts) < 2 or not ver:
-                          continue
-                      group, artifact = parts[0], parts[1]
-                      gpath = group.replace(".", "/")
-                      for ext, sha in shasums.items():
-                          if not isinstance(sha, str) or len(sha) != 64:
-                              continue
-                          fname = f"{artifact}-{ver}.{ext}"
-                          base = default_maven.rstrip("/")
-                          for r_url, r_arts in (repos.items() if isinstance(repos, dict) else []):
-                              if isinstance(r_arts, list) and coord in r_arts:
-                                  base = r_url.rstrip("/")
-                                  break
-                          url = f"{base}/{gpath}/{artifact}/{ver}/{fname}"
-                          repo_label = "@@rules_jvm_external++maven+" + re.sub(r"[^A-Za-z0-9_]", "_", f"{group}_{artifact}_{ver}")
-                          add_map(sha, repo_label, url)
-              except Exception as exc:
-                  print(f"Warning: failed reading maven_install.json: {exc}")
-
-          # 3. Parse online-fill log
-          ansi_re = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-          log_entries = []  # list of (repo, url)
-          repo_to_log_urls = {}
-          if fill_log and os.path.isfile(fill_log):
-              current_repo = ""
-              with open(fill_log, "r", encoding="utf-8", errors="ignore") as f:
-                  for raw_line in f:
-                      for seg in raw_line.replace("\r", "\n").splitlines():
-                          line = ansi_re.sub("", seg).strip()
-                          m_repo = re.search(r"Fetching repository (@@\S+?)(?:;|$)", line)
-                          if m_repo:
-                              current_repo = m_repo.group(1)
-                              continue
-                          m_url = re.search(r"Fetching (https?://\S+?);", line)
-                          if m_url:
-                              u = m_url.group(1)
-                              log_entries.append((current_repo, u))
-                              if current_repo:
-                                  repo_to_log_urls.setdefault(current_repo, [])
-                                  if u not in repo_to_log_urls[current_repo]:
-                                      repo_to_log_urls[current_repo].append(u)
-
-          # 4. Scan $OB/external/ and workspace metadata for any remaining CAS sha256s
-          remaining_shas = cas_shas - set(mappings.keys())
-          if remaining_shas:
-              sri_lookup = {}
-              for s in remaining_shas:
-                  try:
-                      sri_lookup["sha256-" + base64.b64encode(bytes.fromhex(s)).decode("ascii")] = s
-                  except Exception:
-                      pass
-              url_re = re.compile(r"https?://[^\s\"'`,)\\>]+")
-
-              def scan_text_file(fpath, default_repo):
-                  try:
-                      if os.path.getsize(fpath) > 4 * 1024 * 1024:
-                          return
-                      with open(fpath, "r", encoding="utf-8", errors="ignore") as tf:
-                          txt = tf.read()
-                  except OSError:
-                      return
-                  matched = [s for s in remaining_shas if s in txt]
-                  for sri, s in sri_lookup.items():
-                      if sri in txt and s not in matched:
-                          matched.append(s)
-                  if not matched:
-                      return
-                  lines = txt.splitlines()
-                  for idx, ln in enumerate(lines):
-                      for s in matched:
-                          sri = "sha256-" + base64.b64encode(bytes.fromhex(s)).decode("ascii")
-                          if s in ln or sri in ln:
-                              win = "\n".join(lines[max(0, idx - 8):min(len(lines), idx + 9)])
-                              found_urls = url_re.findall(win)
-                              if found_urls:
-                                  for fu in found_urls:
-                                      add_map(s, default_repo, fu)
-                              else:
-                                  add_map(s, default_repo, "")
-
-              ext_dir = os.path.join(ob_dir, "external") if ob_dir else ""
-              if ext_dir and os.path.isdir(ext_dir):
-                  for root, _dirs, files in os.walk(ext_dir):
-                      rel = os.path.relpath(root, ext_dir)
-                      top = rel.split(os.sep)[0]
-                      repo_lbl = f"@@{top}" if top not in (".", "") else ""
-                      for fn in files:
-                          if fn.endswith((".bzl", ".json", ".marker", ".bazel", ".lock", ".txt", ".yaml", ".yml")):
-                              scan_text_file(os.path.join(root, fn), repo_lbl)
-
-              for wf in ["MODULE.bazel", "MODULE.bazel.lock", "Cargo.lock", "pnpm-lock.yaml"]:
-                  if os.path.isfile(wf):
-                      scan_text_file(wf, "workspace")
-              for pat in ["tools/**/*.bzl", "requirements/*.txt", "third_party/**/*.bzl"]:
-                  for wf in glob.glob(pat, recursive=True):
-                      scan_text_file(wf, wf)
-
-          # Cross-match any repo-only entry with parsed online-fill log URLs
-          for sha, pairs in list(mappings.items()):
-              for repo_name, url in list(pairs):
-                  if repo_name and not url and repo_name in repo_to_log_urls:
-                      for lu in repo_to_log_urls[repo_name]:
-                          add_map(sha, repo_name, lu)
-
-          def pick_best(sha):
-              pairs = mappings.get(sha, [])
-              if not pairs:
-                  return ("unknown", "")
-              # Prefer entries that have both non-empty repo and non-empty url
-              with_url = [(r, u) for (r, u) in pairs if u]
-              if with_url:
-                  with_both = [(r, u) for (r, u) in with_url if r and r != "workspace"]
-                  return with_both[0] if with_both else with_url[0]
-              return pairs[0]
-
-          def classify_lane(repo_name, url):
-              if repo_name == "unknown" and not url:
-                  return "unknown"
-              text = f"{repo_name} {url}".lower()
-              if any(k in text for k in ("rules_apple", "rules_swift", "xcode", "apple", "macos", "darwin", "osx")):
-                  return "apple-only"
-              if any(k in text for k in ("windows", "win32", "win64", "msvc", "mingw", "pc-windows")):
-                  return "windows-only"
-              if any(k in text for k in ("android", "ndk", "rules_android", "emulator", "androidx")):
-                  return "android-only"
-              if "sdk" in text and not any(k in text for k in ("go_sdk", "vitruvian-sdk", "vitruvian_sdk")):
-                  return "android-only"
-              return "all-linux"
-
-          def fmt_bytes(n):
-              for unit in ("B", "KiB", "MiB", "GiB"):
-                  if n < 1024.0 or unit == "GiB":
-                      return f"{n:.2f} {unit}" if unit != "B" else f"{n} B"
-                  n /= 1024.0
-
-          lane_totals = {k: [0, 0] for k in ("android-only", "apple-only", "windows-only", "all-linux", "unknown")}
-          total_all_bytes = 0
-          url_to_shas = {}
-          sha_to_urls = {}
-
-          for item in archives:
-              sha = item["sha"]
-              total_all_bytes += item["size"]
-              repo_name, url = pick_best(sha)
-              host = urllib.parse.urlparse(url).netloc if url else "unknown"
-              if not host:
-                  host = "unknown"
-              lane = classify_lane(repo_name or "unknown", url)
-              item["repo"] = repo_name or "unknown"
-              item["url"] = url
-              item["host"] = host
-              item["lane"] = lane
-              lane_totals[lane][0] += item["size"]
-              lane_totals[lane][1] += 1
-
-              # Collect all distinct URLs seen for this sha and all shas seen for each URL
-              urls_for_sha = sorted({u for (_r, u) in mappings.get(sha, []) if u})
-              if urls_for_sha:
-                  sha_to_urls[sha] = urls_for_sha
-                  for u in urls_for_sha:
-                      url_to_shas.setdefault(u, set()).add(sha)
-
-          dup_sha_multi_url = {s: us for s, us in sha_to_urls.items() if len(us) > 1}
-          dup_url_multi_sha = {u: sorted(ss) for u, ss in url_to_shas.items() if len(ss) > 1}
-
-          top25 = archives[:25]
-          top25_bytes = sum(x["size"] for x in top25)
-
-          lines = [
-              "",
-              "#### Linux archive breakdown (verify-only)",
-              "",
-              "_Note: `lane` is a name-based heuristic on repository name and origin URL._",
-              "",
-              "| # | Size (bytes) | Size | Repository | Origin host | Lane | SHA-256 |",
-              "|---:|---:|---:|---|---|---|---|",
-          ]
-          for idx, item in enumerate(top25, 1):
-              repo_disp = item["repo"].replace("|", "\\|")
-              host_disp = item["host"].replace("|", "\\|")
-              lines.append(
-                  f"| {idx} | {item['size']:,} | {fmt_bytes(item['size'])} | `{repo_disp}` | `{host_disp}` | `{item['lane']}` | `{item['sha'][:12]}` |"
-              )
-
-          lines.extend([
-              "",
-              "**Totals**",
-              "",
-              f"- Top 25 listed: **{top25_bytes:,} bytes** ({fmt_bytes(top25_bytes)})",
-              f"- All archives ({len(archives)} files): **{total_all_bytes:,} bytes** ({fmt_bytes(total_all_bytes)})",
-              "",
-              "| Lane (name-based) | Files | Bytes | Size |",
-              "|---|---:|---:|---:|",
-          ])
-          for lane_name in ("all-linux", "android-only", "apple-only", "windows-only", "unknown"):
-              b, c = lane_totals[lane_name]
-              lines.append(f"| `{lane_name}` | {c} | {b:,} | {fmt_bytes(b)} |")
-
-          lines.append("")
-          lines.append("**Duplicate origin/checksum check**")
-          lines.append("")
-          if not dup_sha_multi_url and not dup_url_multi_sha:
-              lines.append("- None detected.")
-          else:
-              for u, ss in sorted(dup_url_multi_sha.items()):
-                  lines.append(f"- Same origin URL with multiple sha256s: `{u}` -> `{', '.join(s[:12] for s in ss)}`")
-              for s, us in sorted(dup_sha_multi_url.items()):
-                  lines.append(f"- Same sha256 under multiple URLs: `{s[:12]}` -> {', '.join(f'`{u}`' for u in us)}")
-
-          report = "\n".join(lines) + "\n"
-          with open(summary_path, "a", encoding="utf-8") as sf:
-              sf.write(report)
-          with open(breakdown_path, "w", encoding="utf-8") as bf:
-              bf.write(report)
-          PY
-          cat "$breakdown_md"
-
-      - name: Verify offline completeness from a clean state
-        shell: bash
-        run: |
-          set -euo pipefail
-          OB2="${RUNNER_TEMP}/verify-ob"
-          CONTENTS2="${RUNNER_TEMP}/verify-contents"
-          if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
-            echo "::error::verify directories already exist ($OB2 / $CONTENTS2)"
-            exit 1
-          fi
-          mkdir -p "$OB2" "$CONTENTS2"
-          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-            if [ -e "$p" ] || [ -L "$p" ]; then
-              echo "::error::verify contents directory '$CONTENTS2' is not empty before bazel commands (found '${p##*/}')"
-              exit 1
-            fi
-          done
-
-          bazel --output_base="$OB" shutdown || true
-          rm -rf "$OB" "$CONTENTS"
-
-          got_repo="$(bazel --output_base="$OB2" info \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS2" \
-            repository_cache)"
-          if [ "$got_repo" != "$REPO" ]; then
-            echo "::error::bazel info repository_cache returned '$got_repo', expected '$REPO'"
-            exit 1
-          fi
-          canon="$(bazel --output_base="$OB2" canonicalize-flags --for_command=build -- \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS2")"
-          if ! grep -Fqx -- "--repository_cache=${REPO}" <<<"$canon"; then
-            echo "::error::canonicalized flags did not include --repository_cache=${REPO}"
-            exit 1
-          fi
-          if ! grep -Fqx -- "--repo_contents_cache=${CONTENTS2}" <<<"$canon"; then
-            echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
-            exit 1
-          fi
-          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-            [ -e "$p" ] || [ -L "$p" ] || continue
-            entry="${p##*/}"
-            case "$entry" in
-              gc_lock) ;;
-              *)
-                echo "::error::unexpected entry '$entry' in '$CONTENTS2' before offline check (only gc_lock is allowed)"
-                exit 1
-                ;;
-            esac
-          done
-
-          IFS=' ' read -r -a targets <<< "$TARGETS"
-          log_file="${RUNNER_TEMP}/verify-offline.log"
-          set +e
-          bazel --output_base="$OB2" build --nobuild --keep_going \
-            --repository_disable_download \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS2" \
-            "${targets[@]}" 2>&1 | tee "$log_file"
-          verify_rc="${PIPESTATUS[0]}"
-          set -e
-
-          if [ "$verify_rc" -ne 0 ]; then
-            {
-              echo ""
-              echo "#### Offline completeness check FAILED (exit ${verify_rc})"
-              echo ""
-              echo '```'
-              grep -E 'ERROR:|download.*disabled|no such package|Cannot find|not found in repository cache' "$log_file" || tail -n 100 "$log_file"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            bazel --output_base="$OB2" shutdown || true
-            rm -rf "$OB2" "$CONTENTS2"
-            exit "$verify_rc"
-          fi
-
-          if [ -e "${REPO}/contents" ]; then
-            echo "::error::${REPO}/contents was created during offline verification"
-            exit 1
-          fi
-          extracted_count=0
-          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-            [ -e "$p" ] || [ -L "$p" ] || continue
-            entry="${p##*/}"
-            case "$entry" in
-              gc_lock) ;;
-              *)
-                if [ -d "$p" ]; then
-                  extracted_count=$((extracted_count + 1))
-                fi
-                ;;
-            esac
-          done
-          if [ "$extracted_count" -eq 0 ]; then
-            echo "::error::verify contents directory '$CONTENTS2' has no extracted repos after offline build (only lock files or empty)"
-            exit 1
-          fi
-          echo "Offline build populated ${extracted_count} extracted repo content entries in ${CONTENTS2}."
-
-          bazel --output_base="$OB2" shutdown || true
-          rm -rf "$OB2" "$CONTENTS2"
-
-          # Control check: prove the offline completeness check can fail.
-          OB3="${RUNNER_TEMP}/control-ob"
-          EMPTY_REPO="${RUNNER_TEMP}/empty-repo"
-          EMPTY_CONTENTS="${RUNNER_TEMP}/empty-contents"
-          mkdir -p "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
-          set +e
-          bazel --output_base="$OB3" build --nobuild \
-            --repository_disable_download \
-            --repository_cache="$EMPTY_REPO" \
-            --repo_contents_cache="$EMPTY_CONTENTS" \
-            "${targets[@]}" >/dev/null 2>&1
-          control_rc=$?
-          set -e
-          bazel --output_base="$OB3" shutdown || true
-          rm -rf "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
-          if [ "$control_rc" -eq 0 ]; then
-            echo "::error::the completeness check is vacuous"
-            exit 1
-          fi
-
-          echo "Offline completeness verified (control check exited ${control_rc})."
-
-      - name: Check if complete repository cache already exists
-        id: cache-lookup
-        if: github.event_name != 'pull_request'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+          persist-credentials: false
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          lookup-only: true
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+          mode: save
+          platform-os: linux
+          platform-arch: x64
+          targets: //...
+          cache-limit-gb: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Write COMPLETE.json marker
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-        run: |
-          set -euo pipefail
-          if [ -e "${REPO}/contents" ]; then
-            echo "::error::refusing to write COMPLETE.json while ${REPO}/contents exists"
-            exit 1
-          fi
-          python3 - <<'PY'
-          import json
-          import os
-          from datetime import datetime, timezone
-
-          data = {
-              "lock_hash": os.environ["LOCK_HASH"],
-              "commit": os.environ["GITHUB_SHA"],
-              "platform": f"{os.environ['PLATFORM_OS']}-{os.environ['PLATFORM_ARCH']}",
-              "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "archive_size": os.environ["ARCHIVE_SIZE"],
-              "archive_bytes": int(os.environ["ARCHIVE_BYTES"]),
-          }
-          with open(os.path.join(os.environ["REPO"], "COMPLETE.json"), "w", encoding="utf-8") as f:
-              json.dump(data, f, indent=2)
-              f.write("\n")
-          PY
-
-      - name: Check Actions cache capacity before saving
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          python3 .github/actions/setup-bazel/cache_capacity_guard.py
-
-      - name: Save complete repository cache (archives only)
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-
-  warm-macos:
-    name: warm-macos
+  warm-macos-verify:
+    name: warm-macos-verify
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
     runs-on: xcode-27
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
     concurrency:
-      group: bazel-repo-cache-macos-${{ github.ref }}
+      group: bazel-repo-cache-macos-verify-${{ github.ref }}
       cancel-in-progress: false
-    env:
-      MODE: ${{ github.event_name == 'pull_request' && 'verify' || 'save' }}
-      PLATFORM_OS: darwin
-      PLATFORM_ARCH: arm64
-      # Target list source: .github/workflows/ci.yaml (macos-build job, lines 613-661,
-      # every target pattern passed to bazel build/test/run with --config=macos-app).
-      # No exclusions; every macOS CI target is included verbatim.
-      TARGETS: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Select the pinned Xcode
-        uses: ./.github/actions/select-xcode
-
-      - name: Install Bazelisk (no cache restore or save)
-        uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          repository-cache: false
-          cache-save: false
-          bazelisk-cache: false
-          bazelrc: |
-            common --announce_rc --color=yes --curses=yes
-            common --show_progress_rate_limit=60 --show_timestamps
-            common --repo_env=GOPROXY=https://proxy.golang.org|direct
+          mode: verify
+          platform-os: darwin
+          platform-arch: arm64
+          bazel-flags: --config=macos-app
+          # Target list source: .github/workflows/ci.yaml (macos-build job,
+          # every target pattern passed to bazel build/test/run with --config=macos-app).
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
 
-      - name: Prepare clean warm directories
-        shell: bash
-        run: |
-          set -euo pipefail
-          REPO="${HOME}/.cache/bazel-repo"
-          CONTENTS="${RUNNER_TEMP}/warm-contents"
-          OB="${RUNNER_TEMP}/warm-ob"
-
-          if [ -e "$REPO" ]; then
-            if [ ! -d "$REPO" ] || [ -n "$(ls -A "$REPO")" ]; then
-              echo "::error::REPO directory '$REPO' already exists and is non-empty"
-              exit 1
-            fi
-          fi
-          if [ -e "$CONTENTS" ]; then
-            echo "::error::CONTENTS directory '$CONTENTS' already exists"
-            exit 1
-          fi
-          if [ -e "$OB" ]; then
-            echo "::error::OB directory '$OB' already exists"
-            exit 1
-          fi
-
-          mkdir -p "$REPO" "$CONTENTS" "$OB"
-          {
-            echo "REPO=$REPO"
-            echo "CONTENTS=$CONTENTS"
-            echo "OB=$OB"
-          } >> "$GITHUB_ENV"
-
-      - name: Online fill (download all external archives)
-        shell: bash
-        run: |
-          set -euo pipefail
-          IFS=' ' read -r -a targets <<< "$TARGETS"
-          bazel --output_base="$OB" build --nobuild --config=macos-app \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS" \
-            "${targets[@]}"
-
-      - name: Measure archive vs contents sizes
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -e "${REPO}/contents" ]; then
-            echo "::error::${REPO}/contents exists; archive and contents caches were not kept separate"
-            exit 1
-          fi
-          if [ ! -d "${REPO}/content_addressable" ]; then
-            echo "::error::${REPO}/content_addressable is missing after online fill"
-            exit 1
-          fi
-
-          archive_size="$(du -sh "${REPO}/content_addressable" | cut -f1)"
-          archive_kb="$(du -sk "${REPO}/content_addressable" | cut -f1)"
-          archive_bytes=$((archive_kb * 1024))
-          contents_size="$(du -sh "$CONTENTS" | cut -f1)"
-          repo_total_size="$(du -sh "$REPO" | cut -f1)"
-
-          echo "Mode: ${MODE}"
-          echo "Archives (${REPO}/content_addressable): ${archive_size} (${archive_bytes} bytes)"
-          echo "Contents (${CONTENTS}): ${contents_size}"
-          echo "Total REPO (${REPO}): ${repo_total_size}"
-
-          {
-            echo "### Bazel Repository Cache (${PLATFORM_OS}-${PLATFORM_ARCH}, mode: ${MODE})"
-            echo ""
-            echo "| Store | Size |"
-            echo "|---|---|"
-            echo "| Archives (\`$REPO/content_addressable\`) | ${archive_size} (${archive_bytes} bytes) |"
-            echo "| Contents (\`$CONTENTS\`) | ${contents_size} |"
-            echo "| Total saved path (\`$REPO\`) | ${repo_total_size} |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          {
-            echo "ARCHIVE_SIZE=${archive_size}"
-            echo "ARCHIVE_BYTES=${archive_bytes}"
-          } >> "$GITHUB_ENV"
-
-      - name: Verify offline completeness from a clean state
-        shell: bash
-        run: |
-          set -euo pipefail
-          OB2="${RUNNER_TEMP}/verify-ob"
-          CONTENTS2="${RUNNER_TEMP}/verify-contents"
-          if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
-            echo "::error::verify directories already exist ($OB2 / $CONTENTS2)"
-            exit 1
-          fi
-          mkdir -p "$OB2" "$CONTENTS2"
-          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-            if [ -e "$p" ] || [ -L "$p" ]; then
-              echo "::error::verify contents directory '$CONTENTS2' is not empty before bazel commands (found '${p##*/}')"
-              exit 1
-            fi
-          done
-
-          bazel --output_base="$OB" shutdown || true
-          rm -rf "$OB" "$CONTENTS"
-
-          got_repo="$(bazel --output_base="$OB2" info \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS2" \
-            repository_cache)"
-          if [ "$got_repo" != "$REPO" ]; then
-            echo "::error::bazel info repository_cache returned '$got_repo', expected '$REPO'"
-            exit 1
-          fi
-          canon="$(bazel --output_base="$OB2" canonicalize-flags --for_command=build -- \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS2")"
-          if ! grep -Fqx -- "--repository_cache=${REPO}" <<<"$canon"; then
-            echo "::error::canonicalized flags did not include --repository_cache=${REPO}"
-            exit 1
-          fi
-          if ! grep -Fqx -- "--repo_contents_cache=${CONTENTS2}" <<<"$canon"; then
-            echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
-            exit 1
-          fi
-          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-            [ -e "$p" ] || [ -L "$p" ] || continue
-            entry="${p##*/}"
-            case "$entry" in
-              gc_lock) ;;
-              *)
-                echo "::error::unexpected entry '$entry' in '$CONTENTS2' before offline check (only gc_lock is allowed)"
-                exit 1
-                ;;
-            esac
-          done
-
-          IFS=' ' read -r -a targets <<< "$TARGETS"
-          log_file="${RUNNER_TEMP}/verify-offline.log"
-          set +e
-          bazel --output_base="$OB2" build --nobuild --keep_going --config=macos-app \
-            --repository_disable_download \
-            --repository_cache="$REPO" \
-            --repo_contents_cache="$CONTENTS2" \
-            "${targets[@]}" 2>&1 | tee "$log_file"
-          verify_rc="${PIPESTATUS[0]}"
-          set -e
-
-          if [ "$verify_rc" -ne 0 ]; then
-            {
-              echo ""
-              echo "#### Offline completeness check FAILED (exit ${verify_rc})"
-              echo ""
-              echo '```'
-              grep -E 'ERROR:|download.*disabled|no such package|Cannot find|not found in repository cache' "$log_file" || tail -n 100 "$log_file"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            bazel --output_base="$OB2" shutdown || true
-            rm -rf "$OB2" "$CONTENTS2"
-            exit "$verify_rc"
-          fi
-
-          if [ -e "${REPO}/contents" ]; then
-            echo "::error::${REPO}/contents was created during offline verification"
-            exit 1
-          fi
-          extracted_count=0
-          for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
-            [ -e "$p" ] || [ -L "$p" ] || continue
-            entry="${p##*/}"
-            case "$entry" in
-              gc_lock) ;;
-              *)
-                if [ -d "$p" ]; then
-                  extracted_count=$((extracted_count + 1))
-                fi
-                ;;
-            esac
-          done
-          if [ "$extracted_count" -eq 0 ]; then
-            echo "::error::verify contents directory '$CONTENTS2' has no extracted repos after offline build (only lock files or empty)"
-            exit 1
-          fi
-          echo "Offline build populated ${extracted_count} extracted repo content entries in ${CONTENTS2}."
-
-          bazel --output_base="$OB2" shutdown || true
-          rm -rf "$OB2" "$CONTENTS2"
-
-          # Control check: prove the offline completeness check can fail.
-          OB3="${RUNNER_TEMP}/control-ob"
-          EMPTY_REPO="${RUNNER_TEMP}/empty-repo"
-          EMPTY_CONTENTS="${RUNNER_TEMP}/empty-contents"
-          mkdir -p "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
-          set +e
-          bazel --output_base="$OB3" build --nobuild --config=macos-app \
-            --repository_disable_download \
-            --repository_cache="$EMPTY_REPO" \
-            --repo_contents_cache="$EMPTY_CONTENTS" \
-            "${targets[@]}" >/dev/null 2>&1
-          control_rc=$?
-          set -e
-          bazel --output_base="$OB3" shutdown || true
-          rm -rf "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
-          if [ "$control_rc" -eq 0 ]; then
-            echo "::error::the completeness check is vacuous"
-            exit 1
-          fi
-
-          echo "Offline completeness verified (control check exited ${control_rc})."
-
-      - name: Check if complete repository cache already exists
-        id: cache-lookup
-        if: github.event_name != 'pull_request'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+  warm-macos-save:
+    name: warm-macos-save
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: xcode-27
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: bazel-repo-cache-macos-save-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          lookup-only: true
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-
-      - name: Write COMPLETE.json marker
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          LOCK_HASH: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
-        run: |
-          set -euo pipefail
-          if [ -e "${REPO}/contents" ]; then
-            echo "::error::refusing to write COMPLETE.json while ${REPO}/contents exists"
-            exit 1
-          fi
-          python3 - <<'PY'
-          import json
-          import os
-          from datetime import datetime, timezone
-
-          data = {
-              "lock_hash": os.environ["LOCK_HASH"],
-              "commit": os.environ["GITHUB_SHA"],
-              "platform": f"{os.environ['PLATFORM_OS']}-{os.environ['PLATFORM_ARCH']}",
-              "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "archive_size": os.environ["ARCHIVE_SIZE"],
-              "archive_bytes": int(os.environ["ARCHIVE_BYTES"]),
-          }
-          with open(os.path.join(os.environ["REPO"], "COMPLETE.json"), "w", encoding="utf-8") as f:
-              json.dump(data, f, indent=2)
-              f.write("\n")
-          PY
-
-      - name: Check Actions cache capacity before saving
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          python3 .github/actions/setup-bazel/cache_capacity_guard.py
-
-      - name: Save complete repository cache (archives only)
-        if: github.event_name != 'pull_request' && steps.cache-lookup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+          persist-credentials: false
+      - uses: ./.github/actions/bazel-repo-cache-warm
         with:
-          path: ${{ env.REPO }}
-          key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+          mode: save
+          platform-os: darwin
+          platform-arch: arm64
+          bazel-flags: --config=macos-app
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
+          cache-limit-gb: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

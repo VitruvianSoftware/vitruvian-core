@@ -21,6 +21,10 @@ MEASURED_LEGACY_LINUX_BYTES = 5_382_975_054
 MEASURED_LEGACY_DARWIN_BYTES = 1_550_912_413
 MEASURED_LINUX_ARCHIVE_BYTES = 6_152_540_160  # 5.73 GiB
 
+CURRENT_HASH = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+OLDER_LINUX_HASH = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+OTHER_DARWIN_HASH = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
 SAMPLE_CACHES = [
     {
         "id": 1,
@@ -65,107 +69,114 @@ def test_is_legacy_partial_repo_cache_key():
     assert not guard.is_legacy_partial_repo_cache_key("pipeline-rdeps-map-v1-abc")
 
 
-def test_compute_needed_bytes_exact_arithmetic():
-    needed, legacy_bytes, matched = guard.compute_needed_bytes(
-        MEASURED_ACTIVE_BYTES,
-        SAMPLE_CACHES,
+def test_is_superseded_full_repo_cache_key():
+    plat = "linux-x64"
+    assert guard.is_superseded_full_repo_cache_key(
+        f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}",
+        plat,
+        CURRENT_HASH,
+    )
+    # Same hash is not superseded.
+    assert not guard.is_superseded_full_repo_cache_key(
+        f"setup-bazel-1-linux-x64-repository-full-{CURRENT_HASH}",
+        plat,
+        CURRENT_HASH,
+    )
+    # Other platform full entry is not superseded for linux-x64.
+    assert not guard.is_superseded_full_repo_cache_key(
+        f"setup-bazel-1-darwin-arm64-repository-full-{OTHER_DARWIN_HASH}",
+        plat,
+        CURRENT_HASH,
+    )
+    # Legacy partial key is not matched as full.
+    assert not guard.is_superseded_full_repo_cache_key(
+        f"setup-bazel-1-linux-x64-repository-{OLDER_LINUX_HASH}",
+        plat,
+        CURRENT_HASH,
+    )
+    # Empty platform or hash never matches.
+    assert not guard.is_superseded_full_repo_cache_key(
+        f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}",
+        "",
+        CURRENT_HASH,
+    )
+    assert not guard.is_superseded_full_repo_cache_key(
+        f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}",
+        plat,
+        "",
+    )
+
+
+def test_compute_needed_bytes_subtracts_legacy_and_same_platform_superseded():
+    caches = list(SAMPLE_CACHES) + [
+        {
+            "id": 10,
+            "key": f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}",
+            "size_in_bytes": 1_000_000_000,
+        },
+        {
+            "id": 11,
+            "key": f"setup-bazel-1-darwin-arm64-repository-full-{OTHER_DARWIN_HASH}",
+            "size_in_bytes": 2_000_000_000,
+        },
+        {
+            "id": 12,
+            "key": f"setup-bazel-1-linux-x64-repository-full-{CURRENT_HASH}",
+            "size_in_bytes": 500_000_000,
+        },
+    ]
+    total_active = MEASURED_ACTIVE_BYTES + 1_000_000_000
+    (
+        needed,
+        legacy_bytes,
+        matched_legacy,
+        superseded_bytes,
+        matched_superseded,
+    ) = guard.compute_needed_bytes(
+        total_active,
+        caches,
         MEASURED_LINUX_ARCHIVE_BYTES,
+        platform="linux-x64",
+        current_lock_hash=CURRENT_HASH,
     )
     expected_legacy = MEASURED_LEGACY_LINUX_BYTES + MEASURED_LEGACY_DARWIN_BYTES
+    expected_superseded = 1_000_000_000
     expected_needed = (
-        MEASURED_ACTIVE_BYTES - expected_legacy + MEASURED_LINUX_ARCHIVE_BYTES
+        total_active
+        - expected_legacy
+        - expected_superseded
+        + MEASURED_LINUX_ARCHIVE_BYTES
     )
     assert legacy_bytes == expected_legacy
-    assert len(matched) == 2
+    assert len(matched_legacy) == 2
+    assert superseded_bytes == expected_superseded
+    assert matched_superseded == [
+        (f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}", 1_000_000_000)
+    ]
     assert needed == expected_needed
     assert needed == 8_666_141_376
 
 
 def test_compute_needed_bytes_clamps_stale_usage():
-    # Usage endpoint refreshes ~every 5 minutes; if legacy entries exceed
-    # reported total_active_bytes, effective active clamps at 0.
-    needed, legacy_bytes, _ = guard.compute_needed_bytes(
+    needed, legacy_bytes, _, superseded_bytes, _ = guard.compute_needed_bytes(
         1_000,
         SAMPLE_CACHES,
         5_000,
+        platform="linux-x64",
+        current_lock_hash=CURRENT_HASH,
     )
     assert legacy_bytes == MEASURED_LEGACY_LINUX_BYTES + MEASURED_LEGACY_DARWIN_BYTES
+    assert superseded_bytes == 0
     assert needed == 5_000
 
 
-def test_parse_limit_bytes_validation():
-    assert guard.parse_limit_bytes({"max_cache_size_gb": 15}) == 15_000_000_000
-    for bad in (
-        None,
-        [],
-        {},
-        {"max_cache_size_gb": None},
-        {"max_cache_size_gb": "15"},
-        {"max_cache_size_gb": True},
-        {"max_cache_size_gb": 0},
-        {"max_cache_size_gb": -5},
-    ):
-        with pytest.raises(ValueError):
-            guard.parse_limit_bytes(bad)
-
-
-def test_evaluate_capacity_refuses_below_limit():
-    # Active 5 GB (no legacy) + 5.4 GB archive = 10.4 GB > 10 GB limit.
-    ok, report = guard.evaluate_capacity(
-        total_active_bytes=5_000_000_000,
-        caches=[],
-        archive_bytes=5_400_000_000,
-        limit_gb=10,
-    )
-    assert not ok
-    assert report["reason"] == "insufficient_capacity"
-    assert report["limit_bytes"] == 10_000_000_000
-    assert report["needed_bytes"] == 10_400_000_000
-    assert "10000000000" in report["message"]
-    assert "10400000000" in report["message"]
-    assert "refused" in report["message"].lower()
-
-    # Off-by-one byte over limit must also fail.
-    ok_one, _ = guard.evaluate_capacity(
-        total_active_bytes=1,
-        caches=[],
-        archive_bytes=10_000_000_000,
-        limit_gb=10,
-    )
-    assert not ok_one
-
-
-def test_evaluate_capacity_allows_at_or_above_limit():
-    ok_exact, _ = guard.evaluate_capacity(
-        total_active_bytes=4_000_000_000,
-        caches=[],
-        archive_bytes=6_000_000_000,
-        limit_gb=10,
-    )
-    assert ok_exact
-
-    ok_15gb, report = guard.evaluate_capacity(
-        total_active_bytes=11_000_000_000,
-        caches=SAMPLE_CACHES,
-        archive_bytes=MEASURED_LINUX_ARCHIVE_BYTES,
-        limit_gb=15,
-    )
-    assert ok_15gb
-    assert report["reason"] == "ok"
-
-
-def test_evaluate_capacity_refuses_unknown_limit():
-    ok, report = guard.evaluate_capacity(
-        total_active_bytes=1_000,
-        caches=[],
-        archive_bytes=1_000,
-        limit_gb=None,
-        limit_error="HTTP 402",
-    )
-    assert not ok
-    assert report["reason"] == "limit_unknown"
-    assert "unknown" in report["message"].lower()
-    assert "refused" in report["message"].lower()
+def test_parse_limit_gb_var_validation():
+    assert guard.parse_limit_gb_var("15") == (15, None)
+    assert guard.parse_limit_gb_var(" 20 ") == (20, None)
+    for bad in ("", "   ", None, "abc", "15.5", "0", "-5"):
+        val, err = guard.parse_limit_gb_var(bad)
+        assert val is None
+        assert err is not None
 
 
 class _MockGitHubServer:
@@ -196,112 +207,146 @@ class _MockGitHubServer:
         self.server.server_close()
 
 
-def test_main_refuses_when_below_limit(tmp_path, capsys):
+def _run_guard_with_var(tmp_path, limit_gb_raw, handler_fn, archive_bytes="6000000000"):
     summary = tmp_path / "summary.md"
+    output = tmp_path / "output.txt"
+    with _MockGitHubServer(handler_fn) as api_url:
+        rc = guard.main(
+            [
+                "--repo",
+                "o/r",
+                "--archive-bytes",
+                str(archive_bytes),
+                "--platform",
+                "linux-x64",
+                "--lock-hash",
+                CURRENT_HASH,
+                "--limit-gb",
+                limit_gb_raw,
+                "--api-url",
+                api_url,
+                "--token",
+                "secret-tok",
+                "--summary-file",
+                str(summary),
+                "--output-file",
+                str(output),
+            ]
+        )
+    return rc, summary, output
 
+
+def test_main_skips_when_limit_var_missing(tmp_path, capsys):
+    api_called = []
+
+    def handle(path, _headers):
+        api_called.append(path)
+        return 500, {}, {}
+
+    rc, summary, output = _run_guard_with_var(tmp_path, "", handle)
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert api_called == []
+    assert "::warning::" in captured.out
+    assert "skipped" in captured.out.lower()
+    assert "missing or empty" in captured.out.lower()
+    summary_lines = summary.read_text(encoding="utf-8").strip().splitlines()
+    assert len(summary_lines) == 1
+    assert "skipped" in summary_lines[0].lower()
+    assert "missing or empty" in summary_lines[0].lower()
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
+
+
+def test_main_skips_when_limit_var_not_an_integer(tmp_path, capsys):
+    def handle(_path, _headers):
+        raise AssertionError("API should not be called when limit var is invalid")
+
+    rc, summary, output = _run_guard_with_var(tmp_path, "fifteen", handle)
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "::warning::" in captured.out
+    assert "not an integer" in captured.out.lower()
+    summary_lines = summary.read_text(encoding="utf-8").strip().splitlines()
+    assert len(summary_lines) == 1
+    assert "skipped" in summary_lines[0].lower()
+    assert "not an integer" in summary_lines[0].lower()
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("bad_val", ["0", "-3"])
+def test_main_skips_when_limit_var_zero_or_negative(tmp_path, capsys, bad_val):
+    def handle(_path, _headers):
+        raise AssertionError("API should not be called when limit var <= 0")
+
+    rc, summary, output = _run_guard_with_var(tmp_path, bad_val, handle)
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "::warning::" in captured.out
+    assert "positive integer" in captured.out.lower()
+    summary_lines = summary.read_text(encoding="utf-8").strip().splitlines()
+    assert len(summary_lines) == 1
+    assert "skipped" in summary_lines[0].lower()
+    assert "positive integer" in summary_lines[0].lower()
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
+
+
+def test_main_skips_when_limit_var_below_needed(tmp_path, capsys):
     def handle(path, _headers):
         if path == "/repos/o/r/actions/cache/usage":
             return 200, {}, {"active_caches_size_in_bytes": 5_000_000_000}
         if path.startswith("/repos/o/r/actions/caches"):
             return 200, {}, {"total_count": 0, "actions_caches": []}
-        if path == "/repos/o/r/actions/cache/storage-limit":
-            return 200, {}, {"max_cache_size_gb": 10}
         return 404, {}, {"message": "Not Found"}
 
-    with _MockGitHubServer(handle) as api_url:
-        rc = guard.main(
-            [
-                "--repo",
-                "o/r",
-                "--archive-bytes",
-                "6000000000",
-                "--platform",
-                "linux-x64",
-                "--api-url",
-                api_url,
-                "--token",
-                "test-token",
-                "--summary-file",
-                str(summary),
-            ]
-        )
-
+    rc, summary, output = _run_guard_with_var(
+        tmp_path, "10", handle, archive_bytes="6000000000"
+    )
     captured = capsys.readouterr()
-    assert rc == 1
-    assert "10000000000" in captured.err
-    assert "11000000000" in captured.err
-    assert "refused" in captured.err.lower()
-    summary_text = summary.read_text(encoding="utf-8")
-    assert "REFUSED" in summary_text
-    assert "11,000,000,000" in summary_text
-    assert "10,000,000,000" in summary_text
+    assert rc == 0
+    assert "::warning::" in captured.out
+    assert "10000000000" in captured.out
+    assert "11000000000" in captured.out
+    summary_lines = summary.read_text(encoding="utf-8").strip().splitlines()
+    assert len(summary_lines) == 1
+    assert "skipped" in summary_lines[0].lower()
+    assert "below needed" in summary_lines[0].lower()
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
 
 
-def test_main_refuses_on_http_402_storage_limit(tmp_path, capsys):
-    summary = tmp_path / "summary.md"
-
-    def handle(path, _headers):
-        if path == "/repos/o/r/actions/cache/usage":
-            return 200, {}, {"active_caches_size_in_bytes": 1_000_000_000}
-        if path.startswith("/repos/o/r/actions/caches"):
-            return 200, {}, {"total_count": 0, "actions_caches": []}
-        if path == "/repos/o/r/actions/cache/storage-limit":
-            return (
-                402,
-                {},
-                {
-                    "message": "Please ensure your account has a valid payment method on file to access this service.",
-                    "status": "402",
-                },
-            )
-        return 404, {}, {"message": "Not Found"}
-
-    with _MockGitHubServer(handle) as api_url:
-        rc = guard.main(
-            [
-                "--repo",
-                "o/r",
-                "--archive-bytes",
-                "1000000000",
-                "--platform",
-                "linux-x64",
-                "--api-url",
-                api_url,
-                "--token",
-                "test-token",
-                "--summary-file",
-                str(summary),
-            ]
-        )
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "unknown" in captured.err.lower()
-    assert "refused" in captured.err.lower()
-    assert "REFUSED" in summary.read_text(encoding="utf-8")
-
-
-def test_main_paginates_caches_and_allows_when_limit_sufficient(tmp_path, capsys):
-    summary = tmp_path / "summary.md"
+def test_main_allows_when_limit_var_sufficient_with_superseded_and_pagination(
+    tmp_path, capsys
+):
+    superseded_entry = {
+        "id": 99,
+        "key": f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH}",
+        "size_in_bytes": 2_000_000_000,
+    }
 
     def handle(path, headers):
         assert headers.get("Authorization") == "Bearer secret-tok"
         if path == "/repos/o/r/actions/cache/usage":
-            return 200, {}, {"active_caches_size_in_bytes": MEASURED_ACTIVE_BYTES}
+            return (
+                200,
+                {},
+                {"active_caches_size_in_bytes": MEASURED_ACTIVE_BYTES + 2_000_000_000},
+            )
         if path == "/repos/o/r/actions/caches?per_page=100":
             return (
                 200,
                 {
                     "Link": f'<{api_url}/repos/o/r/actions/caches?per_page=100&page=2>; rel="next"'
                 },
-                {"total_count": 2, "actions_caches": [SAMPLE_CACHES[1]]},
+                {
+                    "total_count": 3,
+                    "actions_caches": [SAMPLE_CACHES[1], superseded_entry],
+                },
             )
         if path == "/repos/o/r/actions/caches?per_page=100&page=2":
-            return 200, {}, {"total_count": 2, "actions_caches": [SAMPLE_CACHES[2]]}
-        if path == "/repos/o/r/actions/cache/storage-limit":
-            return 200, {}, {"max_cache_size_gb": 15}
+            return 200, {}, {"total_count": 3, "actions_caches": [SAMPLE_CACHES[2]]}
         return 404, {}, {"message": "Not Found"}
 
+    summary = tmp_path / "summary.md"
+    output = tmp_path / "output.txt"
     with _MockGitHubServer(handle) as api_url:
         rc = guard.main(
             [
@@ -311,43 +356,58 @@ def test_main_paginates_caches_and_allows_when_limit_sufficient(tmp_path, capsys
                 str(MEASURED_LINUX_ARCHIVE_BYTES),
                 "--platform",
                 "linux-x64",
+                "--lock-hash",
+                CURRENT_HASH,
+                "--limit-gb",
+                "15",
                 "--api-url",
                 api_url,
                 "--token",
                 "secret-tok",
                 "--summary-file",
                 str(summary),
+                "--output-file",
+                str(output),
             ]
         )
 
     captured = capsys.readouterr()
     assert rc == 0
+    assert "::warning::" not in captured.out
     assert "ALLOWED" in captured.out
+    assert OLDER_LINUX_HASH in captured.out
     assert "8,666,141,376" in captured.out
     assert "15,000,000,000" in captured.out
     assert "ALLOWED" in summary.read_text(encoding="utf-8")
+    assert "allow_save=true" in output.read_text(encoding="utf-8")
 
 
 def test_main_refuses_without_token_or_on_usage_error(tmp_path):
     summary = tmp_path / "summary.md"
+    output = tmp_path / "output.txt"
     rc_no_tok = guard.main(
         [
             "--repo",
             "o/r",
             "--archive-bytes",
             "100",
+            "--limit-gb",
+            "15",
             "--token",
             "",
             "--summary-file",
             str(summary),
+            "--output-file",
+            str(output),
         ]
     )
     assert rc_no_tok == 1
+    assert "allow_save=false" in output.read_text(encoding="utf-8")
 
     def handle_usage_500(path, _headers):
         if path == "/repos/o/r/actions/cache/usage":
             return 500, {}, {"message": "Internal Error"}
-        return 200, {}, {"max_cache_size_gb": 15}
+        return 200, {}, {}
 
     with _MockGitHubServer(handle_usage_500) as api_url:
         rc_usage_err = guard.main(
@@ -356,12 +416,16 @@ def test_main_refuses_without_token_or_on_usage_error(tmp_path):
                 "o/r",
                 "--archive-bytes",
                 "100",
+                "--limit-gb",
+                "15",
                 "--api-url",
                 api_url,
                 "--token",
                 "tok",
                 "--summary-file",
                 str(summary),
+                "--output-file",
+                str(output),
             ]
         )
     assert rc_usage_err == 1

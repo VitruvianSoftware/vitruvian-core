@@ -29,3 +29,14 @@ py_test(
     ],
     args = ["$(rootpath cache_capacity_guard_test.py)"],
 )
+
+py_test(
+    name = "cache_prune_test",
+    size = "small",
+    srcs = [
+        "cache_capacity_guard.py",
+        "cache_prune.py",
+        "cache_prune_test.py",
+    ],
+    args = ["$(rootpath cache_prune_test.py)"],
+)
