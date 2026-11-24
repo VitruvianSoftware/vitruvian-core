@@ -172,6 +172,14 @@ enum ByHandRulesTests {
     }
 
     static func commandLine(_ suite: TestSuite) {
+        suite.expect(ByHandRules.target(["windows"])! == (ByHandRules.defaultBundleID, ["windows"])
+                         && ByHandRules.target(["--bundle-id", "com.example.test", "dump", "--from", "3"])!
+                             == ("com.example.test", ["dump", "--from", "3"])
+                         && ByHandRules.target(["--bundle-id"]) == nil
+                         && ByHandRules.target(["--bundle-id", "--window"]) == nil
+                         && ByHandRules.target(["dump", "--bundle-id", "x"])! == (ByHandRules.defaultBundleID, ["dump", "--bundle-id", "x"]),
+                     "the app is Vitruvian Atrium unless the command line starts with --bundle-id and an id; "
+                         + "the id is taken out before the command is read, and --bundle-id with no id is refused")
         func parse(_ line: String) -> ByHandRules.Command? {
             ByHandRules.parse(line.split(separator: " ").map(String.init))
         }
