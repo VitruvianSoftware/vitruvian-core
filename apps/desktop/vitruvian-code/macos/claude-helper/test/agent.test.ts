@@ -2211,6 +2211,64 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
     }
   });
 
+  test("_meta.vitruvian.model opens the session on that model (Ollama (claude)), keeps it on reopen, and is absent otherwise", async () => {
+    const ids = [
+      "550e8400-e29b-41d4-a716-446655440091",
+      "550e8400-e29b-41d4-a716-446655440092",
+    ];
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      generateSessionIdFn: () => ids.shift() ?? "unexpected",
+      queryFn: ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      const ollama = await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+        _meta: { vitruvian: { modeId: "default", model: " qwen3 " } },
+      });
+      expect(queryHandles[0].options?.model).toBe("qwen3");
+
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+        _meta: { vitruvian: { modeId: "default" } },
+      });
+      expect(queryHandles[1].options).not.toHaveProperty("model");
+
+      // A switch that reopens the query keeps the session's model.
+      await harness.client.request("session/set_mode", {
+        sessionId: ollama.sessionId,
+        modeId: "bypassPermissions",
+      });
+      expect(queryHandles).toHaveLength(3);
+      expect(queryHandles[2].options?.resume).toBe(ollama.sessionId);
+      expect(queryHandles[2].options?.model).toBe("qwen3");
+
+      await harness.client.request("session/resume", {
+        sessionId: "550e8400-e29b-41d4-a716-446655440093",
+        cwd: "/repo",
+        mcpServers: [],
+        _meta: { vitruvian: { model: "llama3.3:70b" } },
+      });
+      expect(queryHandles[3].options?.model).toBe("llama3.3:70b");
+    } finally {
+      await harness.close();
+    }
+  });
+
   test("session/cancel resolves in-flight prompt as cancelled when interrupt rejects and no result arrives", async () => {
     const sid = "550e8400-e29b-41d4-a716-446655440013";
     const queryHandles: FakeQueryHandle[] = [];

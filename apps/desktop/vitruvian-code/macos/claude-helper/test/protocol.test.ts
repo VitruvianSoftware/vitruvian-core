@@ -55,6 +55,7 @@ const EXPECTED_DEF_BY_FILE: Record<string, string> = {
   "client-vitruvian-secrets.json": "vitruvianSecretsParams",
   "helper-vitruvian-secrets-result.json": "emptyResult",
   "client-session-new.json": "sessionNewParams",
+  "client-session-new-ollama.json": "sessionNewParams",
   "helper-session-new-result.json": "sessionNewResult",
   "client-session-resume.json": "sessionResumeParams",
   "helper-session-resume-result.json": "sessionResumeResult",

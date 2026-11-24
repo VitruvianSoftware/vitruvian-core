@@ -523,7 +523,7 @@
           "type": ["array", "null"],
           "items": { "type": "string" }
         },
-        "_meta": { "type": ["object", "null"] }
+        "_meta": { "$ref": "#/$defs/vitruvianSessionMeta" }
       }
     },
     "sessionResumeParams": {
@@ -541,7 +541,29 @@
           "type": ["array", "null"],
           "items": { "type": "string" }
         },
-        "_meta": { "type": ["object", "null"] }
+        "_meta": { "$ref": "#/$defs/vitruvianSessionMeta" }
+      }
+    },
+    "vitruvianSessionMeta": {
+      "description": "_meta on session/new and session/resume: vitruvian.modeId is the permission mode the session opens in, and vitruvian.model the model it opens on (passed to the SDK as model; Ollama (claude) chats send one).",
+      "type": ["object", "null"],
+      "properties": {
+        "vitruvian": {
+          "type": "object",
+          "properties": {
+            "modeId": {
+              "type": "string",
+              "enum": [
+                "default",
+                "acceptEdits",
+                "plan",
+                "auto",
+                "bypassPermissions"
+              ]
+            },
+            "model": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "sessionMode": {

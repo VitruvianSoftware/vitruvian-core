@@ -248,6 +248,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var liveConnection: (any PersistentAgentConnection)?
     private var liveConnectionProviderID: UUID?
     private var liveConnectionKind: AgentConnectionKind?
+    /// The model an Ollama (claude) live connection was started with: Ollama's model is set
+    /// when the helper starts (`OllamaClaude`), so a chat that switches model gets a new
+    /// connection, which resumes the same conversation. Nil for every other connection.
+    private var liveConnectionOllamaModel: String?
     private var liveConnectionWorktree: Bool?
     /// The folder the live connection was started in. A connection runs where
     /// it started, so one started for another folder is not reused.
@@ -605,7 +609,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // Claude on the Agent SDK sends everything as events, so its transcript is not followed:
         // following it too would show each message twice (docs/designs/vitruvian-code-acp.md,
         // "Transcript follower in live chats").
-        if effectiveProvider.route == .claude && effectiveProvider.connection == .claudeSDK {
+        if effectiveProvider.runsOnClaudeSDK {
             stopTranscriptFollower()
             return
         }
@@ -882,6 +886,17 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if chatConnectionOverride != nil {
             persistCurrentChatConnectionOverride()
         }
+    }
+
+    /// The model an Ollama (claude) chat on the Agent SDK starts its connection with, as
+    /// `ClaudeSDKConnection` picks it; nil for any other provider or connection.
+    static func ollamaSDKModel(
+        provider: VitruvianCodeCLIProvider,
+        configuration: VitruvianCodeConfiguration,
+        ollamaDefaultModel: String
+    ) -> String? {
+        guard provider.route == .ollama, provider.runsOnClaudeSDK else { return nil }
+        return OllamaClaude.model(configured: configuration.model, ollamaDefaultModel: ollamaDefaultModel)
     }
 
     /// Effective connection kind for this chat (`chatConnectionOverride` wins over provider setting).
@@ -1295,6 +1310,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
            reusable.isConnected,
            liveConnectionProviderID == effectiveProv.id,
            liveConnectionKind == effectiveProv.connection,
+           liveConnectionOllamaModel == Self.ollamaSDKModel(
+               provider: effectiveProv, configuration: configuration, ollamaDefaultModel: ollamaDefaultModel),
            liveConnectionWorktree == wantsWorktree,
            // A worktree connection keeps the worktree rule; any other runs
            // only in the folder it was started in.
@@ -1561,6 +1578,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             liveConnection = persistent
             liveConnectionProviderID = effectiveProv.id
             liveConnectionKind = effectiveProv.connection
+            liveConnectionOllamaModel = Self.ollamaSDKModel(
+                provider: effectiveProv, configuration: configuration, ollamaDefaultModel: ollamaDefaultModel)
             liveConnectionWorktree = (liveWorktreePath != nil && resolvedDirectory == liveWorktreePath)
             liveConnectionDirectory = resolvedDirectory
             lastLaunchDirectory = resolvedDirectory
@@ -2109,6 +2128,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         connection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
+        liveConnectionOllamaModel = nil
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask?.cancel()
@@ -2182,6 +2202,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         liveConnection = nil
         liveConnectionProviderID = nil
         liveConnectionKind = nil
+        liveConnectionOllamaModel = nil
         liveConnectionWorktree = nil
         liveConnectionDirectory = nil
         liveEventDrainTask = nil
@@ -2603,9 +2624,20 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
              .configOptions,
              .notice,
              .sessionInfo:
-            if case .configOptions = event { configOptionsEventCount += 1 }
-            liveState.apply(event)
+            if case .configOptions(let options) = event {
+                configOptionsEventCount += 1
+                liveState.apply(.configOptions(shownConfigOptions(options)))
+            } else {
+                liveState.apply(event)
+            }
         }
+    }
+
+    /// The live chat's settings as the chat shows them. An Ollama (claude) chat on the Agent SDK
+    /// drops the helper's model choice: the SDK lists Claude's models, and the chat's model is the
+    /// Ollama one picked from `ollama list` in the model menu (`OllamaClaude.withoutModelOption`).
+    private func shownConfigOptions(_ options: [AgentConfigOption]) -> [AgentConfigOption] {
+        liveConnectionOllamaModel == nil ? options : OllamaClaude.withoutModelOption(options)
     }
 
     /// Maps the interim Step 2b approval card buttons to ACP option IDs (`allow_once`, `allow_always`,
@@ -3573,7 +3605,7 @@ extension VitruvianCodeQuickPromptSession {
             if option.value == value { continue }
             do {
                 let updated = try await persistent.setConfigOption(id, value)
-                if !updated.isEmpty { liveState.apply(.configOptions(updated)) }
+                if !updated.isEmpty { liveState.apply(.configOptions(shownConfigOptions(updated))) }
             } catch {
                 liveConfigOptionError = strings.configOptionUpdateFailed
                 throw ConfigReapplyError(message: strings.configOptionUpdateFailed)
@@ -3617,7 +3649,7 @@ extension VitruvianCodeQuickPromptSession {
             let updated = try await active.setConfigOption(trimmedID, value)
             guard liveConnection === active else { return false }
             if !updated.isEmpty {
-                liveState.apply(.configOptions(updated))
+                liveState.apply(.configOptions(shownConfigOptions(updated)))
             }
             rememberedConfigChoices[trimmedID] = value
             liveConfigOptionError = nil
