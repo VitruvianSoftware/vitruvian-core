@@ -40,6 +40,59 @@ enum ChatHeaderWidth {
     }
 }
 
+/// Where the chat column and the chat's header are in the window (`WindowFrameReader`). An object the chat view holds
+/// without observing it, so a move redraws only the header (`ToolbarChatHeader`), never the timeline.
+@MainActor
+final class ChatHeaderLayout: ObservableObject {
+    @Published var columnFrame: CGRect?
+    @Published var headerFrame: CGRect?
+    /// The width the header was last replaced at (`ToolbarChatHeader`), so it is replaced once for each width.
+    var replacedAt: CGFloat?
+
+    func maximumWidth(buttons: Int) -> CGFloat {
+        guard let column = columnFrame else { return ChatHeaderWidth.minimum }
+        return ChatHeaderWidth.maximum(columnMinX: column.minX, columnMaxX: column.maxX,
+                                       headerMinX: headerFrame?.minX, buttons: buttons)
+    }
+
+    /// True when the header should be put back in the toolbar as a new item: the window shrank faster than the
+    /// header's limit followed it, so the toolbar moved the header (and the buttons after it) into its overflow menu,
+    /// where it stays even once it is narrow enough. Once for each width, so a window too narrow for any header does
+    /// not keep replacing it.
+    func needsReplacing(buttons: Int) -> Bool {
+        guard columnFrame != nil else { return false }
+        guard headerFrame == nil else {
+            replacedAt = nil
+            return false
+        }
+        let width = maximumWidth(buttons: buttons)
+        guard replacedAt != width else { return false }
+        replacedAt = width
+        return true
+    }
+}
+
+/// The chat's header as the toolbar item holds it: no wider than the room the chat column leaves it, so a long name
+/// truncates, and put back as a new item if the toolbar moves it into its overflow menu anyway.
+struct ToolbarChatHeader<Content: View>: View {
+    @ObservedObject var layout: ChatHeaderLayout
+    let buttons: Int
+    let onOverflow: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(maxWidth: layout.maximumWidth(buttons: buttons), alignment: .leading)
+            .background(WindowFrameReader { frame in
+                layout.headerFrame = frame
+                if layout.needsReplacing(buttons: buttons) { onOverflow() }
+            })
+            .onChange(of: layout.columnFrame) {
+                if layout.needsReplacing(buttons: buttons) { onOverflow() }
+            }
+    }
+}
+
 /// Reports the frame of the view it is the background of, in its window's coordinates and cut to the window (nil out
 /// of a window): for a view in a toolbar item, which SwiftUI's own coordinate spaces only place inside the item.
 struct WindowFrameReader: NSViewRepresentable {
