@@ -88,50 +88,120 @@ case "${cmd}" in
                 body="$(cat)"
             fi
             printf 'PUT %s %s\n' "${endpoint}" "${body}" >> "${CALL_LOG}"
-            case "${FAKE_PUT_MODE:-ok}" in
-                402)
-                    echo '{"message":"Payment required to increase Actions cache limit","status":"402"}' >&2
-                    echo 'gh: Payment required (HTTP 402)' >&2
-                    exit 1
-                    ;;
-                403)
-                    echo '{"message":"Resource not accessible by integration","status":"403"}' >&2
-                    echo 'gh: Forbidden (HTTP 403)' >&2
-                    exit 1
-                    ;;
-                ok)
-                    echo '{"max_cache_size_gb":15}'
-                    exit 0
-                    ;;
-                *)
-                    echo "unknown FAKE_PUT_MODE=${FAKE_PUT_MODE:-}" >&2
-                    exit 98
-                    ;;
-            esac
+            if [[ "${endpoint}" == orgs/* ]]; then
+                case "${FAKE_ORG_PUT_MODE:-ok}" in
+                    402)
+                        echo '{"message":"Payment required to increase Actions cache limit","status":"402"}' >&2
+                        echo 'gh: Payment required (HTTP 402)' >&2
+                        exit 1
+                        ;;
+                    403)
+                        echo '{"message":"Resource not accessible by integration","status":"403"}' >&2
+                        echo 'gh: Forbidden (HTTP 403)' >&2
+                        exit 1
+                        ;;
+                    ok)
+                        if [ -n "${FAKE_ORG_GET_VALUE_AFTER_PUT:-}" ] && [ -n "${ORG_STATE_FILE:-}" ]; then
+                            printf '%s\n' "${FAKE_ORG_GET_VALUE_AFTER_PUT}" > "${ORG_STATE_FILE}"
+                        fi
+                        echo "${body}"
+                        exit 0
+                        ;;
+                    *)
+                        echo "unknown FAKE_ORG_PUT_MODE=${FAKE_ORG_PUT_MODE:-}" >&2
+                        exit 98
+                        ;;
+                esac
+            else
+                case "${FAKE_PUT_MODE:-ok}" in
+                    402)
+                        echo '{"message":"Payment required to increase Actions cache limit","status":"402"}' >&2
+                        echo 'gh: Payment required (HTTP 402)' >&2
+                        exit 1
+                        ;;
+                    403)
+                        echo '{"message":"Resource not accessible by integration","status":"403"}' >&2
+                        echo 'gh: Forbidden (HTTP 403)' >&2
+                        exit 1
+                        ;;
+                    422)
+                        echo '{"message":"Repository cache size limit must be between 10 and 10.","status":"422"}' >&2
+                        echo 'gh: Unprocessable Entity (HTTP 422)' >&2
+                        exit 1
+                        ;;
+                    ok)
+                        echo '{"max_cache_size_gb":15}'
+                        exit 0
+                        ;;
+                    *)
+                        echo "unknown FAKE_PUT_MODE=${FAKE_PUT_MODE:-}" >&2
+                        exit 98
+                        ;;
+                esac
+            fi
         else
             printf 'GET %s\n' "${endpoint}" >> "${CALL_LOG}"
-            case "${FAKE_GET_MODE:-match}" in
-                match)
-                    echo "${FAKE_GET_VALUE:-15}"
-                    exit 0
-                    ;;
-                mismatch)
-                    echo "${FAKE_GET_VALUE:-10}"
-                    exit 0
-                    ;;
-                fail)
-                    echo 'gh: Internal Server Error (HTTP 500)' >&2
-                    exit 1
-                    ;;
-                invalid)
-                    echo "${FAKE_GET_VALUE:-null}"
-                    exit 0
-                    ;;
-                *)
-                    echo "unknown FAKE_GET_MODE=${FAKE_GET_MODE:-}" >&2
-                    exit 98
-                    ;;
-            esac
+            if [[ "${endpoint}" == orgs/* ]]; then
+                case "${FAKE_ORG_GET_MODE:-ok}" in
+                    ok)
+                        if [ -n "${FAKE_ORG_GET_STDERR:-}" ]; then
+                            printf '%s\n' "${FAKE_ORG_GET_STDERR}" >&2
+                        fi
+                        if [ -n "${ORG_STATE_FILE:-}" ] && [ -f "${ORG_STATE_FILE}" ]; then
+                            cat "${ORG_STATE_FILE}"
+                        else
+                            echo "${FAKE_ORG_GET_VALUE:-20}"
+                        fi
+                        exit 0
+                        ;;
+                    403)
+                        echo '{"message":"Resource not accessible by integration","status":"403"}' >&2
+                        echo 'gh: Forbidden (HTTP 403)' >&2
+                        exit 1
+                        ;;
+                    fail)
+                        echo 'gh: Internal Server Error (HTTP 500)' >&2
+                        exit 1
+                        ;;
+                    invalid)
+                        echo "${FAKE_ORG_GET_VALUE:-null}"
+                        exit 0
+                        ;;
+                    malformed)
+                        if [ -n "${FAKE_ORG_GET_VALUE-}" ]; then
+                            printf '%s\n' "${FAKE_ORG_GET_VALUE}"
+                        fi
+                        exit 0
+                        ;;
+                    *)
+                        echo "unknown FAKE_ORG_GET_MODE=${FAKE_ORG_GET_MODE:-}" >&2
+                        exit 98
+                        ;;
+                esac
+            else
+                case "${FAKE_GET_MODE:-match}" in
+                    match)
+                        echo "${FAKE_GET_VALUE:-15}"
+                        exit 0
+                        ;;
+                    mismatch)
+                        echo "${FAKE_GET_VALUE:-10}"
+                        exit 0
+                        ;;
+                    fail)
+                        echo 'gh: Internal Server Error (HTTP 500)' >&2
+                        exit 1
+                        ;;
+                    invalid)
+                        echo "${FAKE_GET_VALUE:-null}"
+                        exit 0
+                        ;;
+                    *)
+                        echo "unknown FAKE_GET_MODE=${FAKE_GET_MODE:-}" >&2
+                        exit 98
+                        ;;
+                esac
+            fi
         fi
         ;;
     variable)
@@ -181,15 +251,63 @@ assert_var_set() {
 	fi
 }
 
+assert_calls() {
+	local want="$1"
+	local got
+	if [ ! -f "${call_log}" ]; then
+		got=""
+	else
+		got="$(<"${call_log}")"
+	fi
+	if [ "${got}" != "${want}" ]; then
+		fail "call log mismatch:
+--- got ---
+${got}
+--- want ---
+${want}"
+	fi
+}
+
 run_case() {
 	local limit_file="$1"
+	rm -f "${case_dir}/org_state"
 	GH="${fake_gh}" \
 		GH_TOKEN="fake-app-token" \
 		REPO="VitruvianSoftware/vitruvian-core" \
 		LIMIT_FILE="${limit_file}" \
 		CALL_LOG="${call_log}" \
 		VAR_LOG="${var_log}" \
+		ORG_STATE_FILE="${case_dir}/org_state" \
 		bash "${script}" >"${case_dir}/stdout" 2>"${case_dir}/stderr"
+}
+
+assert_org_malformed_case() {
+	local val="$1"
+	local org_put_count warn_count org_warn_count err_count stderr_lines
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=malformed
+	export FAKE_ORG_GET_VALUE="${val}"
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org GET returns '${val}', stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls for malformed org output '${val}', got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	if grep -qE 'integer expression expected|syntax error|line [0-9]+:' "${case_dir}/stderr"; then
+		fail "unexpected bash error on stderr for '${val}': $(cat "${case_dir}/stderr")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	org_warn_count="$(grep -c '^::warning::Could not read organization VitruvianSoftware Actions cache storage limit' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	stderr_lines="$(wc -l <"${case_dir}/stderr" | tr -d ' ')"
+	if [ "${warn_count}" -ne 1 ] || [ "${org_warn_count}" -ne 1 ] || [ "${err_count}" -ne 0 ] || [ "${stderr_lines}" -ne 1 ]; then
+		fail "expected exactly 1 org ::warning line and 0 ::error lines for '${val}', got warn=${warn_count} org_warn=${org_warn_count} err=${err_count} lines=${stderr_lines}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
 }
 
 limit_file="${case_dir}/limit.txt"
@@ -313,6 +431,206 @@ success)
 	if [ "${got_var}" != "${want}" ]; then
 		fail "got variable set '${got_var}', want '${want}'"
 	fi
+	;;
+org_already_sufficient)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=15
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org limit equals 15, stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org limit equals 15, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	if [ "${warn_count}" -ne 0 ] || [ "${err_count}" -ne 0 ]; then
+		fail "expected 0 warnings and 0 errors, got warn=${warn_count} err=${err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
+	;;
+org_raised_then_repo_put)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=10
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_ORG_GET_VALUE_AFTER_PUT=15
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org limit is raised from 10 to 15, stderr=$(cat "${case_dir}/stderr")"
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT orgs/VitruvianSoftware/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
+	;;
+org_put_refused)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=10
+	export FAKE_ORG_PUT_MODE=403
+	export FAKE_PUT_MODE=422
+	export FAKE_GET_MODE=mismatch
+	export FAKE_GET_VALUE=10
+	if run_case "${limit_file}"; then
+		fail "expected non-zero exit when org PUT is refused (403)"
+	fi
+	org_err_count="$(grep -c '^::error::Organization .*10.*Administration' "${case_dir}/stderr" || true)"
+	if [ "${org_err_count}" -ne 1 ]; then
+		fail "expected 1 org ::error line mentioning 10 and Administration, got ${org_err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	grep -q 'Settings -> Actions -> General' "${case_dir}/stderr" || fail "stderr missing Settings -> Actions -> General: $(cat "${case_dir}/stderr")"
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT orgs/VitruvianSoftware/actions/cache/storage-limit {"max_cache_size_gb":15}\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 10'
+	assert_var_set 10
+	;;
+org_put_refused_repo_confirmed)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=10
+	export FAKE_ORG_PUT_MODE=403
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	if run_case "${limit_file}"; then
+		fail "expected non-zero exit when org PUT is refused (403) even if repo PUT confirms 15"
+	fi
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	org_err_count="$(grep -c '^::error::Organization .*10.*Administration' "${case_dir}/stderr" || true)"
+	if [ "${err_count}" -ne 1 ] || [ "${org_err_count}" -ne 1 ]; then
+		fail "expected 1 ::error line about org limit (10, Administration), got err=${err_count} org_err=${org_err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	grep -q 'Settings -> Actions -> General' "${case_dir}/stderr" || fail "stderr missing Settings -> Actions -> General: $(cat "${case_dir}/stderr")"
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT orgs/VitruvianSoftware/actions/cache/storage-limit {"max_cache_size_gb":15}\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
+	;;
+org_higher_never_lowered)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=20
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org limit is 20 and repo PUT succeeds, stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org limit is 20, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
+
+	rm -f "${call_log}" "${var_log}"
+	export FAKE_PUT_MODE=402
+	export FAKE_GET_MODE=mismatch
+	export FAKE_GET_VALUE=10
+	if run_case "${limit_file}"; then
+		fail "expected non-zero exit when repo PUT fails with 402"
+	fi
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls even when repo PUT fails, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 10'
+	assert_var_set 10
+	;;
+org_get_refused_repo_confirmed)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=403
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org GET is refused (403) and repo PUT confirms 15, stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org GET is refused, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	org_warn_count="$(grep -c '^::warning::Could not read organization VitruvianSoftware Actions cache storage limit' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	if [ "${warn_count}" -ne 1 ] || [ "${org_warn_count}" -ne 1 ] || [ "${err_count}" -ne 0 ]; then
+		fail "expected 1 org ::warning and 0 ::error, got warn=${warn_count} org_warn=${org_warn_count} err=${err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
+
+	rm -f "${call_log}" "${var_log}"
+	export FAKE_ORG_GET_MODE=fail
+	run_case "${limit_file}" || fail "expected exit 0 when org GET fails (500) and repo PUT confirms 15, stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org GET fails (500), got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	org_warn_count="$(grep -c '^::warning::Could not read organization VitruvianSoftware Actions cache storage limit' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	if [ "${warn_count}" -ne 1 ] || [ "${org_warn_count}" -ne 1 ] || [ "${err_count}" -ne 0 ]; then
+		fail "expected 1 org ::warning and 0 ::error on 500, got warn=${warn_count} org_warn=${org_warn_count} err=${err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
+	;;
+org_get_refused_repo_refused)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=403
+	export FAKE_PUT_MODE=422
+	export FAKE_GET_MODE=mismatch
+	export FAKE_GET_VALUE=10
+	if run_case "${limit_file}"; then
+		fail "expected non-zero exit when org GET is refused (403) and repo PUT is refused"
+	fi
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org GET is refused, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	org_warn_count="$(grep -c '^::warning::Could not read organization VitruvianSoftware Actions cache storage limit' "${case_dir}/stderr" || true)"
+	if [ "${warn_count}" -ne 1 ] || [ "${org_warn_count}" -ne 1 ]; then
+		fail "expected 1 org ::warning, got warn=${warn_count} org_warn=${org_warn_count}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 10'
+	assert_var_set 10
+	;;
+org_get_malformed_null)
+	assert_org_malformed_case "null"
+	;;
+org_get_malformed_zero)
+	assert_org_malformed_case "0"
+	;;
+org_get_malformed_alpha)
+	assert_org_malformed_case "abc"
+	;;
+org_get_malformed_empty)
+	assert_org_malformed_case ""
+	;;
+org_get_malformed_multiline)
+	assert_org_malformed_case $'15\n20'
+	;;
+org_get_malformed_negative)
+	assert_org_malformed_case "-3"
+	;;
+org_get_stderr_ignored)
+	printf '15\n' >"${limit_file}"
+	export FAKE_ORG_GET_MODE=ok
+	export FAKE_ORG_GET_VALUE=15
+	export FAKE_ORG_GET_STDERR="warning: deprecated endpoint"
+	export FAKE_ORG_PUT_MODE=ok
+	export FAKE_PUT_MODE=ok
+	export FAKE_GET_MODE=match
+	export FAKE_GET_VALUE=15
+	run_case "${limit_file}" || fail "expected exit 0 when org GET emits stderr alongside stdout 15, stderr=$(cat "${case_dir}/stderr")"
+	org_put_count="$(grep -c '^PUT orgs/' "${call_log}" || true)"
+	if [ "${org_put_count}" -ne 0 ]; then
+		fail "expected 0 org PUT calls when org limit equals 15 with stderr, got ${org_put_count}: $(cat "${call_log}")"
+	fi
+	warn_count="$(grep -c '^::warning::' "${case_dir}/stderr" || true)"
+	err_count="$(grep -c '^::error::' "${case_dir}/stderr" || true)"
+	if [ "${warn_count}" -ne 0 ] || [ "${err_count}" -ne 0 ] || [ -s "${case_dir}/stderr" ]; then
+		fail "expected empty stderr (0 warnings, 0 errors), got warn=${warn_count} err=${err_count}: $(cat "${case_dir}/stderr")"
+	fi
+	assert_calls $'GET orgs/VitruvianSoftware/actions/cache/storage-limit\nPUT repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit {"max_cache_size_gb":15}\nGET repos/VitruvianSoftware/vitruvian-core/actions/cache/storage-limit\nVARIABLE_SET ACTIONS_CACHE_LIMIT_CONFIRMED_GB --repo VitruvianSoftware/vitruvian-core --body 15'
+	assert_var_set 15
 	;;
 *)
 	echo "unknown case: ${case_name}" >&2
