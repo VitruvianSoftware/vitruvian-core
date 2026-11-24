@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.1...vitruvian-code-v1.44.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** reopened chats keep their folder and the meter's real window ([#5476](https://github.com/VitruvianSoftware/vitruvian-core/issues/5476)) ([d224aeb](https://github.com/VitruvianSoftware/vitruvian-core/commit/d224aebc0a3e5e698f3136abcd7551339d8e20b0))
+
 ## [1.44.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.0...vitruvian-code-v1.44.1) (2026-11-24)
 
 
