@@ -1022,6 +1022,65 @@ final class LiveSessionStateTests: XCTestCase {
         await session.stopAll()
     }
 
+    /// Changing a live chat's folder must not keep talking to the session started in the old one:
+    /// the agent would go on writing there. The old connection is dropped, a new one starts in the
+    /// new folder with no old session to resume, and the chat says so.
+    func testChangingTheFolderOfALiveChatStartsANewConnectionInTheNewFolder() async throws {
+        let connections = LiveStateLockedBox<[LiveStateMockConnection]>([])
+        let env = makeSessionEnvironment(makeConnection: { spec in
+            let conn = LiveStateMockConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        })
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: LiveStateMockHost())
+        session.takeCheckpoint = { _ in nil }
+        let folderA = VitruvianCodeConfiguration(
+            workingDirectory: "/tmp/folder-a", approvalMode: .standard, activeProvider: Self.claudeSDKProvider)
+        var folderB = folderA
+        folderB.workingDirectory = "/tmp/folder-b"
+        let expectedNotice = VitruvianCodeHostStrings().worktreeFreshSessionNotice
+
+        session.send("In A", configuration: folderA, agentPath: "/fake/claude")
+        try await waitUntil("conn1 prompts") { connections.value.first?.promptCalls.count == 1 }
+        let conn1 = connections.value[0]
+        XCTAssertEqual(conn1.startCalls.first?.workingDirectory, session.workingDirectory(for: folderA))
+        conn1.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-1"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 1 done") { !session.isRunning }
+
+        // Same folder: the live connection is reused.
+        session.send("Still in A", configuration: folderA, agentPath: "/fake/claude")
+        try await waitUntil("reused prompt") { conn1.promptCalls.count == 2 }
+        XCTAssertEqual(connections.value.count, 1)
+        conn1.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-1"))
+        conn1.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 2 done") { !session.isRunning }
+
+        // The folder is changed from the header: the next prompt runs there.
+        session.send("In B", configuration: folderB, agentPath: "/fake/claude")
+        try await waitUntil("conn2 prompts") { connections.value.count == 2 && connections.value[1].promptCalls.count == 1 }
+        let conn2 = connections.value[1]
+        XCTAssertEqual(conn2.spec.workingDirectory, session.workingDirectory(for: folderB))
+        XCTAssertEqual(conn2.startCalls.first?.workingDirectory, session.workingDirectory(for: folderB))
+        XCTAssertNil(conn2.startCalls.first?.resumeSessionID, "the old folder's session is not resumed in the new folder")
+        XCTAssertEqual(conn1.promptCalls.count, 2, "the old connection gets no prompt for the new folder")
+        try await waitUntil("old connection stopped") { conn1.stopCount >= 1 }
+        XCTAssertTrue(session.messages.contains { $0.role == .agent && !$0.isError && $0.text == expectedNotice },
+                      "the chat tells the user the conversation starts over in the new folder")
+
+        conn2.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-2"))
+        conn2.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 3 done") { !session.isRunning }
+        // And the new connection is reused for the next prompt in B.
+        session.send("Still in B", configuration: folderB, agentPath: "/fake/claude")
+        try await waitUntil("reused in B") { conn2.promptCalls.count == 2 }
+        XCTAssertEqual(connections.value.count, 2)
+        conn2.emit(.finished(status: "completed", response: "ok", error: nil, conversationID: "mock-live-2"))
+        conn2.finishPrompt(with: .endTurn)
+        try await waitUntil("turn 4 done") { !session.isRunning }
+        await session.stopAll()
+    }
+
     func testForcedFreshSessionInWorktreeShowsTranscriptNoticeAndResetsLiveState() async throws {
         let tempRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("wt-fresh-notice-\(UUID().uuidString)", isDirectory: true)

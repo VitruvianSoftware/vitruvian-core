@@ -825,6 +825,21 @@ struct ChatApprovalModeBadge: View {
 
     static let order: [VitruvianCodeApprovalMode] = [.yolo, .acceptEdits, .standard, .plan]
 
+    /// What the picker offers. Auto (Claude decides for itself what is safe to
+    /// run) is Claude-only and per chat: it is offered on a Claude SDK
+    /// connection and nowhere else. It sits between Full access and
+    /// Auto-accept edits, where T3 Code puts it
+    /// (`apps/web/src/components/chat/runtimeModeConfig.ts`: Supervised,
+    /// Auto-accept edits, Auto, Full access; ours runs the other way round).
+    static func choices(connection: AgentConnectionKind?) -> [VitruvianCodeApprovalMode] {
+        guard connection == .claudeSDK else { return order }
+        return [.yolo, .auto, .acceptEdits, .standard, .plan]
+    }
+
+    private var choices: [VitruvianCodeApprovalMode] {
+        Self.choices(connection: session.effectiveConnectionKind(for: engine.configuration.activeProvider))
+    }
+
     static func label(_ mode: VitruvianCodeApprovalMode, _ strings: VitruvianCodeChatStrings) -> String {
         switch mode {
         case .yolo: return strings.approvalBypass
@@ -852,7 +867,7 @@ struct ChatApprovalModeBadge: View {
 
     var body: some View {
         Menu {
-            ForEach(Self.order) { mode in
+            ForEach(choices) { mode in
                 Button {
                     choose(mode)
                 } label: {
@@ -904,6 +919,11 @@ struct ChatApprovalModeBadge: View {
         session: VitruvianCodeQuickPromptSession,
         engine: VitruvianCodeEngine
     ) {
+        // Auto is this chat's own, on a Claude SDK connection only: it is never
+        // the global default, and no other connection has it.
+        if mode == .auto {
+            guard session.effectiveConnectionKind(for: engine.configuration.activeProvider) == .claudeSDK else { return }
+        }
         let wantsPlan = (mode == .plan)
         if session.planMode != wantsPlan {
             session.planMode = wantsPlan
@@ -913,6 +933,7 @@ struct ChatApprovalModeBadge: View {
             session.chatApprovalMode = mode
             return
         }
+        guard mode != .auto else { return }
         guard engine.configuration.approvalMode != mode else { return }
         var next = engine.configuration
         next.approvalMode = mode

@@ -303,13 +303,15 @@ public enum ClaudeSDKSupport {
 
     /// The helper's mode ID for the app's approval mode and plan switch (design section 8):
     /// the plan switch wins, then full access, auto-accept edits, and `default` for the rest.
-    /// The helper has no `auto` mode, so `.auto` asks like approval required.
+    /// `.auto` is the SDK's own `auto` permission mode (T3 Code's `permissionModeForClaudeRuntimePolicy`),
+    /// which the helper must list in `claude-helper/src/modes.ts`.
     public static func claudeModeID(for mode: VitruvianCodeApprovalMode, planSwitch: Bool) -> String {
         if planSwitch || mode == .plan { return "plan" }
         switch mode {
         case .yolo: return "bypassPermissions"
         case .acceptEdits: return "acceptEdits"
-        case .standard, .auto, .plan: return "default"
+        case .auto: return "auto"
+        case .standard, .plan: return "default"
         }
     }
 
