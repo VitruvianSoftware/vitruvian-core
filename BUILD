@@ -113,9 +113,12 @@ exports_files(
     visibility = ["//.github/actions/setup-bazel:__pkg__"],
 )
 
-# Exported so setup-go's tests verify go-cache.yaml.
+# Exported so setup-go's tests verify go-cache.yaml and go.mod.
 exports_files(
-    [".github/workflows/go-cache.yaml"],
+    [
+        ".github/workflows/go-cache.yaml",
+        "go.mod",
+    ],
     visibility = ["//.github/actions/setup-go:__pkg__"],
 )
 
@@ -279,6 +282,7 @@ filegroup(
     name = "workflow_files",
     srcs = glob([".github/workflows/*.yaml"]),
     visibility = [
+        "//.github/actions/setup-go:__pkg__",
         "//catalog:__pkg__",
         "//tools/ci:__pkg__",
         "//tools/ci/actionpins:__pkg__",

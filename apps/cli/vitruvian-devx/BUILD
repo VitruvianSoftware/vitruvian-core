@@ -100,6 +100,14 @@ exports_files(
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
 
+exports_files(
+    [
+        "go.mod",
+        "go.sum",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 filegroup(
     name = "checked_in_skills",
     srcs = [
