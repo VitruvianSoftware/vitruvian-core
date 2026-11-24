@@ -344,7 +344,9 @@ public final class ACPPtySignInProcess: ACPSignInProcess, @unchecked Sendable {
     private var exitWaiters: [CheckedContinuation<AgentProcessExit, Never>] = []
     private var masterClosed = false
 
-    public init(_ spec: AgentProcessLaunchSpec) throws {
+    /// `registry` holds the program while it runs, so the tool's shutdown deadline kills its
+    /// group too (`ChildProcesses`, `ToolExit`).
+    public init(_ spec: AgentProcessLaunchSpec, registry: ChildProcesses = .shared) throws {
         let master = posix_openpt(O_RDWR | O_NOCTTY)
         guard master >= 0 else { throw ACPSignInProcessError.terminalUnavailable(errno) }
         guard grantpt(master) == 0, unlockpt(master) == 0, let namePointer = ptsname(master) else {
@@ -391,6 +393,7 @@ public final class ACPPtySignInProcess: ACPSignInProcess, @unchecked Sendable {
         }
         self.pid = child
         self.masterFD = master
+        registry.add(child, leadsGroup: true)
 
         self.output = AsyncStream { continuation in
             Thread.detachNewThread {
@@ -413,6 +416,7 @@ public final class ACPPtySignInProcess: ACPSignInProcess, @unchecked Sendable {
         Thread.detachNewThread { [self] in
             var status: Int32 = 0
             while Darwin.waitpid(child, &status, 0) < 0 && errno == EINTR {}
+            registry.remove(child)
             let low = status & 0x7f
             let ended = low == 0
                 ? AgentProcessExit(exitCode: (status >> 8) & 0xff)

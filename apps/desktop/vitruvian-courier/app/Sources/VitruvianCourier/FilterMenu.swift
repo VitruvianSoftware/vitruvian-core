@@ -84,7 +84,12 @@ struct FilterMenu: View {
                 .labelStyle(.titleAndIcon)
         }
         .modifier(HeaderMenuStyle(inToolbar: inToolbar))
-        .help(String(localized: "Narrow the list (⌥Tab steps through the common filters)"))
+        .courierTooltip(
+            String(localized: "Filter"),
+            shortcut: "⌥Tab",
+            detail: String(localized: "Narrow the list"),
+            edge: .bottom
+        )
     }
 
     private var title: String {
@@ -112,7 +117,7 @@ struct DisplayOptionsMenu: View {
         }
         .menuIndicator(.hidden)
         .modifier(HeaderMenuStyle(inToolbar: inToolbar))
-        .help(String(localized: "Display Options"))
+        .courierTooltip(String(localized: "Display Options"), edge: .bottom)
     }
 }
 

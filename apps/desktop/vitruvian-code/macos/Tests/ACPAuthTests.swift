@@ -383,6 +383,21 @@ final class ACPAuthTests: XCTestCase {
         await session.stopAll()
     }
 
+    func testTheToolsShutdownKillsARunningSignInAndItsGroup() async throws {
+        let registry = ChildProcesses()
+        let process = try ACPPtySignInProcess(
+            AgentProcessLaunchSpec(executable: "/bin/sh", arguments: ["-c", "sleep 30 & sleep 30"], environment: [:]),
+            registry: registry
+        )
+        let group = process.processGroupID
+        XCTAssertEqual(registry.pids, [process.pid], "a running sign-in is listed for the shutdown deadline")
+        try await waitUntil("both sleeps run") { Self.processCount(inGroup: group) >= 2 }
+        XCTAssertEqual(registry.killAll(), 1)
+        try await waitUntil("the group is gone", timeout: 5) { !AgentProcess.processGroupExists(group) }
+        _ = await process.waitForExit()
+        XCTAssertEqual(registry.pids, [], "a reaped sign-in is taken off the list")
+    }
+
     func testAnAgentMethodFromTheCardReconnectsWithAuthenticate() async throws {
         let (session, connections) = makeSession()
         let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.liveProvider)

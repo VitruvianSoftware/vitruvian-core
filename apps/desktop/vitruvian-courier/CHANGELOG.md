@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.42](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.41...vitruvian-courier-v0.3.42) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** a test copy folder short enough for the engine's socket ([#5478](https://github.com/VitruvianSoftware/vitruvian-core/issues/5478)) ([e1ef80d](https://github.com/VitruvianSoftware/vitruvian-core/commit/e1ef80d39e29b7de00836fe0bd298501cd8d07a4))
+* **vitruvian-courier:** long chat names truncate instead of hiding the chat header ([#5481](https://github.com/VitruvianSoftware/vitruvian-core/issues/5481)) ([9035e98](https://github.com/VitruvianSoftware/vitruvian-core/commit/9035e9863f9fab4d7b108edc0fb7632fcceccffc))
+
+## [0.3.41](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.40...vitruvian-courier-v0.3.41) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** hovers and animations that match the feel of Beeper ([#5407](https://github.com/VitruvianSoftware/vitruvian-core/issues/5407)) ([4478607](https://github.com/VitruvianSoftware/vitruvian-core/commit/44786079fe024a374d2b96564124e6fdda66f175))
+
+## [0.3.40](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.39...vitruvian-courier-v0.3.40) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** make local MCP endpoint stateless across restarts ([#5463](https://github.com/VitruvianSoftware/vitruvian-core/issues/5463)) ([cbe1e06](https://github.com/VitruvianSoftware/vitruvian-core/commit/cbe1e06de5b60ebd33aa6f8f261905d5293a78a1))
+
 ## [0.3.39](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.38...vitruvian-courier-v0.3.39) (2026-11-24)
 
 

@@ -481,8 +481,14 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         terminationGrace: TimeInterval = AgentProcess.defaultTerminationGrace,
         processFactory: @escaping ACPConnection.ProcessFactory = ACPLaunchedProcess.live
     ) {
-        let requested = spec.agentPath?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = (requested?.isEmpty == false ? requested : nil) ?? spec.provider.executableName
+        // Ollama (claude) drives the user's own `claude`, pointed at Ollama (`OllamaClaude`);
+        // the chat's program path is then `ollama`'s, so it is not the one run.
+        let ollamaModel: String? = spec.provider.route == .ollama
+            ? OllamaClaude.model(configured: spec.configuration.model, ollamaDefaultModel: spec.ollamaDefaultModel)
+            : nil
+        let requested = ollamaModel == nil ? spec.agentPath?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        let name = (requested?.isEmpty == false ? requested : nil)
+            ?? (ollamaModel == nil ? spec.provider.executableName : OllamaClaude.claudeProgramName)
         let claudePath: String? = name.hasPrefix("/")
             ? name
             : VitruvianCodeSupport.locateChatProgram(
@@ -492,11 +498,12 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
                 isExecutable: environment.isExecutable,
                 fileExists: environment.fileExists
             )
-        let childEnv = ClaudeSDKSupport.helperEnvironment(
+        let claudeEnv = ClaudeSDKSupport.helperEnvironment(
             base: spec.environment,
             home: environment.home,
             configDirectory: spec.provider.claudeConfigDirectory
         )
+        let childEnv = ollamaModel.map { OllamaClaude.helperEnvironment(claudeEnv, model: $0) } ?? claudeEnv
         let node = bundledNode()
         let fallbackMode = spec.configuration.approvalMode
         let fallbackPlan = spec.turnModes.plan
@@ -519,6 +526,7 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
             providerID: spec.provider.id,
             secrets: AgentSecrets(environment: environment),
             modeProvider: liveModeProvider,
+            sessionModel: ollamaModel,
             stateDirectory: environment.stateDirectory,
             stateDirectoryOverride: environment.stateDirectoryOverride,
             versionProbe: probe,
@@ -538,6 +546,7 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         providerID: UUID,
         secrets: AgentSecrets?,
         modeProvider: @escaping ACPConnection.ModeProvider,
+        sessionModel: String? = nil,
         stateDirectory: String? = nil,
         stateDirectoryOverride: String? = nil,
         versionProbe: @escaping @Sendable () async -> String?,
@@ -562,7 +571,12 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
         let sessionMetaProvider: @MainActor @Sendable (ACPInitializeResult, String?) -> [String: ACPJSONValue]? = { [modeProvider] _, _ in
             let current = modeProvider()
             let modeID = ClaudeSDKSupport.claudeModeID(for: current.mode, planSwitch: current.planSwitch)
-            return ["vitruvian": .object(["modeId": .string(modeID)])]
+            var vitruvian: [String: ACPJSONValue] = ["modeId": .string(modeID)]
+            // The model the session opens on (the SDK's `model`), for a chat that names one.
+            if let sessionModel, !sessionModel.isEmpty {
+                vitruvian["model"] = .string(sessionModel)
+            }
+            return ["vitruvian": .object(vitruvian)]
         }
         let postInitializeRequests: @MainActor @Sendable (ACPInitializeResult) -> [(method: String, params: ACPJSONValue)] = { _ in
             guard let params = state.secretsParams else { return [] }

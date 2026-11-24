@@ -44290,6 +44290,13 @@ function extractRequestedMode(meta2, fallback) {
   const rawMode = meta2.vitruvian.modeId;
   return typeof rawMode === "string" && isClaudeModeId(rawMode) ? rawMode : fallback;
 }
+function extractRequestedModel(meta2) {
+  if (!isPlainRecord5(meta2) || !isPlainRecord5(meta2.vitruvian)) {
+    return void 0;
+  }
+  const rawModel = meta2.vitruvian.model;
+  return typeof rawModel === "string" && rawModel.trim().length > 0 ? rawModel.trim() : void 0;
+}
 function convertPromptBlocksToSdkUserMessage(blocks) {
   const contentBlocks = [];
   for (const block of blocks) {
@@ -44856,6 +44863,7 @@ var ClaudeHelperAgent = class {
       }
     }
     const initialMode = extractRequestedMode(input.meta, this.defaultMode);
+    const requestedModel = extractRequestedModel(input.meta);
     const env = buildSdkEnv(this.baseEnv, this.secrets.env);
     const mcpServers = convertMcpServers(
       input.mcpServers,
@@ -44883,7 +44891,8 @@ var ClaudeHelperAgent = class {
       canUseTool,
       env,
       additionalDirectories: input.additionalDirectories,
-      mcpServers
+      mcpServers,
+      model: requestedModel
     });
     const sdkQuery = this.queryFn({
       prompt: inputQueue,
@@ -44904,8 +44913,8 @@ var ClaudeHelperAgent = class {
       currentMode: initialMode,
       openedWithDangerousSkip: requiresDangerousSkipFlag(initialMode),
       models: [],
-      currentModel: void 0,
-      modelExplicitlySet: false,
+      currentModel: requestedModel,
+      modelExplicitlySet: requestedModel !== void 0,
       activeTurn: null,
       pendingReopenMode: null,
       closed: false,

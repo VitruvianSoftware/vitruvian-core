@@ -66,7 +66,7 @@ final class ChatModesTests: XCTestCase {
             VitruvianCodeCLIProvider.claude.availableConnections,
             [nil, .commandLine, .claudeSDK, .claudeACP]
         )
-        XCTAssertEqual(VitruvianCodeCLIProvider.ollama.availableConnections, [nil, .commandLine])
+        XCTAssertEqual(VitruvianCodeCLIProvider.ollama.availableConnections, [nil, .commandLine, .claudeSDK])
         XCTAssertEqual(VitruvianCodeCLIProvider.opencode.availableConnections, [nil, .commandLine])
     }
 

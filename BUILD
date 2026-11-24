@@ -113,6 +113,15 @@ exports_files(
     visibility = ["//.github/actions/setup-bazel:__pkg__"],
 )
 
+# Exported so setup-go's tests verify go-cache.yaml and go.mod.
+exports_files(
+    [
+        ".github/workflows/go-cache.yaml",
+        "go.mod",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 # agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
 # worktrees under it), but a file named from this package still resolves.
 # //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.
@@ -273,6 +282,7 @@ filegroup(
     name = "workflow_files",
     srcs = glob([".github/workflows/*.yaml"]),
     visibility = [
+        "//.github/actions/setup-go:__pkg__",
         "//catalog:__pkg__",
         "//tools/ci:__pkg__",
         "//tools/ci/actionpins:__pkg__",

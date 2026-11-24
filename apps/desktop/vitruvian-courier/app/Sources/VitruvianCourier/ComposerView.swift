@@ -124,6 +124,8 @@ struct ComposerView: View {
     @State private var focusFirstTool = false
     /// Counts up to give the text box the keyboard when the row closes.
     @State private var textFocusRequest = 0
+    @StateObject private var emojiHover = EmojiPickerHoverCoordinator()
+    @State private var emojiAnchorView: NSView?
     /// "It's late — send this later?" is dismissed for the rest of the session, in every chat.
     @ObservedObject private var nudgeSession = SendLaterNudgeSession.shared
 
@@ -191,7 +193,14 @@ struct ComposerView: View {
             }
         }
         .onChange(of: composer.isGIFPickerPresented) { _, open in if !open { textFocusRequest += 1 } }
-        .onChange(of: composer.isEmojiPickerPresented) { _, open in if !open { textFocusRequest += 1 } }
+        .onChange(of: composer.isEmojiPickerPresented) { _, open in
+            let restoreFocus = !open && emojiHover.shouldRestoreTextFocusOnClose
+            emojiHover.syncPresented(open, composer: composer, anchor: emojiAnchorView)
+            if restoreFocus { textFocusRequest += 1 }
+        }
+        .onDisappear { emojiHover.dismiss() }
+        // Switching chats: nothing pending from the last chat's hover may open or close anything in this one.
+        .onChange(of: composer.roomID) { _, _ in emojiHover.dismiss() }
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -523,7 +532,7 @@ struct ComposerView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Dismiss"))
+            .courierTooltip(String(localized: "Dismiss"), edge: .top)
             .accessibilityLabel(String(localized: "Dismiss"))
         }
         .padding(.horizontal, 10)
@@ -542,7 +551,8 @@ struct ComposerView: View {
                 .foregroundStyle(.secondary)
             Button(action: onCycleReplyNetwork) {
                 HStack(spacing: 5) {
-                    NetworkBadge(network: activeNetwork, name: displayName, size: 13)
+                    // The button's own tooltip is the only one: the badge's would be a second, on top of it.
+                    NetworkBadge(network: activeNetwork, name: displayName, size: 13, showsTooltip: false)
                     Text(displayName)
                         .font(.caption.weight(.semibold))
                     if !activeReplyAccountName.isEmpty {
@@ -561,7 +571,7 @@ struct ComposerView: View {
                 .overlay(Capsule().strokeBorder(themeAccent.opacity(0.45), lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Switch the network your reply is sent on"))
+            .courierTooltip(String(localized: "Switch the network your reply is sent on"), edge: .top)
 
             Spacer(minLength: 0)
 
@@ -631,6 +641,10 @@ struct ComposerView: View {
                 if !floating {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(isPlusHovering ? Color.primary.opacity(0.08) : .clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: isPlusHovering
+                        )
                 }
             }
             .contentShape(floating ? AnyShape(Circle()) : AnyShape(Rectangle()))
@@ -641,7 +655,10 @@ struct ComposerView: View {
             .onHover { isPlusHovering = $0 }
         }
         .buttonStyle(.plain)
-        .help(composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"))
+        .courierTooltip(
+            composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"),
+            edge: .top
+        )
         .accessibilityLabel(composer.isToolRowOpen ? String(localized: "Close tools") : String(localized: "More tools"))
         .accessibilityIdentifier("composer.plus")
         .background(
@@ -686,6 +703,8 @@ struct ComposerView: View {
         _ item: ComposerToolItem,
         symbolName: String,
         tooltip: String,
+        tooltipShortcut: String? = nil,
+        tooltipDetail: String? = nil,
         accessibilityTitle: String,
         height: CGFloat,
         isFirst: Bool,
@@ -695,6 +714,8 @@ struct ComposerView: View {
         ComposerToolKeyButton(
             symbolName: symbolName,
             tooltip: tooltip,
+            tooltipShortcut: tooltipShortcut,
+            tooltipDetail: tooltipDetail,
             accessibilityTitle: accessibilityTitle,
             accessibilityID: item.kind.accessibilityIdentifier,
             isEnabled: item.isEnabled,
@@ -714,7 +735,8 @@ struct ComposerView: View {
         switch item.kind {
         case .attachFile:
             toolKeyButton(
-                item, symbolName: "paperclip", tooltip: String(localized: "Attach File (⌘O)"),
+                item, symbolName: "paperclip", tooltip: String(localized: "Attach File"),
+                tooltipShortcut: "⌘O",
                 accessibilityTitle: String(localized: "Attach File"), height: height, isFirst: isFirst
             ) { AttachmentPicker.run(into: composer) }
         case .photo:
@@ -724,7 +746,8 @@ struct ComposerView: View {
             ) { AttachmentPicker.runPhotos(into: composer) }
         case .gif:
             toolKeyButton(
-                item, symbolName: "play.rectangle", tooltip: String(localized: "Send GIF (⌘⇧G)"),
+                item, symbolName: "play.rectangle", tooltip: String(localized: "Send GIF"),
+                tooltipShortcut: "⌘⇧G",
                 accessibilityTitle: String(localized: "Send GIF"), height: height, isFirst: isFirst,
                 refocusText: false
             ) {
@@ -736,7 +759,8 @@ struct ComposerView: View {
             }
         case .sticker:
             toolKeyButton(
-                item, symbolName: "face.dashed", tooltip: String(localized: "Send Sticker (⌘⌥⇧S)"),
+                item, symbolName: "face.dashed", tooltip: String(localized: "Send Sticker"),
+                tooltipShortcut: "⌘⌥⇧S",
                 accessibilityTitle: String(localized: "Send Sticker"), height: height, isFirst: isFirst,
                 refocusText: false
             ) {
@@ -748,7 +772,8 @@ struct ComposerView: View {
             }
         case .voiceNote:
             toolKeyButton(
-                item, symbolName: "mic", tooltip: String(localized: "Record Voice Note (⌘⇧A)"),
+                item, symbolName: "mic", tooltip: String(localized: "Record Voice Note"),
+                tooltipShortcut: "⌘⇧A",
                 accessibilityTitle: String(localized: "Record voice note"), height: height, isFirst: isFirst
             ) {
                 composer.preferences = preferences
@@ -757,7 +782,9 @@ struct ComposerView: View {
         case .sendLater:
             toolKeyButton(
                 item, symbolName: "clock.arrow.circlepath",
-                tooltip: item.disabledReason ?? String(localized: "Send Later (⌘⇧L)"),
+                tooltip: String(localized: "Send Later"),
+                tooltipShortcut: "⌘⇧L",
+                tooltipDetail: item.disabledReason,
                 accessibilityTitle: String(localized: "Send Later"), height: height, isFirst: isFirst
             ) {
                 if let sendLater = menus.sendLater {
@@ -858,22 +885,30 @@ struct ComposerView: View {
         }
     }
 
-    /// Always-visible circular send button: neutral grey + white arrow when disabled, accent + white arrow when sendable.
-    /// Right-click opens Send Later… and Send and Archive (⌘↩).
+    /// Always-visible circular send button: quiet grey + muted arrow when empty, solid accent + white arrow when sendable,
+    /// easing over 0.12 s. Right-click opens Send Later… and Send and Archive (⌘↩).
     @ViewBuilder
     private func sendButton(floating _: Bool) -> some View {
         let appearance = composer.sendButtonAppearance
-        let fillColor: Color = appearance == .activeAccent ? themeAccent : Color(nsColor: .systemGray)
+        let fillColor: Color = appearance.fillStyle == .solidAccent
+            ? themeAccent
+            : Color(nsColor: .systemGray).opacity(appearance.fillOpacity)
+        let arrowColor: Color = appearance.arrowStyle == .white ? .white : .secondary
+        let colorDuration = ComposerSendButtonAppearance.colorAnimationDuration(reduceMotion: reduceMotionEnabled)
+        let colorAnimation: Animation? = colorDuration > 0 ? .easeInOut(duration: colorDuration) : nil
+
         Button {
             composer.submit()
         } label: {
+            // Only the colours ease: an animation on the whole button would also slide it whenever the box moves
+            // in the same moment (sending clears the box and the "send later?" note goes).
             ZStack {
                 Circle()
-                    .fill(fillColor)
                     .frame(width: 28, height: 28)
+                    .animation(colorAnimation) { $0.foregroundStyle(fillColor) }
                 Image(systemName: "arrow.up")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
+                    .animation(colorAnimation) { $0.foregroundStyle(arrowColor) }
             }
             .frame(width: 28, height: ComposerTextView.minimumHeight)
             .contentShape(Circle())
@@ -885,7 +920,12 @@ struct ComposerView: View {
             Button(String(localized: "Send and Archive")) { composer.submit(archive: true) }
                 .disabled(!composer.canSend)
         }
-        .help(String(localized: "Send (Return). Right-click for Send Later and Send and Archive."))
+        .courierTooltip(
+            String(localized: "Send"),
+            shortcut: "Return",
+            detail: String(localized: "Right-click for Send Later and Send and Archive."),
+            edge: .top
+        )
         .accessibilityLabel(String(localized: "Send"))
         .accessibilityHint(composer.canSend ? "" : String(localized: "Write a message first"))
         .accessibilityIdentifier("composer.send")
@@ -916,19 +956,25 @@ struct ComposerView: View {
     }
 
     private var emojiToolbarButton: some View {
-        ComposerToolbarIconButton(
+        let isAccented = emojiHover.isIconAccented || composer.isEmojiPickerPresented
+        return ComposerToolbarIconButton(
             symbolName: "face.smiling",
-            tooltip: String(localized: "Emoji (⌃⌘Space opens Emoji & Symbols)"),
+            tooltipTitle: String(localized: "Emoji"),
+            tooltipShortcut: "⌃⌘Space",
+            tooltipDetail: String(localized: "Opens Emoji & Symbols"),
+            showsTooltip: !composer.isEmojiPickerPresented,
             accessibilityTitle: String(localized: "Emoji and symbols"),
             accessibilityID: "composer.toolbar.emoji",
             isEnabled: true,
-            height: ComposerTextView.minimumHeight
+            isActive: isAccented,
+            height: ComposerTextView.minimumHeight,
+            onHoverChange: { inside in
+                emojiHover.buttonHoverChanged(inside, composer: composer, anchor: emojiAnchorView)
+            }
         ) {
-            composer.toggleEmojiPicker()
+            emojiHover.buttonClicked(composer: composer, anchor: emojiAnchorView)
         }
-        .popover(isPresented: $composer.isEmojiPickerPresented, arrowEdge: .top) {
-            EmojiPickerPopover(composer: composer)
-        }
+        .background(EmojiButtonAnchorProbe { emojiAnchorView = $0 })
     }
 
     private var sendLaterToolbarButton: some View {
@@ -936,7 +982,9 @@ struct ComposerView: View {
         let canUse = composer.canSchedule && menus.sendLater != nil
         return ComposerToolbarIconButton(
             symbolName: "clock.arrow.circlepath",
-            tooltip: reason ?? String(localized: "Send Later (⌘⇧L)"),
+            tooltipTitle: String(localized: "Send Later"),
+            tooltipShortcut: "⌘⇧L",
+            tooltipDetail: reason,
             accessibilityTitle: String(localized: "Send Later"),
             accessibilityID: "composer.toolbar.sendLater",
             isEnabled: canUse,
@@ -991,7 +1039,7 @@ struct ComposerView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .help(cmd.summary)
+                    .courierTooltip(cmd.summary, edge: .top)
                 }
                 Spacer(minLength: 0)
             }
@@ -1026,18 +1074,56 @@ struct ComposerView: View {
     }
 }
 
-/// A 15pt outline SF Symbol icon button inside a 28pt hit area, with secondary colour and subtle hover highlight.
-/// When `disabledHint` is non-nil while disabled, `.disabled` is omitted so macOS still displays the `.help` tooltip.
+/// Zero-hit-test NSView probe capturing the anchor view for the floating emoji picker panel.
+private struct EmojiButtonAnchorProbe: NSViewRepresentable {
+    let onView: (NSView) -> Void
+
+    func makeNSView(context _: Context) -> ProbeNSView {
+        let view = ProbeNSView()
+        view.onView = onView
+        return view
+    }
+
+    func updateNSView(_ view: ProbeNSView, context _: Context) {
+        view.onView = onView
+        DispatchQueue.main.async { onView(view) }
+    }
+
+    final class ProbeNSView: NSView {
+        var onView: ((NSView) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil { onView?(self) }
+        }
+
+        override func hitTest(_: NSPoint) -> NSView? { nil }
+    }
+}
+
+/// A 15pt outline SF Symbol icon button inside a 28pt hit area, with secondary colour and subtle eased hover highlight.
+/// When `disabledHint` is non-nil while disabled, `.disabled` is omitted so the tooltip and hint remain available.
 private struct ComposerToolbarIconButton: View {
     let symbolName: String
-    let tooltip: String
+    let tooltipTitle: String
+    var tooltipShortcut: String? = nil
+    var tooltipDetail: String? = nil
+    var showsTooltip: Bool = true
     let accessibilityTitle: String
     let accessibilityID: String
     var isEnabled: Bool = true
+    var isActive: Bool = false
     var disabledHint: String? = nil
     var height: CGFloat = ComposerTextView.minimumHeight
+    var onHoverChange: ((Bool) -> Void)? = nil
     let action: () -> Void
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.themeAccentColor) private var themeAccent
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
 
     var body: some View {
         let shouldSystemDisable = !isEnabled && disabledHint == nil
@@ -1048,20 +1134,37 @@ private struct ComposerToolbarIconButton: View {
             Image(systemName: symbolName)
                 .symbolVariant(.none)
                 .font(.system(size: 15))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isActive ? themeAccent : Color.secondary)
+                .animation(
+                    reduceMotionEnabled ? nil : .easeInOut(duration: EmojiPickerHoverMotion.iconTintDuration),
+                    value: isActive
+                )
                 .opacity(isEnabled ? 1 : 0.42)
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(isHovering && isEnabled ? Color.primary.opacity(0.08) : .clear)
+                        .animation(
+                            reduceMotionEnabled ? nil : .easeInOut(duration: HoverFillMotion.duration),
+                            value: isHovering
+                        )
                 )
                 .contentShape(Rectangle())
                 .frame(width: 28, height: height)
         }
         .buttonStyle(.plain)
         .disabled(shouldSystemDisable)
-        .onHover { isHovering = $0 }
-        .help(tooltip)
+        .onHover { inside in
+            isHovering = inside
+            onHoverChange?(inside)
+        }
+        .courierTooltip(
+            tooltipTitle,
+            shortcut: tooltipShortcut,
+            detail: tooltipDetail,
+            edge: .top,
+            isEnabled: showsTooltip
+        )
         .accessibilityLabel(accessibilityTitle)
         .accessibilityHint(disabledHint ?? "")
         .accessibilityIdentifier(accessibilityID)
@@ -1100,7 +1203,7 @@ private struct NoticeBar: View {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Dismiss"))
+            .courierTooltip(String(localized: "Dismiss"), edge: .top)
             .accessibilityLabel(String(localized: "Dismiss"))
         }
         .padding(8)
@@ -1125,7 +1228,7 @@ struct EditBar: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Cancel editing (Esc)"))
+            .courierTooltip(String(localized: "Cancel editing"), shortcut: "Esc", edge: .top)
             .accessibilityLabel(String(localized: "Cancel editing"))
         }
         .accessibilityElement(children: .contain)
@@ -1187,7 +1290,7 @@ private struct PendingGIFPillView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Remove GIF"))
+            .courierTooltip(String(localized: "Remove GIF"), edge: .top)
             .accessibilityLabel(String(localized: "Remove GIF"))
         }
         .padding(6)
@@ -1232,7 +1335,7 @@ private struct ReplyChip: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Clear quoted message (Esc)"))
+            .courierTooltip(String(localized: "Clear quoted message"), shortcut: "Esc", edge: .top)
             .accessibilityLabel(String(localized: "Clear quoted message"))
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -1913,7 +2016,7 @@ struct BrandStopButton: View {
             }
         }
         .buttonStyle(.plain)
-        .help(String(localized: "Stop recording to review"))
+        .courierTooltip(String(localized: "Stop recording to review"), edge: .top)
         .accessibilityLabel(String(localized: "Stop recording"))
     }
 }
@@ -2177,7 +2280,7 @@ private struct ComposerVoiceRecordingBar: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
-            .help(String(localized: "Cancel recording (Esc)"))
+            .courierTooltip(String(localized: "Cancel recording"), shortcut: "Esc", edge: .top)
             .accessibilityLabel(String(localized: "Cancel recording"))
 
             HStack(spacing: 6) {
@@ -2202,7 +2305,7 @@ private struct ComposerVoiceRecordingBar: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: [])
-            .help(String(localized: "Send voice note (Return)"))
+            .courierTooltip(String(localized: "Send voice note"), shortcut: "Return", edge: .top)
             .accessibilityLabel(String(localized: "Send voice note"))
         }
         .padding(.horizontal, 10)
@@ -2236,7 +2339,7 @@ private struct ComposerVoiceReviewBar: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
-            .help(String(localized: "Discard recording (Esc)"))
+            .courierTooltip(String(localized: "Discard recording"), shortcut: "Esc", edge: .top)
             .accessibilityLabel(String(localized: "Discard recording"))
 
             HStack(spacing: 6) {
@@ -2269,7 +2372,7 @@ private struct ComposerVoiceReviewBar: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: [])
-            .help(String(localized: "Send voice note (Return)"))
+            .courierTooltip(String(localized: "Send voice note"), shortcut: "Return", edge: .top)
             .accessibilityLabel(String(localized: "Send voice note"))
         }
         .padding(.horizontal, 10)
@@ -2335,7 +2438,11 @@ private struct SendLaterNudgeBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(String(localized: "Don’t suggest this again until Vitruvian Courier restarts"))
+            .courierTooltip(
+                String(localized: "Dismiss"),
+                detail: String(localized: "Don’t suggest this again until Vitruvian Courier restarts"),
+                edge: .top
+            )
             .accessibilityLabel(String(localized: "Dismiss"))
         }
         .padding(.horizontal, 4)
