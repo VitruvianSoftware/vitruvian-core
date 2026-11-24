@@ -213,12 +213,13 @@ tool.onLanguageChanged = { app in
 }
 
 // The kit on its own thread; the app says goodbye, and the program ends
-// from the main thread, after the engine has let the bot be.
+// once the engine has stopped the chat's programs, or at ToolExit's
+// deadline if the main thread is too busy: inside the protocol's two
+// seconds either way. See ToolExit.
 Thread.detachNewThread {
     let status = kit.tool.serve()
-    Task { @MainActor in
-        await codeTool.stopAll()
-        exit(status)
-    }
+    ToolExit.leave(status: status, stop: {
+        await codeTool.stopAll(timeout: ToolExit.stopBudget)
+    }, end: { ToolExit.endProcess($0) })
 }
 application.run()

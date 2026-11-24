@@ -8,6 +8,7 @@ Component package providing implementation for `apps/desktop/vitruvian-code/maco
 - `[CommandAnswer.swift:CommandAnswer]`
 - `[Pages.swift:Pages]`
 - `[PanelOpen.swift:PanelOpen]`
+- `[ToolExit.swift:ToolExit]`
 - `[ToolSettings.swift:ToolSettings]`
 - `[Version.swift:ToolVersion]`
 - `[VitruvianCodeTool.swift:ToolLink]`
