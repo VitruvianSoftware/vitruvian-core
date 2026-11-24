@@ -76,7 +76,10 @@ _PG_SELECT = {
     ]
 ]
 
-exports_files(["playwright-browsers-1.57.0.json"])
+exports_files([
+    "claude_cli.bzl",
+    "playwright-browsers-1.57.0.json",
+])
 
 bzl_library(
     name = "claude_cli",

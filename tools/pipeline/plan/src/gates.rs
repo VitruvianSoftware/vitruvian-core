@@ -65,6 +65,7 @@ pub const INERT_TOOLS: &[&str] = &[
     "ci/",
     "ci-preflight/",
     "ci-runner/",
+    "claude-cli-pin/",
     "cloud-bootstrap/",
     "cluster/",
     "conformance/",

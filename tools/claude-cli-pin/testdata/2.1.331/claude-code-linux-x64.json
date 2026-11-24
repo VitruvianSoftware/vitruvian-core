@@ -1,0 +1,7 @@
+{
+  "dist": {
+    "integrity": "sha512-IpvZ9c/NopO/sr8ThWLVAUDXVAFT3auLWrhbR6wq1dgkuJfZYdTtoXf6GajE5KL9R58iTt/86OPXrJAsM4+l8g=="
+  },
+  "name": "@anthropic-ai/claude-code-linux-x64",
+  "version": "2.1.331"
+}
