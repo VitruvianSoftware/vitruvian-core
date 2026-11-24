@@ -112,6 +112,23 @@ jobs:
           # The checkout used persist-credentials: false; hand git the App token.
           gh auth setup-git
 
+          # The update was built from the checkout. If main has since changed
+          # these files, pushing it would undo that change; next week retries.
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          moved=0
+          git diff --quiet HEAD refs/remotes/origin/main -- "${price_files[@]}" || moved=$?
+          case "$moved" in
+            0) ;;
+            1)
+              echo "::notice::main changed the prices during this run; left alone for the next run."
+              exit 0
+              ;;
+            *)
+              echo "::error::Could not compare the checkout with main (git diff exit $moved)."
+              exit 1
+              ;;
+          esac
+
           # Leave the branch alone if it holds commits this workflow did not write.
           remote_sha=""
           found=0
@@ -164,6 +181,10 @@ jobs:
             git diff --quiet "$base" refs/remotes/origin/main -- "${price_files[@]}" || base_current=$?
             case "$same:$base_current" in
               0:0)
+                failing="$(gh pr view "$existing" --json statusCheckRollup --jq '[.statusCheckRollup[] | select((.conclusion // "") | test("FAILURE|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE"))] | length')"
+                if [ "$failing" != "0" ]; then
+                  echo "::warning::PR #${existing} is unchanged but has $failing failing check(s); re-run them or close the PR to rebuild it."
+                fi
                 echo "PR #${existing} already proposes these prices; left alone."
                 exit 0
                 ;;
