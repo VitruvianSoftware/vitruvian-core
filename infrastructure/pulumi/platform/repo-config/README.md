@@ -24,7 +24,6 @@ This module is always shipped and is a standalone `package main` you can `pulumi
 | `github.NewIssueLabel` (`dependencies`, `go`, `ci`) | The labels `.github/dependabot.yml` applies to dependency PRs (Dependabot warns + skips if they don't exist) |
 | `agent-guard-review` ruleset + `agent-guard-approvers` team (`guard_review.go`) | A PR that changes agent-guard's rules, the hook wiring or the CI definitions (`.github/workflows/**`, `.github/actions/**`) needs James's approval to merge; others are unaffected. Not config-driven, so no config value turns it off. See "Who may do what" in `tools/agent-guard/README.md` |
 | `release-tags` tag ruleset (`release_tags.go`) | Only release-please (the `vitruvian-copybara-sync` App) and repository admins may create, move or delete a tag. Covers every tag except the four rolling pre-release tags the beta/dev publishers move on each push to main. Not config-driven |
-| `local.NewCommand` (`actions_cache_limit.go`) | Sets the repository's GitHub Actions cache storage limit via `PUT /repos/{owner}/{repo}/actions/cache/storage-limit` (`max_cache_size_gb`) and reads it back via `GET`. `go.mod` adds `github.com/pulumi/pulumi-command/sdk` (`v1.3.0`) for this resource because `pulumi-github` `v6.15.1` has no Actions cache storage-limit resource (verified in `pulumi/pulumi-github@v6.15.1` `provider/resources.go:109-194` and upstream `integrations/terraform-provider-github@20728bb3` `github/provider.go:163-253`) |
 
 The repository **already exists** (you created it), so this program **adopts**
 it with `pulumi.Import(pulumi.ID(<repoName>))` instead of creating it. It also
@@ -52,7 +51,6 @@ Set with `pulumi config set <key> <value>`.
 | `tabulaProductionReviewers` | string list | _(see below)_ | GitHub usernames required to approve `tabula-production` deployments (resolved to ids; works with integration tokens) |
 | `tabulaProductionReviewerIds` | int list | _(unset)_ | Numeric GitHub user ids, used verbatim (overrides `tabulaProductionReviewers`) |
 | `buildbuddyApiKey` | **secret** | _(unset)_ | BuildBuddy API key mirrored into the repo's **Dependabot** secret store (see below). When unset, no Dependabot secret is managed. |
-| `actionsCacheSizeLimitGB` | int | `15` | Repository GitHub Actions cache storage limit in GB, reconciled via `PUT /repos/{owner}/{repo}/actions/cache/storage-limit` (`max_cache_size_gb`, must be `>= 1`). |
 
 Force-pushes and branch deletions are **always** blocked on the protected
 branch.
@@ -220,6 +218,29 @@ and reach the Pulumi Cloud backend via `PULUMI_ACCESS_TOKEN` (secret).
 > `Issues: write` and `Dependabot secrets: write` to the existing App (Developer
 > settings → GitHub Apps → *…-pulumi* → Permissions) and **re-approve** the
 > installation, or the auto-apply will `403` when creating the labels/secret.
+
+### Actions cache storage limit (`ACTIONS_CACHE_LIMIT_CONFIRMED_GB`)
+
+Because `pulumi-github` has no resource for the repository Actions cache storage
+limit, `.github/workflows/_repo-config-apply.yaml` reconciles it after
+`pulumi up` via `set_actions_cache_limit.sh` (step: **Set the Actions cache
+storage limit**, placed after the Sponsor button step and before the Pulumi
+digest step so a refusal cannot skip the earlier settings steps):
+
+- **Value file:** `infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt`
+  holds the desired limit in GB as a single positive integer (currently `15`).
+- **Apply & read-back:** `set_actions_cache_limit.sh` uses the same minted
+  GitHub App token (`GH_TOKEN`), `PUT`s `{"max_cache_size_gb": N}` to
+  `/repos/${REPO}/actions/cache/storage-limit`, and polls `GET` on the same
+  endpoint for up to 60 seconds until `max_cache_size_gb` matches `N`.
+- **Failure handling:** HTTP `402` (missing/invalid organization payment method
+  above the free 10 GB limit), HTTP `403` (insufficient App permissions), or a
+  read-back timeout exits non-zero and leaves `ACTIONS_CACHE_LIMIT_CONFIRMED_GB`
+  unset.
+- **Confirmed variable:** Only after `GET` confirms `max_cache_size_gb == N`
+  does the script set repository variable `ACTIONS_CACHE_LIMIT_CONFIRMED_GB=N`
+  via `gh variable set`. The Bazel download-cache workflow (#5433) reads this
+  variable.
 
 ## Interface
 - `[stripe_environments.go:Error]`

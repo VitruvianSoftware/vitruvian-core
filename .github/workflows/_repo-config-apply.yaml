@@ -205,6 +205,20 @@ jobs:
                   done < "${LIST}"
                   exit "${failed}"
 
+            # GitHub Actions cache storage limit: the Pulumi GitHub provider has
+            # no resource for /repos/{owner}/{repo}/actions/cache/storage-limit.
+            # Run last among the settings steps so a 402/403 refusal cannot skip
+            # the others. Only sets ACTIONS_CACHE_LIMIT_CONFIRMED_GB after GET
+            # confirms the limit took.
+            - name: Set the Actions cache storage limit
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  REPO: ${{ github.repository }}
+                  LIMIT_FILE: infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt
+              run: |
+                  set -euo pipefail
+                  infrastructure/pulumi/platform/repo-config/set_actions_cache_limit.sh
+
             # Digest of the apply (creates/updates/replaces/deletes, destructive
             # flagged) on the Actions run summary. No PR on a push, so summary only.
             - name: Pulumi digest → step summary
