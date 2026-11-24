@@ -231,7 +231,8 @@ storage limit**, placed after the Sponsor button step and before the Pulumi
 digest step so a refusal cannot skip the earlier settings steps):
 
 - **Value file:** `infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt`
-  holds the desired limit in GB as a single positive integer (currently `15`).
+  holds the desired limit in GB as a single positive integer (currently `20` GB,
+  set by James on 2026-11-24; the organization limit is already at 20).
 - **Apply & read-back:** The organization limit caps every repository; it was
   set by hand in organization settings on 2026-11-23, and
   `set_actions_cache_limit.sh` codifies it using the same minted GitHub App
