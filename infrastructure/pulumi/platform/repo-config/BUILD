@@ -65,9 +65,15 @@ pipeline_unit(
     name = "pulumi-repo-config",
     persona = "infra",
     runner = "ubuntu-26.04",
-    test_targets = [":test"] + [
-        ":set_actions_cache_limit_" + case + "_test"
-        for case in _CACHE_LIMIT_CASES
+    # Literal list required: the pipeline reader does not run Bazel.
+    # Keep in step with _CACHE_LIMIT_CASES and the sh_test loop above.
+    test_targets = [
+        ":test",
+        ":set_actions_cache_limit_invalid_file_test",
+        ":set_actions_cache_limit_put_402_test",
+        ":set_actions_cache_limit_put_403_test",
+        ":set_actions_cache_limit_readback_timeout_test",
+        ":set_actions_cache_limit_success_test",
     ],
     tier = "L1",
     timeout_minutes = 20,
