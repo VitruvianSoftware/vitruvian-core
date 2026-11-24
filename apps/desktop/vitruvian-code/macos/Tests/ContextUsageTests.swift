@@ -69,12 +69,24 @@ final class ContextUsageTests: XCTestCase {
         func window(_ model: String?, _ provider: VitruvianCodeCLIProvider) -> Int {
             VitruvianCodeContextUsage.defaultContextWindow(for: model, provider: provider)
         }
-        XCTAssertEqual(window(nil, .claude), 200_000)
-        XCTAssertEqual(window("claude-opus-5-5", .claude), 200_000)
+        // Every current Claude model holds a million; only those before 4.6 hold 200k.
+        XCTAssertEqual(window(nil, .claude), 1_000_000)
+        XCTAssertEqual(window("default", .claude), 1_000_000)
+        XCTAssertEqual(window("claude-opus-5-5", .claude), 1_000_000)
+        XCTAssertEqual(window("opus", .claude), 1_000_000)
+        XCTAssertEqual(window("haiku", .claude), 1_000_000, "the alias names Haiku 5.5")
+        XCTAssertEqual(window("claude-fable-5-1", .claude), 1_000_000)
+        XCTAssertEqual(window("claude-opus-4-7", .claude), 1_000_000)
+        XCTAssertEqual(window("claude-sonnet-4-6", .claude), 1_000_000)
+        XCTAssertEqual(window("claude-haiku-4-5-20251001", .claude), 200_000)
+        XCTAssertEqual(window("claude-sonnet-4-5-20250929", .claude), 200_000)
+        XCTAssertEqual(window("claude-opus-4-20250514", .claude), 200_000)
+        XCTAssertEqual(window("claude-opus-4-1", .claude), 200_000)
+        XCTAssertEqual(window("claude-3-7-sonnet-latest", .claude), 200_000)
         XCTAssertEqual(window("opus[1m]", .claude), 1_000_000)
         XCTAssertEqual(window("gemini-3.7-flash", .antigravity), 1_000_000)
         XCTAssertEqual(window(nil, .antigravity), 1_000_000, "Antigravity runs Gemini unless told otherwise")
-        XCTAssertEqual(window("claude-sonnet-5-5", .antigravity), 200_000)
+        XCTAssertEqual(window("claude-sonnet-5-5", .antigravity), 1_000_000)
         XCTAssertEqual(window("qwen3", .ollama), 128_000)
         XCTAssertEqual(window("deepseek/deepseek-v4", .opencode), 128_000)
         XCTAssertEqual(window("glm-5.3-flash-free", .opencode), 200_000)
@@ -123,9 +135,28 @@ final class ContextUsageTests: XCTestCase {
         XCTAssertNil(messages[0].contextUsage)
 
         let current = try XCTUnwrap(VitruvianCodeQuickPromptSession.contextUsage(of: messages, provider: .claude, model: nil))
-        XCTAssertEqual(current, usage(5, 12_400, 60), "the latest step, not a sum, with Claude's window")
+        XCTAssertEqual(current, usage(5, 12_400, 60, window: 1_000_000),
+                       "the latest step, not a sum, with Claude Opus 5.5's million")
         XCTAssertEqual(VitruvianCodeQuickPromptSession.contextUsage(of: messages, provider: .claude, model: "opus[1m]")?
                         .contextWindow, 1_000_000, "the model the settings name says more than the transcript's")
+    }
+
+    func testAReopenedClaudeTranscriptDropsTheLocalCommandRecords() throws {
+        // What `/model sonnet` leaves in the transcript: Claude Code's own
+        // caveat, the command as typed, and its output. None of the three is
+        // something the user said or the agent replied.
+        let transcript = [
+            #"{"type":"user","message":{"role":"user","content":"Reply with hello"}}"#,
+            #"{"type":"assistant","message":{"model":"claude-haiku-5-5","content":[{"type":"text","text":"hello"}]}}"#,
+            #"{"type":"user","message":{"role":"user","content":"<local-command-caveat>The command below was run directly in Claude Code, not sent to you as a request.</local-command-caveat>"}}"#,
+            #"{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>sonnet</command-args>"}}"#,
+            #"{"type":"user","message":{"role":"user","content":"<local-command-stdout>Set model to `sonnet (claude-sonnet-5-5)`</local-command-stdout>"}}"#,
+            #"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Which model are you?"}]}}"#,
+            #"{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Claude Sonnet 5.5"}]}}"#,
+        ].joined(separator: "\n")
+        let messages = try XCTUnwrap(VitruvianCodeEngine.parseClaudeTranscript(transcript))
+        XCTAssertEqual(messages.map(\.text), ["Reply with hello", "hello", "Which model are you?", "Claude Sonnet 5.5"])
+        XCTAssertEqual(messages.map(\.role), [.user, .agent, .user, .agent])
     }
 
     // MARK: - OpenCode
@@ -222,6 +253,17 @@ final class ContextUsageTests: XCTestCase {
             return XCTFail("a result finishes the turn")
         }
         XCTAssertEqual(metrics?.contextUsage, usage(200, 4_000, 30, window: 0))
+    }
+
+    /// A reopened Claude chat's counts come from its transcript, which records no window: the
+    /// meter must use the model's real million, not 200k (which read five times too full).
+    func testAReopenedClaudeChatUsesTheModelsRealWindow() throws {
+        var reply = VitruvianCodeChatMessage(role: .agent, text: "ok")
+        reply.contextUsage = usage(2, 89_094, 30, window: 0)
+        reply.modelName = "claude-opus-5-5"
+        let resolved = try XCTUnwrap(VitruvianCodeQuickPromptSession.contextUsage(of: [reply], provider: .claude, model: nil))
+        XCTAssertEqual(resolved.contextWindow, 1_000_000)
+        XCTAssertEqual(resolved.usedPercent, 9)
     }
 
     func testAConversationWithNoCountsIsEstimated() throws {

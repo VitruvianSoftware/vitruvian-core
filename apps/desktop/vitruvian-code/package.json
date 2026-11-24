@@ -1,6 +1,6 @@
 {
   "name": "vitruvian-code",
-  "version": "1.44.0",
+  "version": "1.44.1",
   "description": "Telegram bot bridging messages to the Antigravity CLI (agy) for remote coding agent access",
   "keywords": [
     "antigravity",

@@ -733,6 +733,7 @@ public struct VitruvianCodeChatView: View {
         panel.directoryURL = URL(fileURLWithPath: session.workingDirectory(for: engine.configuration))
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url {
+            session.forgetResumedFolder()
             var next = engine.configuration
             next.workingDirectory = url.path
             engine.updateChatConfiguration(next)

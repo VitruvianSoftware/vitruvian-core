@@ -175,7 +175,7 @@ final class ClaudeSDKSupportTests: XCTestCase {
         XCTAssertEqual(ClaudeSDKSupport.claudeModeID(for: .acceptEdits, planSwitch: false), "acceptEdits")
         XCTAssertEqual(ClaudeSDKSupport.claudeModeID(for: .standard, planSwitch: false), "default")
         XCTAssertEqual(ClaudeSDKSupport.claudeModeID(for: .plan, planSwitch: false), "plan")
-        XCTAssertEqual(ClaudeSDKSupport.claudeModeID(for: .auto, planSwitch: false), "default", "the helper has no auto mode")
+        XCTAssertEqual(ClaudeSDKSupport.claudeModeID(for: .auto, planSwitch: false), "auto", "Auto is the SDK's own auto permission mode")
         for mode in VitruvianCodeApprovalMode.allCases {
             XCTAssertEqual(ClaudeSDKSupport.claudeModeID(for: mode, planSwitch: true), "plan", "the plan switch wins over \(mode)")
         }

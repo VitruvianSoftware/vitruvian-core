@@ -49,6 +49,20 @@ _CACHE_LIMIT_CASES = [
     "readback_timeout",
     "invalid_file",
     "success",
+    "org_already_sufficient",
+    "org_raised_then_repo_put",
+    "org_put_refused",
+    "org_put_refused_repo_confirmed",
+    "org_higher_never_lowered",
+    "org_get_refused_repo_confirmed",
+    "org_get_refused_repo_refused",
+    "org_get_malformed_null",
+    "org_get_malformed_zero",
+    "org_get_malformed_alpha",
+    "org_get_malformed_empty",
+    "org_get_malformed_multiline",
+    "org_get_malformed_negative",
+    "org_get_stderr_ignored",
 ]
 
 [

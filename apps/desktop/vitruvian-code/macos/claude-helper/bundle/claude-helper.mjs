@@ -42721,7 +42721,8 @@ function createMappingState() {
     authErrorDetected: false,
     lastAssistantStopReason: null,
     activeCompactionId: null,
-    compactionSeq: 0
+    compactionSeq: 0,
+    lastCallUsage: null
   };
 }
 function resetTurnMappingState(state) {
@@ -42734,6 +42735,7 @@ function resetTurnMappingState(state) {
   state.authErrorDetected = false;
   state.lastAssistantStopReason = null;
   state.activeCompactionId = null;
+  state.lastCallUsage = null;
 }
 function isPlainRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -42961,6 +42963,10 @@ function mapAssistantMessage(sessionId, message, state) {
     if (stopReason) {
       state.lastAssistantStopReason = stopReason;
     }
+    const callUsage = readCallUsage(message.message);
+    if (callUsage) {
+      state.lastCallUsage = callUsage;
+    }
   }
   const msgId = nonEmptyString(message.message?.id);
   const hadKeyedText = msgId !== void 0 && state.streamedTextByMessageId.has(msgId);
@@ -43114,6 +43120,19 @@ function mapUserMessage(sessionId, message) {
 function nonNegativeInt(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
 }
+function readCallUsage(message) {
+  if (!isPlainRecord2(message) || !isPlainRecord2(message.usage)) {
+    return null;
+  }
+  const usage = message.usage;
+  const call = {
+    inputTokens: nonNegativeInt(usage.input_tokens),
+    outputTokens: nonNegativeInt(usage.output_tokens),
+    cacheReadTokens: nonNegativeInt(usage.cache_read_input_tokens),
+    cacheWriteTokens: nonNegativeInt(usage.cache_creation_input_tokens)
+  };
+  return call.inputTokens + call.cacheReadTokens + call.cacheWriteTokens > 0 ? call : null;
+}
 function resolveContextWindowSize(modelUsage) {
   if (!modelUsage) {
     return DEFAULT_CONTEXT_WINDOW_TOKENS;
@@ -43126,22 +43145,12 @@ function resolveContextWindowSize(modelUsage) {
   }
   return maxWindow > 0 ? maxWindow : DEFAULT_CONTEXT_WINDOW_TOKENS;
 }
-function mapResultUsageNotification(sessionId, message) {
-  const usageRecord = isPlainRecord2(message.usage) ? message.usage : void 0;
-  const modelUsageEntries = isPlainRecord2(message.modelUsage) ? Object.values(message.modelUsage) : [];
-  let inputTokens = usageRecord ? nonNegativeInt(usageRecord.input_tokens) : 0;
-  let outputTokens = usageRecord ? nonNegativeInt(usageRecord.output_tokens) : 0;
-  let cacheReadTokens = usageRecord ? nonNegativeInt(usageRecord.cache_read_input_tokens) : 0;
-  let cacheWriteTokens = usageRecord ? nonNegativeInt(usageRecord.cache_creation_input_tokens) : 0;
-  if (!usageRecord && modelUsageEntries.length > 0) {
-    for (const entry of modelUsageEntries) {
-      if (!isPlainRecord2(entry)) continue;
-      inputTokens += nonNegativeInt(entry.inputTokens);
-      outputTokens += nonNegativeInt(entry.outputTokens);
-      cacheReadTokens += nonNegativeInt(entry.cacheReadInputTokens);
-      cacheWriteTokens += nonNegativeInt(entry.cacheCreationInputTokens);
-    }
+function mapResultUsageNotification(sessionId, message, state) {
+  const call = state.lastCallUsage ?? (message.num_turns <= 1 ? readCallUsage({ usage: message.usage }) : null);
+  if (!call) {
+    return [];
   }
+  const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = call;
   const cachedTokens = cacheReadTokens + cacheWriteTokens;
   const used = inputTokens + outputTokens + cachedTokens;
   const size = resolveContextWindowSize(message.modelUsage);
@@ -43301,7 +43310,7 @@ function mapSdkMessageToNotifications(sessionId, message, state, options) {
     case "user":
       return mapUserMessage(sessionId, message);
     case "result":
-      return mapResultUsageNotification(sessionId, message);
+      return mapResultUsageNotification(sessionId, message, state);
     case "system":
       if (message.subtype === "init") {
         return mapSystemInitMessage(sessionId, message, options);
@@ -43404,6 +43413,11 @@ var CLAUDE_MODES = [
     id: "plan",
     name: "Plan",
     description: "Plan actions without modifying files or running commands."
+  },
+  {
+    id: "auto",
+    name: "Auto",
+    description: "Claude decides for itself what is safe to run, and asks only when unsure."
   },
   {
     id: "bypassPermissions",
@@ -44211,8 +44225,24 @@ function buildSdkEnv(baseEnv, secretEnv) {
   return {
     ...baseEnv,
     ...secretEnv ?? {},
-    CLAUDE_CODE_ENABLE_TODO_TOOLS: "1"
+    // Applied after the user's own env so a stray value there cannot turn
+    // the plan off. Both are needed: claude 2.1.331 only offers `TodoWrite`
+    // (which the helper maps to the app's plan) when tasks are disabled; with
+    // tasks on it offers TaskCreate/TaskUpdate/TaskList/TaskGet instead, and
+    // the plan never shows.
+    CLAUDE_CODE_ENABLE_TODO_TOOLS: "1",
+    CLAUDE_CODE_ENABLE_TASKS: "0"
   };
+}
+function isUnsolicitedResult(message) {
+  if (message.type !== "result") {
+    return false;
+  }
+  const origin = message.origin;
+  if (typeof origin !== "object" || origin === null) {
+    return false;
+  }
+  return origin.kind === "task-notification";
 }
 function namedPairsToRecord(pairs) {
   const out = {};
@@ -44982,7 +45012,7 @@ var ClaudeHelperAgent = class {
             await session.client.notify("_vitruvian/usageLimit", usageLimit);
           }
         }
-        if (sdkMessage.type === "result" && session.activeTurn && !session.closed && session.query === sdkQuery) {
+        if (sdkMessage.type === "result" && !isUnsolicitedResult(sdkMessage) && session.activeTurn && !session.closed && session.query === sdkQuery) {
           const turn = session.activeTurn;
           session.activeTurn = null;
           const outcome = classifySdkResult(

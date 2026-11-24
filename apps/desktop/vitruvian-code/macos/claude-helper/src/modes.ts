@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 export type ClaudeModeId =
-  "default" | "acceptEdits" | "plan" | "bypassPermissions";
+  "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions";
 
 export interface ClaudeModeDescriptor {
   readonly id: ClaudeModeId;
@@ -45,6 +45,12 @@ export const CLAUDE_MODES: readonly ClaudeModeDescriptor[] = [
     id: "plan",
     name: "Plan",
     description: "Plan actions without modifying files or running commands.",
+  },
+  {
+    id: "auto",
+    name: "Auto",
+    description:
+      "Claude decides for itself what is safe to run, and asks only when unsure.",
   },
   {
     id: "bypassPermissions",

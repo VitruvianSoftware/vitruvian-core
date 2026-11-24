@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.44.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.0...vitruvian-code-v1.44.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** folder changes, failed starts and Auto in the live chat ([#5468](https://github.com/VitruvianSoftware/vitruvian-core/issues/5468)) ([fc0e4f5](https://github.com/VitruvianSoftware/vitruvian-core/commit/fc0e4f5fe479ff6272b38ab30610fbdcd28b68bb))
+* **vitruvian-code:** plan, context meter and reopened chats on the live Claude connection ([#5467](https://github.com/VitruvianSoftware/vitruvian-core/issues/5467)) ([448e7a4](https://github.com/VitruvianSoftware/vitruvian-core/commit/448e7a4900c1a5ec59587363441c58031d872540))
+
 ## [1.44.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.43.0...vitruvian-code-v1.44.0) (2026-11-23)
 
 

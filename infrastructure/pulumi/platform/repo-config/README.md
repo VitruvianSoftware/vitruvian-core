@@ -231,9 +231,16 @@ storage limit**, placed after the Sponsor button step and before the Pulumi
 digest step so a refusal cannot skip the earlier settings steps):
 
 - **Value file:** `infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt`
-  holds the desired limit in GB as a single positive integer (currently `15`).
-- **Apply & read-back:** `set_actions_cache_limit.sh` uses the same minted
-  GitHub App token (`GH_TOKEN`), `PUT`s `{"max_cache_size_gb": N}` to
+  holds the desired limit in GB as a single positive integer (currently `20` GB,
+  set by James on 2026-11-24; the organization limit is already at 20).
+- **Apply & read-back:** The organization limit caps every repository; it was
+  set by hand in organization settings on 2026-11-23, and
+  `set_actions_cache_limit.sh` codifies it using the same minted GitHub App
+  token (`GH_TOKEN`). It reads `/orgs/<org>/actions/cache/storage-limit` first,
+  raises the org limit with a `PUT` (and waits for read-back) only when it is
+  lower than `N`, and never lowers it. If the App cannot read or change the org
+  limit, the script warns and carries on, and the apply fails only if the repo
+  limit is not confirmed. It then `PUT`s `{"max_cache_size_gb": N}` to
   `/repos/${REPO}/actions/cache/storage-limit`, and polls `GET` on the same
   endpoint for up to 60 seconds until `max_cache_size_gb` matches `N`.
 - **Failure handling:** On every failure after the `PUT` is attempted — whether

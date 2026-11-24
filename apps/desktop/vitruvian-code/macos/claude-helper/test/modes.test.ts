@@ -33,6 +33,7 @@ describe("modes", () => {
       ["default", "Ask before acting"],
       ["acceptEdits", "Auto-accept edits"],
       ["plan", "Plan"],
+      ["auto", "Auto"],
       ["bypassPermissions", "Full access"],
     ]);
   });
@@ -42,7 +43,7 @@ describe("modes", () => {
     expect(isClaudeModeId("acceptEdits")).toBe(true);
     expect(isClaudeModeId("plan")).toBe(true);
     expect(isClaudeModeId("bypassPermissions")).toBe(true);
-    expect(isClaudeModeId("auto")).toBe(false);
+    expect(isClaudeModeId("auto")).toBe(true);
     expect(isClaudeModeId("yolo")).toBe(false);
   });
 
@@ -60,6 +61,11 @@ describe("modes", () => {
     });
     expect(sdkPermissionOptionsForMode("plan")).toEqual({
       permissionMode: "plan",
+    });
+    // No Claude version gate, as in T3 Code's ClaudeAdapterV2.
+    expect(requiresDangerousSkipFlag("auto")).toBe(false);
+    expect(sdkPermissionOptionsForMode("auto")).toEqual({
+      permissionMode: "auto",
     });
     expect(sdkPermissionOptionsForMode("bypassPermissions")).toEqual({
       permissionMode: "bypassPermissions",
