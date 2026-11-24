@@ -128,6 +128,24 @@ final class ContextUsageTests: XCTestCase {
                         .contextWindow, 1_000_000, "the model the settings name says more than the transcript's")
     }
 
+    func testAReopenedClaudeTranscriptDropsTheLocalCommandRecords() throws {
+        // What `/model sonnet` leaves in the transcript: Claude Code's own
+        // caveat, the command as typed, and its output. None of the three is
+        // something the user said or the agent replied.
+        let transcript = [
+            #"{"type":"user","message":{"role":"user","content":"Reply with hello"}}"#,
+            #"{"type":"assistant","message":{"model":"claude-haiku-5-5","content":[{"type":"text","text":"hello"}]}}"#,
+            #"{"type":"user","message":{"role":"user","content":"<local-command-caveat>The command below was run directly in Claude Code, not sent to you as a request.</local-command-caveat>"}}"#,
+            #"{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>sonnet</command-args>"}}"#,
+            #"{"type":"user","message":{"role":"user","content":"<local-command-stdout>Set model to `sonnet (claude-sonnet-5-5)`</local-command-stdout>"}}"#,
+            #"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Which model are you?"}]}}"#,
+            #"{"type":"assistant","message":{"model":"claude-sonnet-5-5","content":[{"type":"text","text":"Claude Sonnet 5.5"}]}}"#,
+        ].joined(separator: "\n")
+        let messages = try XCTUnwrap(VitruvianCodeEngine.parseClaudeTranscript(transcript))
+        XCTAssertEqual(messages.map(\.text), ["Reply with hello", "hello", "Which model are you?", "Claude Sonnet 5.5"])
+        XCTAssertEqual(messages.map(\.role), [.user, .agent, .user, .agent])
+    }
+
     // MARK: - OpenCode
 
     func testAnOpenCode2TranscriptCarriesTheLastStepsTokens() throws {

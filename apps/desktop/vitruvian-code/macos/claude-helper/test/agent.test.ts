@@ -489,6 +489,7 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
         "default",
         "acceptEdits",
         "plan",
+        "auto",
         "bypassPermissions",
       ]);
       // Delayed models haven't arrived yet -> only mode configOption in initial result.
@@ -507,6 +508,8 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       expect(opts.permissionMode).toBe("default");
       expect(opts.allowDangerouslySkipPermissions).toBeUndefined();
       expect(opts.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("1");
+      // claude 2.1.331 offers TodoWrite (the plan) only with tasks switched off.
+      expect(opts.env?.CLAUDE_CODE_ENABLE_TASKS).toBe("0");
       expect(opts.env?.CLAUDE_CONFIG_DIR).toBe("/custom/claude-dir");
 
       // Resolving supportedModels later triggers config_option_update with models.
@@ -592,6 +595,8 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       expect(opts.sessionId).toBeUndefined();
       expect(opts.pathToClaudeCodeExecutable).toBe("/opt/bin/claude");
       expect(opts.env?.CLAUDE_CODE_ENABLE_TODO_TOOLS).toBe("1");
+      // claude 2.1.331 offers TodoWrite (the plan) only with tasks switched off.
+      expect(opts.env?.CLAUDE_CODE_ENABLE_TASKS).toBe("0");
     } finally {
       await harness.close();
     }
@@ -888,9 +893,10 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       const rawUsageUpdate = (
         rawUsageMsg!.params as Record<string, Record<string, unknown>>
       ).update;
-      expect(rawUsageUpdate.inputTokens).toBe(100);
-      expect(rawUsageUpdate.outputTokens).toBe(40);
-      expect(rawUsageUpdate.cachedTokens).toBe(15);
+      // The root assistant call (the subagent's own call is not counted).
+      expect(rawUsageUpdate.inputTokens).toBe(10);
+      expect(rawUsageUpdate.outputTokens).toBe(10);
+      expect(rawUsageUpdate.cachedTokens).toBe(0);
 
       // Every raw JSON-RPC message sent by the helper must validate against protocol/schema.json.
       for (const wireMsg of harness.receivedRawMessages) {
@@ -2053,6 +2059,153 @@ describe("ClaudeHelperAgent over real ACP streams", () => {
       );
       expect(resumedPromptRes.stopReason).toBe("end_turn");
       expect(queryHandles[1].pushedUserMessages).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/resume then prompt: the stale task-notification turn's result does not swallow the reply", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440077";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      queryFn: ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+          onPromptMessage: (_msg, h) => {
+            // Measured on claude 2.1.331: resuming a session whose last process
+            // died with a background task first runs a turn for that task's
+            // notification and ends it with an empty result, then the user's
+            // own prompt runs.
+            h.emit({
+              ...makeSuccessResult(sid, {
+                num_turns: 0,
+                result: "",
+                stop_reason: null,
+                total_cost_usd: 0,
+                usage: {
+                  input_tokens: 0,
+                  output_tokens: 0,
+                  cache_read_input_tokens: 0,
+                  cache_creation_input_tokens: 0,
+                } as unknown as SDKResultMessage["usage"],
+              }),
+              origin: { kind: "task-notification" },
+            } as unknown as SDKMessage);
+            h.emit({
+              type: "assistant",
+              message: {
+                id: "msg_after_resume",
+                type: "message",
+                role: "assistant",
+                model: "claude-haiku-5-5",
+                content: [
+                  {
+                    type: "text",
+                    text: "I added `subtract(a, b)`, which returns `a - b`, to `calc.py`.",
+                  },
+                ],
+                stop_reason: "end_turn",
+                stop_sequence: null,
+                usage: {
+                  input_tokens: 2,
+                  output_tokens: 20,
+                  cache_read_input_tokens: 88_000,
+                  cache_creation_input_tokens: 100,
+                },
+              } as unknown as SDKAssistantMessage["message"],
+              parent_tool_use_id: null,
+              uuid: UUID_1,
+              session_id: sid,
+            });
+            h.emit(makeSuccessResult(sid, { num_turns: 1 }));
+          },
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/resume", {
+        sessionId: sid,
+        cwd: "/repo",
+        mcpServers: [],
+      });
+      expect(queryHandles[0].options?.resume).toBe(sid);
+
+      const res = await withTimeout(
+        harness.client.request("session/prompt", {
+          sessionId: sid,
+          prompt: [
+            {
+              type: "text",
+              text: "What function did you add to calc.py earlier in this chat?",
+            },
+          ],
+        }),
+        1500,
+        "prompt after resume",
+      );
+
+      expect(res.stopReason).toBe("end_turn");
+      // The reply reached the client before the prompt settled.
+      const chunks = harness.receivedUpdates
+        .map((u) => u.update)
+        .filter((u) => u.sessionUpdate === "agent_message_chunk");
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toMatchObject({
+        content: {
+          type: "text",
+          text: expect.stringContaining("subtract(a, b)"),
+        },
+      });
+      // And the meter shows the real call, not the empty stale turn.
+      const usage = harness.receivedUpdates
+        .map((u) => u.update as unknown as Record<string, unknown>)
+        .filter((u) => u.sessionUpdate === "usage_update");
+      expect(usage).toHaveLength(1);
+      expect(usage[0].used).toBe(2 + 20 + 88_000 + 100);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("session/set_mode accepts auto and hands it to the SDK as permissionMode auto without reopening", async () => {
+    const sid = "550e8400-e29b-41d4-a716-446655440078";
+    const queryHandles: FakeQueryHandle[] = [];
+    const harness = createConnectedHarness({
+      claudePath: "/usr/local/bin/claude",
+      generateSessionIdFn: () => sid,
+      queryFn: ({ prompt, options }) => {
+        const { sdkQuery, handle } = createFakeQuery({
+          options,
+          promptInput: prompt,
+        });
+        queryHandles.push(handle);
+        return sdkQuery;
+      },
+    });
+    try {
+      await harness.client.request("initialize", {
+        protocolVersion: 1,
+        clientCapabilities: {},
+      });
+      await harness.client.request("session/new", {
+        cwd: "/repo",
+        mcpServers: [],
+      });
+      await harness.client.request("session/set_mode", {
+        sessionId: sid,
+        modeId: "auto",
+      });
+      expect(queryHandles).toHaveLength(1);
+      expect(queryHandles[0].setPermissionModeCalls).toEqual(["auto"]);
     } finally {
       await harness.close();
     }
