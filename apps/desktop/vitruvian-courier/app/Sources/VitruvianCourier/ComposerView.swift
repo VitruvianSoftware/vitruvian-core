@@ -900,15 +900,16 @@ struct ComposerView: View {
         Button {
             composer.submit()
         } label: {
+            // Only the colours ease: an animation on the whole button would also slide it whenever the box moves
+            // in the same moment (sending clears the box and the "send later?" note goes).
             ZStack {
                 Circle()
-                    .fill(fillColor)
                     .frame(width: 28, height: 28)
+                    .animation(colorAnimation) { $0.foregroundStyle(fillColor) }
                 Image(systemName: "arrow.up")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(arrowColor)
+                    .animation(colorAnimation) { $0.foregroundStyle(arrowColor) }
             }
-            .animation(colorAnimation, value: appearance)
             .frame(width: 28, height: ComposerTextView.minimumHeight)
             .contentShape(Circle())
         }

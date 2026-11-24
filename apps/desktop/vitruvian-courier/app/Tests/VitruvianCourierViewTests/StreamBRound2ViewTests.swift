@@ -161,6 +161,45 @@ final class StreamBRound2ViewTests: XCTestCase {
         XCTAssertEqual(reduced, [], "with Reduce Motion on the row's width must change at once")
     }
 
+    /// A long name truncates before the time: the time keeps its full width rather than having the name's "…"
+    /// drawn over its first digit. Compares the time's columns in a row with a short name and one with a long name.
+    func testLongChatNameNeverRunsIntoTheTime() throws {
+        let defaults = try makeDefaults()
+        let style = RowStyle(InboxPreferences(defaults: defaults))
+        let width: CGFloat = 320
+        func render(_ name: String) throws -> NSBitmapImageRep {
+            let row = Fixture.row("!long", name, ts: 300, preview: "Same preview", unread: 1)
+            let host = NSHostingView(rootView: SelectingRow(box: SelectingBox(), row: row, style: style, width: width))
+            let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: width, height: 80),
+                                  styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .aqua)
+            window.contentView = host
+            host.frame = NSRect(x: 0, y: 0, width: width, height: 80)
+            window.orderFrontRegardless()
+            pump(host, for: 0.2)
+            defer { window.orderOut(nil); window.contentView = nil }
+            return try snapshot(host)
+        }
+        let short = try render("Bo")
+        let long = try render("Bartholomew Maximilian Longname-Example the Third of the Very Long Family")
+        // Where the time starts: in the short row, the first column right of the middle with anything drawn in it.
+        let scale = CGFloat(short.pixelsWide) / width
+        let background = try XCTUnwrap(short.colorAt(x: short.pixelsWide / 2, y: 2))
+        func drawn(_ px: Int) -> Bool {
+            (0 ..< short.pixelsHigh).contains { y in
+                guard let c = short.colorAt(x: px, y: y) else { return false }
+                return abs(c.redComponent - background.redComponent) + abs(c.greenComponent - background.greenComponent)
+                    + abs(c.blueComponent - background.blueComponent) > 0.05
+            }
+        }
+        let timeStart = try XCTUnwrap((short.pixelsWide / 2 ..< short.pixelsWide).first(where: drawn))
+        let timeStartPoints = CGFloat(timeStart) / scale
+        XCTAssertGreaterThan(timeStartPoints, width - 90, "found the time, not the name")
+        // From there to the edge (the time, and the unread badge under it) both rows draw the same.
+        XCTAssertEqual(differingBytes(short, long, width: width, from: timeStartPoints, to: width), 0,
+                       "the long name must stop before the time, not draw over it")
+    }
+
     // MARK: - The real chat list
 
     private func offlineApp() -> AppModel {

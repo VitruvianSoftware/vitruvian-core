@@ -389,6 +389,59 @@ final class StreamBRound1ViewTests: XCTestCase {
         check(true, "an edit with new words")
     }
 
+    /// Only the send button's colour eases. When it greys out in the same moment as the message box moves (a sent
+    /// message clears the box and the "send later?" note goes), the button is drawn at its new place at once rather
+    /// than sliding there from the old one. Compares the button's column, outside its final circle, a moment after
+    /// the change with the settled picture.
+    func testSendButtonColourEaseDoesNotSlideTheButton() throws {
+        final class Shift: ObservableObject { @Published var moved = false }
+        struct Moving: View {
+            @ObservedObject var shift: Shift
+            let composer: ComposerModel
+            let preferences: ComposerPreferences
+            var body: some View {
+                VStack(spacing: 0) {
+                    ComposerView(composer: composer, preferences: preferences,
+                                 textHeight: .constant(ComposerTextView.minimumHeight))
+                    Color.clear.frame(height: shift.moved ? 0 : 60)
+                }
+                .frame(width: 620, height: 260)
+                .environment(\.courierReduceMotionOverride, false)
+            }
+        }
+        let defaults = try makeDefaults()
+        let (composer, preferences) = makeComposer(defaults: defaults)
+        let shift = Shift()
+        composer.text = "hello"
+        let (window, host) = hosted(Moving(shift: shift, composer: composer, preferences: preferences),
+                                    size: NSSize(width: 620, height: 260))
+        defer { window.orderOut(nil); window.contentView = nil }
+        pump(host, for: 0.4) { self.node("composer.send", in: host) != nil }
+
+        shift.moved = true
+        composer.text = ""
+        pump(host, for: 0.03)
+        let early = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: early)
+        pump(host, for: 0.6)
+        let settled = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: settled)
+
+        // The button's settled place, in the picture's pixels (top-left origin).
+        let button = try XCTUnwrap(node("composer.send", in: host))
+        let onScreen = try XCTUnwrap(button.accessibilityFrame?())
+        let inHost = host.convert(window.convertFromScreen(onScreen), from: nil)
+        let scale = CGFloat(settled.pixelsWide) / host.bounds.width
+        let top = host.isFlipped ? inHost.minY : host.bounds.height - inHost.maxY
+        let xs = Int((inHost.minX - 4) * scale) ..< Int((inHost.maxX + 4) * scale)
+        let circle = Int((top - 2) * scale) ..< Int((top + inHost.height + 2) * scale)
+        var differing = 0
+        for y in 0 ..< settled.pixelsHigh where !circle.contains(y) {
+            for x in xs where early.colorAt(x: x, y: y) != settled.colorAt(x: x, y: y) { differing += 1 }
+        }
+        XCTAssertEqual(differing, 0, "the send button must not slide while its colour eases")
+    }
+
     // MARK: - Item 5 / Defect 4: the hover-opened picker, on the real emoji button
 
     /// A real composer on screen. `composer` belongs to the view; `other` is a second one for a coordinator driven by

@@ -191,8 +191,10 @@ struct InboxRowView<HoverMenu: View>: View {
                                 .foregroundStyle(.tertiary)
                             if let tick = row.previewTick { PreviewTickMark(tick: tick) }
                         }
-                        .fixedSize()
+                        // Fixed after the frame: the time always keeps its full width and the name truncates
+                        // before it (fixed inside the frame, a long name squeezed the frame and drew over the time).
                         .frame(minWidth: 24, alignment: .trailing)
+                        .fixedSize()
                     }
                     HStack(alignment: .top, spacing: 6) {
                         secondLine
