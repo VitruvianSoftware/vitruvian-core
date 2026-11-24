@@ -154,23 +154,32 @@ jobs:
           # Nothing to do if an open pull request already proposes exactly these
           # prices: re-pushing would only reset CI and clear any armed auto-merge.
           # A closed one is reopened as a new pull request below.
+          # Only when main has not changed these files since the branch was cut:
+          # otherwise the old commit would conflict, so it is rebuilt on main.
           if [ -n "$existing" ] && [ -n "$remote_sha" ]; then
+            base="$(git merge-base refs/remotes/origin/main "$remote_sha")"
             same=0
             git diff --quiet "$remote_sha" -- "${price_files[@]}" || same=$?
-            case "$same" in
-              0)
+            base_current=0
+            git diff --quiet "$base" refs/remotes/origin/main -- "${price_files[@]}" || base_current=$?
+            case "$same:$base_current" in
+              0:0)
                 echo "PR #${existing} already proposes these prices; left alone."
                 exit 0
                 ;;
-              1) ;;
+              [01]:[01]) ;;
               *)
-                echo "::error::Could not compare the prices with $branch (git diff exit $same)."
+                echo "::error::Could not compare the prices with $branch (git diff exits $same, $base_current)."
                 exit 1
                 ;;
             esac
           fi
-          if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
-            gh pr merge "$existing" --disable-auto
+          if [ -n "$existing" ]; then
+            # Captured first: inside an if test a failed gh would read as "not armed".
+            auto_merge="$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+            if [ "$auto_merge" = "true" ]; then
+              gh pr merge "$existing" --disable-auto
+            fi
           fi
 
           {
