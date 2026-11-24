@@ -292,6 +292,12 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     @Published public private(set) var compactionChipDismissed: Bool = false
     /// Most recent live-connection failure for the error card (nil for command-line chats).
     @Published public private(set) var lastLiveFailure: AgentLiveFailure? = nil
+    /// The terminal sign-in the sheet shows, while it is open (`ACPAuth`).
+    @Published public private(set) var signInRun: ACPSignInRun? = nil
+    /// Starts sign-in programs; tests replace it with fakes.
+    public var signInLauncher: ACPSignInLauncher = ACPAuth.liveLauncher
+    /// An agent sign-in method to send as `authenticate` on the next connection.
+    private var pendingSignInMethodID: String? = nil
     private var turnStartedPrompt = false
     /// The files and picked mentions that went with the last turn, kept so that a
     /// Retry, a Resume or "Use command line" sends them again with the failed prompt.
@@ -1526,8 +1532,10 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 guard let self else { return (turnConfiguration.approvalMode, modes.plan) }
                 let base = self.engine?.configuration ?? self.lastTurnConfiguration ?? configuration
                 return (self.effectiveApprovalMode(for: base), self.effectivePlanMode)
-            }
+            },
+            signInMethodID: isCustomCommand ? nil : pendingSignInMethodID
         )
+        if !isCustomCommand { pendingSignInMethodID = nil }
         let turnConnection = environment.makeConnection(spec)
         connection = turnConnection
         let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
@@ -1942,7 +1950,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 detail: turnFailure?.detail,
                 source: source,
                 isLocked: isConnectionLockedAfterFailures,
-                restartFailureCount: consecutiveRestartFailures
+                restartFailureCount: consecutiveRestartFailures,
+                signInMethods: turnFailure?.kind == .auth ? (turnFailure?.signInMethods ?? []) : [],
+                needsSignIn: turnFailure?.kind == .auth
             )
         } else {
             lastLiveFailure = nil
@@ -2616,7 +2626,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     detail: failure.detail,
                     source: failureSource,
                     isLocked: isConnectionLockedAfterFailures,
-                    restartFailureCount: consecutiveRestartFailures
+                    restartFailureCount: consecutiveRestartFailures,
+                    signInMethods: failure.kind == .auth ? failure.signInMethods : [],
+                    needsSignIn: failure.kind == .auth
                 )
             }
             if !reportedError {
@@ -2931,7 +2943,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 detail: turnFailure?.detail,
                 source: source,
                 isLocked: isConnectionLockedAfterFailures,
-                restartFailureCount: consecutiveRestartFailures
+                restartFailureCount: consecutiveRestartFailures,
+                signInMethods: turnFailure?.kind == .auth ? (turnFailure?.signInMethods ?? []) : [],
+                needsSignIn: turnFailure?.kind == .auth
             )
         }
         report(VitruvianCodeTurnNotice(providerName: providerName, text: completedReply,
@@ -3623,6 +3637,43 @@ extension VitruvianCodeQuickPromptSession {
         if let prompt = promptToSend, !prompt.isEmpty {
             resend(prompt, configuration: configuration, agentPath: agentPath)
         }
+    }
+
+    /// Signs in with a method from the failure card, then retries the failed prompt.
+    ///
+    /// An agent method reconnects at once: the new connection sends `authenticate` with it
+    /// before opening the session. A terminal method opens the sign-in sheet (`signInRun`); the
+    /// user starts it there. Exit status 0 reconnects and retries; any other end, or Cancel,
+    /// leaves the card as it is and retries nothing (ACP: protocol/authentication).
+    public func signIn(
+        with method: AgentSignInMethod,
+        configuration: VitruvianCodeConfiguration,
+        agentPath: String?
+    ) {
+        guard !isRunning, signInRun == nil else { return }
+        switch method.kind {
+        case .agent:
+            pendingSignInMethodID = method.id
+            resetLiveConnectionState(keepingWorktree: true)
+            retryFailedPrompt(configuration: configuration, agentPath: agentPath)
+        case .terminal:
+            guard let run = ACPSignInRun(method: method, launcher: signInLauncher) else { return }
+            run.onFinished = { [weak self, weak run] state in
+                guard let self, let run, self.signInRun === run, state == .succeeded else { return }
+                self.signInRun = nil
+                // The agent reads the credentials its login saved only when it starts again.
+                self.resetLiveConnectionState(keepingWorktree: true)
+                self.retryFailedPrompt(configuration: configuration, agentPath: agentPath)
+            }
+            signInRun = run
+        }
+    }
+
+    /// Closes the sign-in sheet, ending the sign-in program if it still runs.
+    public func closeSignIn() async {
+        guard let run = signInRun else { return }
+        signInRun = nil
+        await run.cancel()
     }
 
     /// Retries the failed prompt once, with the files that went with it. Does nothing while a

@@ -1266,6 +1266,11 @@ extension VitruvianCodeEngine {
         session.useCommandLineForThisChat(configuration: configuration, agentPath: agentPath)
     }
 
+    /// Signs in with a method from the failure card, then retries the failed prompt (`ACPAuth`).
+    public func signInForCurrentChat(with method: AgentSignInMethod) {
+        session.signIn(with: method, configuration: configuration, agentPath: agentPath)
+    }
+
     /// Reads agy, claude or OpenCode conversation index; empty when provider has none.
     nonisolated static func readSessions(home: String, directory: String, provider: VitruvianCodeCLIProvider = .antigravity,
                                          hiddenClaudeSessionIDs: [String]) -> [VitruvianCodeSessionSummary] {

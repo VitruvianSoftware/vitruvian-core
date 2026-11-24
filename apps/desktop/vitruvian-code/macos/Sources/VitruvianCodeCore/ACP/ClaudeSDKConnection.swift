@@ -613,6 +613,15 @@ public final class ClaudeSDKConnection: PersistentAgentConnection {
                     message: ClaudeSDKSupport.helperCrashedMessage(exit: exit),
                     detail: stderr
                 )
+            },
+            // The helper advertises no sign-in methods; Claude Code signs in with its own
+            // `claude auth login`, as T3 Code offers (`providerReadiness.logic.ts`).
+            signInMethods: { [claudePath, launchSpec] _ in
+                ACPAuth.claudeSignInMethods(
+                    claudePath: claudePath,
+                    helperEnvironment: launchSpec.environment,
+                    workingDirectory: launchSpec.workingDirectory
+                )
             }
         )
         self.inner = ACPConnection(

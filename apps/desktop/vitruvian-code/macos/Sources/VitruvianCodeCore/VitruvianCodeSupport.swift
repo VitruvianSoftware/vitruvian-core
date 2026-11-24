@@ -2143,11 +2143,27 @@ public struct AgentFailure: Equatable, Sendable, Codable {
     public let kind: Kind
     public let message: String
     public let detail: String?
+    /// For an `.auth` failure, the ways the user can sign in from the app (`ACPAuth`); empty
+    /// when the agent offers none the app can run.
+    public let signInMethods: [AgentSignInMethod]
 
-    public init(kind: Kind, message: String, detail: String? = nil) {
+    public init(kind: Kind, message: String, detail: String? = nil, signInMethods: [AgentSignInMethod] = []) {
         self.kind = kind
         self.message = message
         self.detail = detail
+        self.signInMethods = signInMethods
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.kind = try container.decode(Kind.self, forKey: .kind)
+        self.message = try container.decode(String.self, forKey: .message)
+        self.detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        self.signInMethods = try container.decodeIfPresent([AgentSignInMethod].self, forKey: .signInMethods) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, message, detail, signInMethods
     }
 }
 
