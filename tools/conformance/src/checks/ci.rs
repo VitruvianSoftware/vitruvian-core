@@ -1031,6 +1031,147 @@ pub(crate) fn saves_bazel_repo_cache(content: &str) -> bool {
     step_has_save && step_has_repo_path
 }
 
+/// Plain-line check: no cache write from a non-main ref in workflows or composites.
+pub(crate) fn non_main_cache_write_problems(c: &str) -> Vec<(&'static str, &'static str)> {
+    let norm = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace('"', "'")
+    };
+    let is_main = |e: &str| {
+        let n = norm(e);
+        n.contains("github.ref == 'refs/heads/main'") && !n.contains("||")
+    };
+    let bad_trig = |s: &str| {
+        s.contains("pull_request") || s.contains("merge_group") || s.contains("workflow_call")
+    };
+    let (mut probs, mut has_on, mut non_main, mut in_on, mut in_jobs) =
+        (Vec::new(), false, false, false, false);
+    let (mut ji, mut j_ok, mut si, mut uses, mut s_ok, mut cache, mut ct, mut blk) = (
+        None,
+        false,
+        None,
+        String::new(),
+        false,
+        String::new(),
+        String::new(),
+        None::<(usize, bool)>,
+    );
+    let flush = |u: &mut String,
+                 s_ok: &mut bool,
+                 j_ok: bool,
+                 cache: &mut String,
+                 ct: &mut String,
+                 p: &mut Vec<(&'static str, &'static str)>| {
+        if !u.is_empty() {
+            let (g, nct) = (*s_ok || j_ok, norm(ct));
+            let ct_ok = matches!((nct.find("github.ref == 'refs/heads/main'"), nct.find("type=gha")), (Some(m), Some(t)) if m < t && !nct[m..t].contains("||"));
+            if nct.contains("type=gha") && !g && !ct_ok {
+                p.push(("cache-to: type=gha", "refs/heads/main guard"));
+            }
+            if (u.starts_with("actions/cache@") || u.starts_with("actions/cache/save@")) && !g {
+                p.push(("actions/cache save", "refs/heads/main guard"));
+            }
+            if u.starts_with("actions/setup-node@") && !cache.is_empty() && !g {
+                p.push(("setup-node cache on", "package-manager-cache: false"));
+            }
+            // #5458 lands setup-go cache: false across ci.yaml; enforce explicit cache: true until merged.
+            if u.starts_with("actions/setup-go@") && cache == "true" && !g {
+                p.push(("setup-go cache: true", "cache: false"));
+            }
+        }
+        u.clear();
+        *s_ok = false;
+        cache.clear();
+        ct.clear();
+    };
+    for raw in c.lines() {
+        let (s, ind) = (strip(raw), indent(raw));
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        if let Some((bi, is_ct)) = blk {
+            if ind > bi {
+                if is_ct {
+                    ct.push(' ');
+                    ct.push_str(s);
+                }
+                continue;
+            }
+            blk = None;
+        }
+        if ind == 0 {
+            flush(&mut uses, &mut s_ok, j_ok, &mut cache, &mut ct, &mut probs);
+            si = None;
+            j_ok = false;
+            in_jobs = s == "jobs:";
+            let head = s.split('#').next().unwrap_or("").trim();
+            in_on = head == "on:";
+            if let Some(r) = head.strip_prefix("on:") {
+                has_on = true;
+                non_main |= bad_trig(r);
+            }
+            continue;
+        }
+        if in_on && ind == 2 {
+            non_main |= bad_trig(s.split([':', ' ']).next().unwrap_or(""));
+        }
+        if in_jobs {
+            if ji.is_none() {
+                ji = Some(ind);
+            }
+            if Some(ind) == ji && s.ends_with(':') {
+                flush(&mut uses, &mut s_ok, j_ok, &mut cache, &mut ct, &mut probs);
+                si = None;
+                j_ok = false;
+                continue;
+            }
+            if ji.is_some_and(|j| ind == j + 2) && s.starts_with("if:") {
+                j_ok = is_main(&s[3..]);
+                continue;
+            }
+        }
+        let kv = if let Some(r) = s.strip_prefix("- ") {
+            let k = r.split(':').next().unwrap_or("");
+            if r.contains(':') && " name id if uses run with env shell continue-on-error working-directory timeout-minutes ".contains(&format!(" {k} ")) && (si.is_none() || si == Some(ind)) {
+                flush(&mut uses, &mut s_ok, j_ok, &mut cache, &mut ct, &mut probs); si = Some(ind); r
+            } else { continue; }
+        } else if si.is_some() {
+            s
+        } else {
+            continue;
+        };
+        let val = |k: &str| {
+            kv.strip_prefix(k)
+                .map(|v| v.split(" #").next().unwrap_or("").trim())
+        };
+        if let Some(v) = kv.strip_prefix("uses:") {
+            uses = v.split('#').next().unwrap_or("").trim().into();
+        } else if let Some(v) = val("if:") {
+            s_ok = is_main(v);
+        } else if let Some(v) = kv.strip_prefix("cache:") {
+            cache = unquote(v.split('#').next().unwrap_or("").trim()).into();
+        } else if let Some(v) = val("cache-to:") {
+            if matches!(v, "|" | ">" | "") {
+                blk = Some((ind, true));
+            } else {
+                ct = v.into();
+            }
+        } else if let Some(v) = kv.strip_prefix("run:") {
+            if matches!(v.trim(), "|" | ">" | "") {
+                blk = Some((ind, false));
+            }
+        }
+    }
+    flush(&mut uses, &mut s_ok, j_ok, &mut cache, &mut ct, &mut probs);
+    if has_on && !non_main {
+        Vec::new()
+    } else {
+        probs
+    }
+}
+
 /// What is wrong with how `.github/actions/setup-bazel/action.yml` restores
 /// the repository cache (restore-only), as (found, want, why) triples.
 pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String, String)> {
@@ -1378,6 +1519,21 @@ pub fn check_cache_save(ctx: &Context) {
                 "remove actions/cache or actions/cache/save on the Bazel repo cache path; use actions/cache/restore",
             );
             ok = false;
+        }
+        if rel != ".github/actions/pins/action.yml"
+            && rel != ".github/actions/llvm-cache-restore/action.yml"
+        {
+            for (found, want) in non_main_cache_write_problems(&content) {
+                ctx.emit_fail(
+                    "cachesave",
+                    &rel,
+                    found,
+                    want,
+                    "cache write runs on non-main ref",
+                    "guard cache writes with github.ref == 'refs/heads/main' or use actions/cache/restore",
+                );
+                ok = false;
+            }
         }
     }
 
@@ -2486,5 +2642,21 @@ on:
             ),
             Vec::new()
         );
+    }
+
+    #[test]
+    fn non_main_cache_write_problems_enforces_main_only_writes() {
+        let bad = "on: [pull_request, push]\njobs:\n  b:\n    steps:\n      - uses: docker/build-push-action@a\n        with:\n          cache-to: type=gha,mode=max\n      - uses: actions/cache@a\n        with:\n          path: ~/.cache\n      - uses: actions/setup-node@a\n        with:\n          cache: pnpm\n      - uses: actions/setup-go@a\n        with:\n          cache: true\n";
+        assert_eq!(non_main_cache_write_problems(bad).len(), 4);
+        let good = "on:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  b:\n    steps:\n      - uses: docker/build-push-action@a\n        with:\n          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max' || '' }}\n      - if: github.ref == 'refs/heads/main'\n        uses: actions/cache/save@a\n      - uses: actions/cache/restore@a\n      - uses: actions/setup-node@a\n        with:\n          package-manager-cache: false\n      - uses: actions/setup-go@a\n        with:\n          cache: false\n  m:\n    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}\n    steps:\n      - uses: actions/cache@a\n";
+        assert!(
+            non_main_cache_write_problems(good).is_empty(),
+            "{:?}",
+            non_main_cache_write_problems(good)
+        );
+        let main_only = "on:\n  push:\n    branches: [main]\njobs:\n  b:\n    steps:\n      - uses: actions/cache@a\n";
+        assert!(non_main_cache_write_problems(main_only).is_empty());
+        let escape = "on: pull_request\njobs:\n  b:\n    steps:\n      - uses: docker/build-push-action@a\n        with:\n          cache-to: ${{ github.ref == 'refs/heads/main' && 'a' || 'type=gha' }}\n";
+        assert_eq!(non_main_cache_write_problems(escape).len(), 1);
     }
 }

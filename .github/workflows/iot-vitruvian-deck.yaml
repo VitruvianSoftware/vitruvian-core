@@ -64,10 +64,12 @@ jobs:
       # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
       # ~/.platformio on first use; cache it on the project file.
       - name: Cache the PlatformIO toolchain
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/vitruvian-deck/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # the firmware builder looks -- the Bazel action that runs it sees neither
       # this job's PATH nor HOME. `--with pip`: PlatformIO shells out to
