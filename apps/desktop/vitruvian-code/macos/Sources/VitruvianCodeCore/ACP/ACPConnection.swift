@@ -79,6 +79,7 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
     case alreadyStopped
     case unknownInteractionRequest(String)
     case missingSessionID
+    case sessionListNotAdvertised
 
     public var errorDescription: String? {
         switch self {
@@ -90,6 +91,8 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
             return "No pending ACP permission or question request matches '\(id)'."
         case .missingSessionID:
             return "ACP agent returned an empty session identifier."
+        case .sessionListNotAdvertised:
+            return "ACP agent does not advertise session/list support."
         }
     }
 }
@@ -650,6 +653,50 @@ public final class ACPConnection: PersistentAgentConnection {
                 eventsContinuation.finish()
             }
             throw error
+        }
+    }
+
+    /// One page of the agent's own past sessions (`session/list`), asked over this
+    /// already-open connection for the chat's "Recent sessions" list. It never
+    /// starts the agent: a connection with no process throws `notStarted`.
+    /// Throws `sessionListNotAdvertised` when the agent does not offer it. agy
+    /// answers `session/list` only after `authenticate` (seen on 1.5.16), and a
+    /// chat opened with `session/new` may never have sent it; so on "needs
+    /// sign-in" it sends the same headless `authenticate` with the saved login
+    /// that `start` sends, once, and asks again. No sign-in UI is shown; any
+    /// failure is thrown for the caller to fall back on.
+    public func listSessions(cwd: String?, cursor: String?) async throws -> ACPSessionListResult {
+        guard !isStopped, !isStopping else {
+            throw ACPConnectionError.alreadyStopped
+        }
+        guard let acpTransport = transport else {
+            throw ACPConnectionError.notStarted
+        }
+        guard capabilities.listSessions else {
+            throw ACPConnectionError.sessionListNotAdvertised
+        }
+        let params = ACPSessionListParams(cwd: cwd, cursor: cursor)
+        do {
+            return try await acpTransport.request(
+                method: "session/list",
+                params: params,
+                timeout: sessionSetupTimeout
+            )
+        } catch {
+            guard Self.isAuthRequiredError(error), let authMethodID = hooks.authMethodID,
+                  authMethods.isEmpty || authMethods.contains(where: { $0.id == authMethodID }) else {
+                throw error
+            }
+            let _: ACPJSONValue = try await acpTransport.request(
+                method: "authenticate",
+                params: ACPAuthenticateParams(methodId: authMethodID),
+                timeout: sessionSetupTimeout
+            )
+            return try await acpTransport.request(
+                method: "session/list",
+                params: params,
+                timeout: sessionSetupTimeout
+            )
         }
     }
 

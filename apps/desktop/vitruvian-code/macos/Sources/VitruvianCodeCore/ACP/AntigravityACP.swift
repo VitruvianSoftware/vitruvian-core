@@ -1103,3 +1103,12 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
         try await inner.setSessionMode(targetMode)
     }
 }
+
+extension AntigravityACPConnection: AgentSessionListing {
+    /// agy's own past sessions over `session/list` (`AgentSessionHistory`). agy
+    /// 1.5.16 advertises it and needs `oauth-personal` sign-in first, which the
+    /// inner connection does when agy asks.
+    public func listSessionPage(cwd: String?, cursor: String?) async throws -> AgentSessionPage {
+        try await inner.listSessionPage(cwd: cwd, cursor: cursor)
+    }
+}

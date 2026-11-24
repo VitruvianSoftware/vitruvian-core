@@ -801,7 +801,7 @@ public struct VitruvianCodeSessionSummary: Identifiable, Equatable, Sendable {
         claudeInternalRecordTags.contains { text.hasPrefix($0) }
     }
 
-    private static func normalizePath(_ raw: String) -> String {
+    static func normalizePath(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasPrefix("file://") {
             if let url = URL(string: trimmed) {
@@ -816,7 +816,7 @@ public struct VitruvianCodeSessionSummary: Identifiable, Equatable, Sendable {
         return (path.hasSuffix("/") && path.count > 1) ? String(path.dropLast()) : path
     }
 
-    private static func folderMatches(_ folderPath: String, target targetPath: String) -> Bool {
+    static func folderMatches(_ folderPath: String, target targetPath: String) -> Bool {
         folderPath == targetPath
             || folderPath.hasPrefix(targetPath + "/")
             || targetPath.hasPrefix(folderPath + "/")
