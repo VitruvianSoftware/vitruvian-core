@@ -100,6 +100,12 @@ jobs:
           title="chore(agents): refresh model prices"
           table="$RUNNER_TEMP/model-prices-table.md"
           body="$RUNNER_TEMP/model-prices-body.md"
+          price_files=(
+            packages/orchestrator-core/src/prices.mjs
+            apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/prices.mjs
+            apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/prices.mjs
+            apps/opencode/plugins/vitruvian-orchestrator/lib/prices.mjs
+          )
 
           git config user.name "vitruvian-wren-agent[bot]"
           git config user.email "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
@@ -118,6 +124,9 @@ jobs:
                 exit 1
               fi
               git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main" "$remote_sha"
+              # Capture first so a failed rev-list stops the job instead of
+              # looking like "no foreign commits".
+              branch_commits="$(git rev-list "refs/remotes/origin/main..$remote_sha")"
               foreign=()
               while IFS= read -r sha; do
                 [ -z "$sha" ] && continue
@@ -125,7 +134,7 @@ jobs:
                 if [ "$trailer" != "true" ]; then
                   foreign+=("${sha:0:9}")
                 fi
-              done < <(git rev-list "refs/remotes/origin/main..$remote_sha")
+              done <<< "$branch_commits"
               if [ "${#foreign[@]}" -gt 0 ]; then
                 printf -v foreign_list '%s, ' "${foreign[@]}"
                 foreign_list="${foreign_list%, }"
@@ -141,6 +150,25 @@ jobs:
           esac
 
           existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+
+          # Nothing to do if an open pull request already proposes exactly these
+          # prices: re-pushing would only reset CI and clear any armed auto-merge.
+          # A closed one is reopened as a new pull request below.
+          if [ -n "$existing" ] && [ -n "$remote_sha" ]; then
+            same=0
+            git diff --quiet "$remote_sha" -- "${price_files[@]}" || same=$?
+            case "$same" in
+              0)
+                echo "PR #${existing} already proposes these prices; left alone."
+                exit 0
+                ;;
+              1) ;;
+              *)
+                echo "::error::Could not compare the prices with $branch (git diff exit $same)."
+                exit 1
+                ;;
+            esac
+          fi
           if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
             gh pr merge "$existing" --disable-auto
           fi
@@ -154,17 +182,13 @@ jobs:
           } > "$body"
 
           git checkout -B "$branch"
-          git add \
-            packages/orchestrator-core/src/prices.mjs \
-            apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/prices.mjs \
-            apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/prices.mjs \
-            apps/opencode/plugins/vitruvian-orchestrator/lib/prices.mjs
+          git add -- "${price_files[@]}"
           git commit \
             -m "$title" \
             -m "Refreshed from https://openrouter.ai/api/v1/models by the model-prices workflow." \
             -m "Model-Prices-Update: true"
           if [ -n "$remote_sha" ]; then
-            git push "--force-with-lease=refs/heads/chore/model-prices:$remote_sha" origin "$branch"
+            git push "--force-with-lease=refs/heads/$branch:$remote_sha" origin "$branch"
           else
             git push origin "$branch"
           fi
