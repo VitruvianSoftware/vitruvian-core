@@ -1,0 +1,105 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Canonical Go setup for CI lanes that cache Go modules/builds: installs the Go
+# toolchain with `actions/setup-go` (`cache: false` so its post step never
+# saves from PR or merge-queue refs), then restores on non-main refs with
+# `actions/cache/restore` and restores/saves on `refs/heads/main` with
+# `actions/cache` using the exact same primary key and cache paths as
+# `actions/setup-go@v7.1.0`.
+name: Set up Go
+description: Install Go with actions/setup-go (cache disabled) and split Go cache restore/save so only main saves.
+
+inputs:
+  go-version:
+    description: Go version spec passed to actions/setup-go.
+    required: false
+    default: ""
+  go-version-file:
+    description: Path to go.mod, go.work, .go-version, or .tool-versions passed to actions/setup-go.
+    required: false
+    default: ""
+  cache-dependency-path:
+    description: Dependency file glob(s) for the Go cache key (defaults to go.mod at workspace root).
+    required: false
+    default: ""
+  mode:
+    description: "Cache mode: 'auto' (default: restore on non-main, restore+save on main), 'restore' (restore only), or 'save' (main only: restore+save)."
+    required: false
+    default: "auto"
+
+outputs:
+  go-version:
+    description: The installed Go version from actions/setup-go.
+    value: ${{ steps.setup-go.outputs.go-version }}
+  cache-hit:
+    description: Whether an exact-key Go cache hit occurred.
+    value: ${{ github.ref == 'refs/heads/main' && inputs.mode != 'restore' && steps.cache-save.outputs.cache-hit || steps.cache-restore.outputs.cache-hit }}
+  GOMODCACHE:
+    description: The value of `go env GOMODCACHE`.
+    value: ${{ steps.cache-key.outputs.gomodcache }}
+  GOCACHE:
+    description: The value of `go env GOCACHE`.
+    value: ${{ steps.cache-key.outputs.gocache }}
+
+runs:
+  using: composite
+  steps:
+    - id: setup-go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        go-version: ${{ inputs.go-version }}
+        go-version-file: ${{ inputs.go-version-file }}
+        cache: false
+
+    - name: Compute setup-go cache key and paths
+      id: cache-key
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+        GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
+        GOMODCACHE_OUT: ${{ steps.setup-go.outputs.GOMODCACHE }}
+        GOCACHE_OUT: ${{ steps.setup-go.outputs.GOCACHE }}
+        CACHE_DEPENDENCY_PATH: ${{ inputs.cache-dependency-path }}
+        SETUP_GO_MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/cache_key.py" --github-output "${GITHUB_OUTPUT}"
+
+    - name: Restore Go cache (read-only)
+      id: cache-restore
+      if: (github.ref != 'refs/heads/main' || inputs.mode == 'restore') && steps.cache-key.outputs.key != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ${{ steps.cache-key.outputs.gomodcache }}
+          ${{ steps.cache-key.outputs.gocache }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Restore and save Go cache (main only)
+      id: cache-save
+      if: github.ref == 'refs/heads/main' && inputs.mode != 'restore' && steps.cache-key.outputs.key != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ${{ steps.cache-key.outputs.gomodcache }}
+          ${{ steps.cache-key.outputs.gocache }}
+        key: ${{ steps.cache-key.outputs.key }}
