@@ -31,11 +31,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cache_key
 
-LIVE_GO_TEST_INFRA_HASH = (
-    "56396d1630370b5bc60d0eb9cee9520acb68ef9bc7a1c475ee72b384ce3019ea"
+LIVE_SENTRY_APPLY_HASH = (
+    "da94469fa4ddf701df9f3126949c31ce800cd8e7e5e4638d9395313c4e32886a"
 )
-LIVE_GO_TEST_INFRA_KEY = (
-    f"setup-go-Linux-x64-ubuntu26-go-1.26.10-{LIVE_GO_TEST_INFRA_HASH}"
+LIVE_SENTRY_APPLY_KEY = (
+    f"setup-go-Linux-x64-ubuntu26-go-1.26.10-{LIVE_SENTRY_APPLY_HASH}"
 )
 
 JOB_KEY_SPECS = [
@@ -100,12 +100,23 @@ def _read_go_version(go_mod_path: Path) -> str:
 
 class SetupGoKeyReproTest(unittest.TestCase):
     def test_reproduce_all_converted_job_keys(self) -> None:
+        """Compute setup-go cache keys for all six converted jobs against the worktree.
+
+        Asserts that sentry-apply (apply) matches the live refs/heads/main cache entry
+        (2 files -> LIVE_SENTRY_APPLY_KEY). For the other five converted jobs, prints
+        the computed hash and file count without pinning them because they have no
+        live main entry and move whenever their go.sum or go.mod files change.
+        """
         repo_root = _find_repo_root()
+        checked_live_sentry = False
         for job_name, go_version_file, dep_pattern in JOB_KEY_SPECS:
             go_version = _read_go_version(repo_root / go_version_file)
             digest, count = cache_key.glob_hash_files(dep_pattern, repo_root)
             self.assertGreater(count, 0, f"{job_name} matched 0 files")
             self.assertEqual(len(digest), 64, f"{job_name} invalid digest {digest!r}")
+            self.assertRegex(
+                digest, r"^[0-9a-f]{64}$", f"{job_name} non-hex digest {digest!r}"
+            )
             full_key = cache_key.build_cache_key(
                 runner_os="Linux",
                 arch="x64",
@@ -113,17 +124,21 @@ class SetupGoKeyReproTest(unittest.TestCase):
                 go_version=go_version,
                 file_hash=digest,
             )
-            if job_name == "go-test-infra":
-                self.assertEqual(count, 74)
-                self.assertEqual(digest, LIVE_GO_TEST_INFRA_HASH)
-                self.assertEqual(full_key, LIVE_GO_TEST_INFRA_KEY)
+            if job_name == "sentry-apply (apply)":
+                self.assertEqual(count, 2)
+                self.assertEqual(digest, LIVE_SENTRY_APPLY_HASH)
+                self.assertEqual(full_key, LIVE_SENTRY_APPLY_KEY)
+                checked_live_sentry = True
                 print(
                     f"[MATCHED LIVE] {job_name}: count={count} hash={digest} key={full_key}"
                 )
             else:
                 print(
-                    f"[NO LIVE ENTRY] {job_name}: count={count} hash={digest} key={full_key}"
+                    f"[UNPINNED] {job_name}: count={count} hash={digest} key={full_key}"
                 )
+        self.assertTrue(
+            checked_live_sentry, "sentry-apply live assertion did not execute"
+        )
 
 
 if __name__ == "__main__":
