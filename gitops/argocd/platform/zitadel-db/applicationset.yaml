@@ -165,6 +165,9 @@ spec:
                   createdb: false
                   createrole: false
                   inherit: true
+                  # CNPG's webhook defaults this to -1 (no limit); stating it keeps
+                  # Argo CD from showing the Cluster as OutOfSync forever.
+                  connectionLimit: -1
                   inRoles:
                     - pg_read_all_data
                   passwordSecret:
