@@ -18,6 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# A cache hit is used only after the toolchain compiles a one-line program and
+# runs cargo; otherwise it is reinstalled for that job. GitHub never overwrites
+# an existing key, so a bad entry keeps being restored (and reinstalled over)
+# until the v1 segment of the key below is bumped.
+
 name: Cache Rust toolchain
 description: Restore and (on main only) save a minimal rustup toolchain, verifying cached binaries before use.
 
@@ -46,8 +51,8 @@ runs:
         RUST_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        if [ -z "${RUST_VERSION}" ]; then
-          echo "::error::inputs.version must not be empty" >&2
+        if [[ ! "${RUST_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "::error::inputs.version must be a Rust release like 1.98.1, got '${RUST_VERSION}'" >&2
           exit 1
         fi
         rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"

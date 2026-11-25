@@ -35,6 +35,8 @@ name: Vitruvian SDK Mirror Checks
 # Only when the package changes. A standard GitHub-hosted runner on a public
 # repository is not billed. NOT a required check: red here means "the
 # mirror's CI would fail after the next export".
+# It also runs on pushes to main, to save the Rust toolchain cache. A red main
+# run counts toward post-merge health, and that is real signal.
 
 on:
   push:
