@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-11-24T17:45:54Z"
+generated: "2026-11-25T02:30:44Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -69,11 +69,11 @@ tools:
     name: "Vitruvian Code"
     publisher: "VitruvianSoftware"
     summary: "Run your Telegram bot for the Antigravity agent and ask the agent from anywhere with a Quick Prompt"
-    version: "1.44.1"
+    version: "1.47.0"
     source: "https://github.com/VitruvianSoftware/vitruvian-code"
-    download: "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.44.1/vitruvian-code-tool-1.44.1.zip"
-    size: "79.2 MB"
-    sha256: "443e1d97737123be94612a59e80b6a9a2a56691c085434b814eb1001e5acd72c"
+    download: "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.47.0/vitruvian-code-tool-1.47.0.zip"
+    size: "79.8 MB"
+    sha256: "8760e5f24f490f3f2eae68c119c8dd485abf69bfb1f45844afbe67b6c83f2fdf"
     uses:
       - "Show messages and play the alert sound"
       - "Save its own settings"
