@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.48.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.47.0...vitruvian-code-v1.48.0) (2026-11-25)
+
+
+### Features
+
+* **vitruvian-code:** install agents from the ACP registry ([#5520](https://github.com/VitruvianSoftware/vitruvian-core/issues/5520)) ([3d9ed76](https://github.com/VitruvianSoftware/vitruvian-core/commit/3d9ed76ffc49062f382c13ec12ade8a846732360))
+
 ## [1.47.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.46.0...vitruvian-code-v1.47.0) (2026-11-25)
 
 
