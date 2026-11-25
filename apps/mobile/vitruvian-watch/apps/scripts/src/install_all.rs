@@ -123,11 +123,14 @@ pub fn run(_args: &[String]) -> i32 {
         return 1;
     }
 
+    const ANDROID_PLATFORMS_FLAG: &str =
+        "--android_platforms=@rules_android//:armeabi-v7a,@rules_android//:arm64-v8a";
+
     println!("==> Building all 4 Vitruvian Watch APKs...");
     let build_status = Command::new("bazel")
         .args([
             "build",
-            "--android_platforms=@rules_android//:armeabi-v7a,@rules_android//:arm64-v8a",
+            ANDROID_PLATFORMS_FLAG,
             "//apps/mobile/vitruvian-watch/apps/vitruvian-pulse:app",
             "//apps/mobile/vitruvian-watch/apps/remote:app",
             "//apps/mobile/vitruvian-watch/apps/home-control:app",
@@ -142,14 +145,6 @@ pub fn run(_args: &[String]) -> i32 {
         }
     }
 
-    let bin_root = match Command::new("bazel").args(["info", "bazel-bin"]).output() {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
-        _ => {
-            eprintln!("Error: cannot determine bazel-bin");
-            return 1;
-        }
-    };
-
     let serial = env::var("ANDROID_SERIAL").unwrap_or_default();
     let serial = if serial.is_empty() {
         try_adb_connect_serial(&repo_root).unwrap_or_default()
@@ -159,10 +154,14 @@ pub fn run(_args: &[String]) -> i32 {
     let adb_args = build_adb_args(&serial);
 
     for pkg in WATCH_PKGS {
-        let apk = format!(
-            "{}/apps/mobile/vitruvian-watch/apps/{}/app.apk",
-            bin_root, pkg
-        );
+        let apk_path = match crate::locate_apk(ANDROID_PLATFORMS_FLAG, pkg) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return 1;
+            }
+        };
+        let apk = apk_path.to_string_lossy().into_owned();
         println!("==> Installing {} ({})...", pkg, apk);
         let mut cmd = Command::new("adb");
         for a in &adb_args {
