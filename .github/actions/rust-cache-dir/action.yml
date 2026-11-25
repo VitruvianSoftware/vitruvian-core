@@ -1,0 +1,130 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Caches a rustup toolchain directory; it never installs Rust. The calling
+# workflow installs the exact release itself (`rustup toolchain install 1.98.1`)
+# when `usable` is false, so //tools/ci:workflow_rustc_test can see the pinned
+# version on the line that installs it.
+#
+# A cache hit counts as usable only after the toolchain compiles a one-line
+# program and runs cargo; a damaged copy is deleted so the workflow reinstalls
+# it. GitHub never overwrites an existing key, so a bad entry keeps being
+# restored (and replaced for that job) until the v1 segment of the key below is
+# bumped. Only jobs on main running this repo's own code can write the cache
+# entry, so a checksum manifest stored inside the same entry would add no
+# authenticity.
+
+name: Rust toolchain cache directory
+description: Restore and (on main only) save a rustup toolchain directory, and say whether the restored copy works. Never installs Rust.
+
+inputs:
+  version:
+    description: Exact Rust release whose toolchain directory to cache (e.g. 1.98.1).
+    required: true
+
+outputs:
+  usable:
+    description: "'true' when a restored toolchain passed the check; otherwise the caller must install it."
+    value: ${{ steps.verify.outputs.usable }}
+  toolchain-dir:
+    description: Path to the cached rustup toolchain directory.
+    value: ${{ steps.cache-key.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute Rust toolchain cache key and path
+      id: cache-key
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+        RUST_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${RUST_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::inputs.version must be an exact Rust release like 1.98.1, got '${RUST_VERSION}'" >&2
+          exit 1
+        fi
+        rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+        host_triple="$({ rustc -vV 2>/dev/null || true; } | awk '/^host:/ { print $2 }')"
+        if [ -z "$host_triple" ]; then
+          case "${RUNNER_OS}:${RUNNER_ARCH}" in
+            Linux:X64) host_triple="x86_64-unknown-linux-gnu" ;;
+            Linux:ARM64) host_triple="aarch64-unknown-linux-gnu" ;;
+            macOS:ARM64) host_triple="aarch64-apple-darwin" ;;
+            macOS:X64) host_triple="x86_64-apple-darwin" ;;
+            *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+        fi
+        echo "path=${rustup_home}/toolchains/${RUST_VERSION}-${host_triple}" >> "$GITHUB_OUTPUT"
+        # Bump the v1 segment to drop a bad cache entry.
+        echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-${RUST_VERSION}-minimal" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Rust toolchain cache (read-only)
+      id: cache-restore
+      if: github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.cache-key.outputs.path }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Restore and save Rust toolchain cache (main only)
+      id: cache-save
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.cache-key.outputs.path }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Check the restored Rust toolchain
+      id: verify
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
+        TOOLCHAIN_DIR: ${{ steps.cache-key.outputs.path }}
+      run: |
+        set -euo pipefail
+        verify_toolchain() {
+          if [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/cargo" ]; then
+            return 1
+          fi
+          local probe_dir rc=0
+          probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/rust-probe.XXXXXX")"
+          printf 'fn main(){}\n' > "${probe_dir}/probe.rs"
+          if ! "${TOOLCHAIN_DIR}/bin/rustc" "${probe_dir}/probe.rs" -o "${probe_dir}/probe" >/dev/null 2>&1; then
+            rc=1
+          elif ! "${TOOLCHAIN_DIR}/bin/cargo" --version >/dev/null 2>&1; then
+            rc=1
+          fi
+          rm -rf "${probe_dir}"
+          return "${rc}"
+        }
+
+        usable=false
+        if [ "${CACHE_HIT}" = "true" ]; then
+          if verify_toolchain; then
+            usable=true
+          else
+            echo "::warning::Cached Rust toolchain at ${TOOLCHAIN_DIR} failed its check; deleting it so the workflow reinstalls"
+            rm -rf "${TOOLCHAIN_DIR}"
+          fi
+        fi
+        echo "usable=${usable}" >> "$GITHUB_OUTPUT"
