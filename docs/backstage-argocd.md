@@ -63,7 +63,7 @@ Pulumi `dev-local` stack**, and no CI workflow applies that stack. A project rol
 is declarative in git and reaches the cluster the same way every other change
 does.
 
-Reusing the `mcp` account was rejected outright — it is bound to `role:admin`.
+Reusing the `mcp` account was rejected outright — it was bound to `role:admin` at the time. (Its default is now `role:readonly`, but it remains a separate identity for the MCP server.)
 
 ### Two behaviours that were verified, not assumed
 
