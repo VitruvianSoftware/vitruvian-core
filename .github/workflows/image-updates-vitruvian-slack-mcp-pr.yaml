@@ -113,7 +113,7 @@ jobs:
 
           body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main.
 
-          The image is built from this repository, so this digest is the most recent \`main\` build of \`apps/mcp/vitruvian-slack-mcp/\`. Review the resolved digest in \`gitops/argocd/platform/mcp-slack/values.yaml\`, then merge through the normal queue -- ArgoCD rolls the new image out on merge."
+          The image is built from this repository, so this digest is the most recent \`main\` build of \`apps/mcp/vitruvian-slack-mcp/\`. Review the resolved digest in \`gitops/argocd/platform/mcp-slack/values.yaml\`, it merges itself through the queue on green CI (image-update-pr-automerge.yaml; label it do-not-automerge to hold) -- ArgoCD rolls the new image out on merge."
 
           section="${CHANGELOG:-changelog unavailable: empty changelog output}"
           case "$section" in

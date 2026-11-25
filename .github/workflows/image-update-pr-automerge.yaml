@@ -1,0 +1,94 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Auto-merge image digest bump PRs
+
+# argocd-image-updater pushes resolved digests to `image-updates/<app>`
+# branches, and the image-updates-*-pr.yaml workflows open a PR from each one
+# as the vitruvian-copybara-sync App. Nothing enabled auto-merge on those PRs,
+# so every bump sat open with green checks until a maintainer queued it by hand
+# (2026-11-23: #5042, #5215 and #5318 waited 2-6 days). This enables auto-merge
+# on them, as the same App, so they flow THROUGH the merge queue on green CI --
+# the same pattern as release-pr-automerge.yaml.
+#
+# Scope + safety:
+#   * Only bot-authored PRs from `image-updates/*` branches are matched. Those
+#     branches are written solely by argocd-image-updater's sealed deploy key.
+#   * Each PR changes one digest line; every required check still has to pass in
+#     the queue before it merges. Merging rolls the new image out via ArgoCD.
+#   * Label a PR `do-not-automerge` (or make it a draft) to hold it, e.g. to read
+#     a third-party upstream changelog (buzz) before rolling it out.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.pull_request.draft == false &&
+      startsWith(github.event.pull_request.head.ref, 'image-updates/') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type == 'Bot' &&
+      !contains(github.event.pull_request.labels.*.name, 'do-not-automerge')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    # Queue rather than cancel: the job is idempotent (see the step), and
+    # cancelling shows a spurious "cancelled" check (see release-pr-automerge.yaml).
+    concurrency:
+      group: image-update-automerge-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      # `mint-sync-app-token` is a local composite action, so check out first.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint App token
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - name: Enable auto-merge so the PR merges through the queue
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Re-read state now: a person may have held the PR after the event
+          # fired. Compare `autoMergeRequest != null` as a boolean, since gh
+          # prints an empty string (not "null") when it is unset.
+          state="$(gh pr view "$PR" -R "$REPO" --json autoMergeRequest,isDraft,labels \
+            --jq '[(.autoMergeRequest != null), .isDraft, ([.labels[].name] | index("do-not-automerge") != null)] | map(tostring) | join(" ")')"
+          read -r enabled draft held <<<"$state"
+          if [ "$held" = "true" ] || [ "$draft" = "true" ]; then
+            echo "Image bump PR #$PR is held (do-not-automerge: $held, draft: $draft); leaving auto-merge alone."
+            exit 0
+          fi
+          if [ "$enabled" = "true" ]; then
+            echo "Auto-merge already enabled on image bump PR #$PR."
+            exit 0
+          fi
+          echo "Enabling auto-merge for image bump PR #$PR; the merge queue merges it on green CI."
+          gh pr merge "$PR" -R "$REPO" --squash --auto

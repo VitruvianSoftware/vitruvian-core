@@ -154,7 +154,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/block/buzz:main. Review the resolved digest in gitops/argocd/platform/buzz/values.yaml, then merge through the normal queue."
+          body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/block/buzz:main. Review the resolved digest in gitops/argocd/platform/buzz/values.yaml, it merges itself through the queue on green CI (image-update-pr-automerge.yaml; label it do-not-automerge to hold)."
 
           if [ -n "$CHANGELOG" ]; then
             body="$(printf '%s\n\n### Upstream changes\n\n%s\n' "$body" "$CHANGELOG")"
