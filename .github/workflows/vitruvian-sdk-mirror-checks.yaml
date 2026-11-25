@@ -46,7 +46,7 @@ on:
       - 'packages/pycompat/vitruvian-pycompat/**'
       - 'tools/copybara/copy.bara.sky'
       - 'tools/copybara/sdk_export_check.py'
-      - '.github/actions/cache-rust-toolchain/**'
+      - '.github/actions/rust-cache-dir/**'
       - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   pull_request:
     paths:
@@ -54,7 +54,7 @@ on:
       - 'packages/pycompat/vitruvian-pycompat/**'
       - 'tools/copybara/copy.bara.sky'
       - 'tools/copybara/sdk_export_check.py'
-      - '.github/actions/cache-rust-toolchain/**'
+      - '.github/actions/rust-cache-dir/**'
       - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   workflow_dispatch:
 
@@ -81,13 +81,20 @@ jobs:
 
       # The version Bazel builds the same checks with (MODULE.bazel,
       # rust.toolchain), and the one the mirror's workflows install.
-      - name: Cache and install Rust 1.98.1
-        uses: ./.github/actions/cache-rust-toolchain
+      - name: Restore the Rust 1.98.1 toolchain cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache-dir
         with:
           version: 1.98.1
 
       - name: Rust 1.98.1
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache.outputs.usable }}
         run: |
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           rustup default 1.98.1
           cargo --version
 
@@ -113,13 +120,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Cache and install Rust 1.98.1
-        uses: ./.github/actions/cache-rust-toolchain
+      - name: Restore the Rust 1.98.1 toolchain cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache-dir
         with:
           version: 1.98.1
 
       - name: Rust 1.98.1
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache.outputs.usable }}
         run: |
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           rustup default 1.98.1
           cargo --version
 

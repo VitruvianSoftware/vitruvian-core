@@ -18,25 +18,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# A cache hit is used only after the toolchain compiles a one-line program and
-# runs cargo; otherwise it is reinstalled for that job. GitHub never overwrites
-# an existing key, so a bad entry keeps being restored (and reinstalled over)
-# until the v1 segment of the key below is bumped. Only jobs on main running
-# this repo's own code can write the cache entry, so a checksum manifest stored
-# inside the same entry would add no authenticity.
+# Caches a rustup toolchain directory; it never installs Rust. The calling
+# workflow installs the exact release itself (`rustup toolchain install 1.98.1`)
+# when `usable` is false, so //tools/ci:workflow_rustc_test can see the pinned
+# version on the line that installs it.
+#
+# A cache hit counts as usable only after the toolchain compiles a one-line
+# program and runs cargo; a damaged copy is deleted so the workflow reinstalls
+# it. GitHub never overwrites an existing key, so a bad entry keeps being
+# restored (and replaced for that job) until the v1 segment of the key below is
+# bumped. Only jobs on main running this repo's own code can write the cache
+# entry, so a checksum manifest stored inside the same entry would add no
+# authenticity.
 
-name: Cache Rust toolchain
-description: Restore and (on main only) save a minimal rustup toolchain, verifying cached binaries before use.
+name: Rust toolchain cache directory
+description: Restore and (on main only) save a rustup toolchain directory, and say whether the restored copy works. Never installs Rust.
 
 inputs:
   version:
-    description: Rust toolchain version to install (e.g. 1.98.1).
+    description: Exact Rust release whose toolchain directory to cache (e.g. 1.98.1).
     required: true
 
 outputs:
-  cache-hit:
-    description: Whether an exact-key toolchain cache hit occurred.
-    value: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
+  usable:
+    description: "'true' when a restored toolchain passed the check; otherwise the caller must install it."
+    value: ${{ steps.verify.outputs.usable }}
   toolchain-dir:
     description: Path to the cached rustup toolchain directory.
     value: ${{ steps.cache-key.outputs.path }}
@@ -53,8 +59,8 @@ runs:
         RUST_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        if [[ ! "${RUST_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-          echo "::error::inputs.version must be a Rust release like 1.98.1, got '${RUST_VERSION}'" >&2
+        if [[ ! "${RUST_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::inputs.version must be an exact Rust release like 1.98.1, got '${RUST_VERSION}'" >&2
           exit 1
         fi
         rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
@@ -88,12 +94,12 @@ runs:
         path: ${{ steps.cache-key.outputs.path }}
         key: ${{ steps.cache-key.outputs.key }}
 
-    - name: Install or verify Rust toolchain
+    - name: Check the restored Rust toolchain
+      id: verify
       shell: bash
       env:
         CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
         TOOLCHAIN_DIR: ${{ steps.cache-key.outputs.path }}
-        RUST_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
         verify_toolchain() {
@@ -112,20 +118,13 @@ runs:
           return "${rc}"
         }
 
+        usable=false
         if [ "${CACHE_HIT}" = "true" ]; then
-          if ! verify_toolchain; then
-            echo "::warning::Cached Rust toolchain at ${TOOLCHAIN_DIR} failed verification; reinstalling"
+          if verify_toolchain; then
+            usable=true
+          else
+            echo "::warning::Cached Rust toolchain at ${TOOLCHAIN_DIR} failed its check; deleting it so the workflow reinstalls"
             rm -rf "${TOOLCHAIN_DIR}"
-            rustup toolchain install "${RUST_VERSION}" --profile minimal
-            if ! verify_toolchain; then
-              echo "::error::Rust toolchain ${RUST_VERSION} failed verification after reinstall" >&2
-              exit 1
-            fi
-          fi
-        else
-          rustup toolchain install "${RUST_VERSION}" --profile minimal
-          if ! verify_toolchain; then
-            echo "::error::Rust toolchain ${RUST_VERSION} failed verification after install" >&2
-            exit 1
           fi
         fi
+        echo "usable=${usable}" >> "$GITHUB_OUTPUT"
