@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import subprocess
 from pathlib import Path
 
 import cache_key
+import yaml
 
 LIVE_GO_TEST_INFRA_HASH = (
     "56396d1630370b5bc60d0eb9cee9520acb68ef9bc7a1c475ee72b384ce3019ea"
@@ -167,6 +170,87 @@ def test_composite_action_wiring():
     gomod_idx = text.index("steps.cache-key.outputs.gomodcache")
     gocache_idx = text.index("steps.cache-key.outputs.gocache")
     assert gomod_idx < gocache_idx
+
+
+def test_setup_go_goproxy_fallback_step(tmp_path: Path):
+    doc = yaml.safe_load(_resolve_action_path().read_text(encoding="utf-8"))
+    assert isinstance(doc, dict)
+    steps = doc["runs"]["steps"]
+    assert isinstance(steps, list)
+
+    goproxy_steps = [
+        (idx, step)
+        for idx, step in enumerate(steps)
+        if isinstance(step, dict)
+        and "GOPROXY" in str(step.get("run") or "")
+        and "GITHUB_ENV" in str(step.get("run") or "")
+    ]
+    assert len(goproxy_steps) == 1, (
+        f"expected exactly 1 GOPROXY export step, got {len(goproxy_steps)}"
+    )
+    goproxy_idx, goproxy_step = goproxy_steps[0]
+    assert goproxy_step.get("shell") == "bash"
+    assert not goproxy_step.get("if"), (
+        f"GOPROXY default step must not be skipped by an if: condition, got {goproxy_step.get('if')!r}"
+    )
+
+    script = str(goproxy_step["run"])
+
+    # 1. When GOPROXY is unset, step exports GOPROXY=https://proxy.golang.org|direct to $GITHUB_ENV.
+    env_file_unset = tmp_path / "env_unset"
+    env_file_unset.write_text("", encoding="utf-8")
+    base_env = {k: v for k, v in os.environ.items() if k != "GOPROXY"}
+    base_env["GITHUB_ENV"] = str(env_file_unset)
+    subprocess.run(["bash", "-c", script], env=base_env, check=True)
+    assert (
+        "GOPROXY=https://proxy.golang.org|direct"
+        in env_file_unset.read_text(encoding="utf-8").splitlines()
+    )
+
+    # 1b. When GOPROXY is empty, step also exports the default.
+    env_file_empty = tmp_path / "env_empty"
+    env_file_empty.write_text("", encoding="utf-8")
+    empty_env = dict(base_env)
+    empty_env["GOPROXY"] = ""
+    empty_env["GITHUB_ENV"] = str(env_file_empty)
+    subprocess.run(["bash", "-c", script], env=empty_env, check=True)
+    assert (
+        "GOPROXY=https://proxy.golang.org|direct"
+        in env_file_empty.read_text(encoding="utf-8").splitlines()
+    )
+
+    # 2. When caller already set GOPROXY, step does not overwrite it.
+    env_file_preset = tmp_path / "env_preset"
+    env_file_preset.write_text("", encoding="utf-8")
+    preset_env = dict(base_env)
+    preset_env["GOPROXY"] = "https://custom.proxy.example,direct"
+    preset_env["GITHUB_ENV"] = str(env_file_preset)
+    subprocess.run(["bash", "-c", script], env=preset_env, check=True)
+    assert "GOPROXY=" not in env_file_preset.read_text(encoding="utf-8")
+
+    # 3. Step runs before any step that downloads modules or restores/saves Go caches.
+    for prior_idx in range(goproxy_idx):
+        prior = steps[prior_idx]
+        uses = str(prior.get("uses") or "")
+        if uses.startswith("actions/setup-go@"):
+            assert (prior.get("with") or {}).get("cache") is False, (
+                "prior actions/setup-go step must have cache: false"
+            )
+        prior_run = str(prior.get("run") or "")
+        assert not re.search(r"\bgo\s+(mod|get|build|test|install|run)\b", prior_run), (
+            f"prior step {prior_idx} runs go command before GOPROXY is set: {prior_run!r}"
+        )
+
+    cache_step_indices = [
+        idx
+        for idx, s in enumerate(steps)
+        if s.get("id") in ("cache-key", "cache-restore", "cache-save")
+        or str(s.get("uses") or "").startswith("actions/cache")
+    ]
+    assert cache_step_indices, "expected Go cache steps in setup-go"
+    assert goproxy_idx < min(cache_step_indices), (
+        f"GOPROXY step (index {goproxy_idx}) must precede cache steps ({cache_step_indices})"
+    )
 
 
 def _run_main_with_go_version(

@@ -450,3 +450,148 @@ def test_main_warns_and_exits_0_when_confirm_fails_with_api_error(tmp_path, caps
     assert all(m == "GET" and "key=" in p for m, p in requests)
     assert not any(m == "DELETE" for m, _p in requests)
     assert "deleting nothing" in summary.read_text(encoding="utf-8")
+
+
+def test_gomod_and_debs_prune_helpers_and_partial_save_cli(tmp_path, capsys):
+    all_entries = _sample_all_entries() + [
+        {
+            "id": 500,
+            "key": f"bazel-gomod-1-linux-x64-{NEW_HASH}",
+            "ref": "refs/heads/main",
+            "size_in_bytes": 500_000_000,
+        },
+        {
+            "id": 501,
+            "key": f"bazel-gomod-1-linux-x64-{OLD_HASH_1}",
+            "ref": "refs/heads/main",
+            "size_in_bytes": 490_000_000,
+        },
+        {
+            "id": 502,
+            "key": f"bazel-gomod-1-darwin-arm64-{DARWIN_HASH}",
+            "ref": "refs/heads/main",
+            "size_in_bytes": 100_000_000,
+        },
+        {
+            "id": 600,
+            "key": "ci-debs-1-linux-x64-newdebs",
+            "ref": "refs/heads/main",
+            "size_in_bytes": 10_000_000,
+        },
+        {
+            "id": 601,
+            "key": "ci-debs-1-linux-x64-olddebs",
+            "ref": "refs/heads/main",
+            "size_in_bytes": 9_000_000,
+        },
+    ]
+
+    api = FakeCacheApi(
+        confirm_responses=[
+            [
+                {
+                    "id": 500,
+                    "key": f"bazel-gomod-1-linux-x64-{NEW_HASH}",
+                    "ref": "refs/heads/main",
+                }
+            ]
+        ],
+        all_entries=all_entries,
+    )
+    res_gomod = prune.confirm_and_prune_gomod_caches(
+        api=api,
+        platform="linux-x64",
+        current_gomod_hash=NEW_HASH,
+        max_confirm_attempts=1,
+        retry_delay_seconds=0.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert res_gomod["confirmed"] is True
+    assert api.deleted_ids == [501]
+
+    debs_api = FakeCacheApi(
+        confirm_responses=[
+            [
+                {
+                    "id": 600,
+                    "key": "ci-debs-1-linux-x64-newdebs",
+                    "ref": "refs/heads/main",
+                }
+            ]
+        ],
+        all_entries=all_entries,
+    )
+    res_debs = prune.confirm_and_prune_debs_caches(
+        api=debs_api,
+        platform="linux-x64",
+        current_debs_hash="newdebs",
+        max_confirm_attempts=1,
+        retry_delay_seconds=0.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert res_debs["confirmed"] is True
+    assert debs_api.deleted_ids == [601]
+
+    # Partial save CLI: repo hit (not saved), gomod saved (confirmed), debs saved (unconfirmed).
+    deleted_paths = []
+
+    def handle(method, path, _headers):
+        if method == "GET" and f"bazel-gomod-1-linux-x64-{NEW_HASH}" in path:
+            return 200, {
+                "actions_caches": [
+                    {
+                        "id": 500,
+                        "key": f"bazel-gomod-1-linux-x64-{NEW_HASH}",
+                        "ref": "refs/heads/main",
+                    }
+                ]
+            }
+        if method == "GET" and "ci-debs-1-linux-x64-newdebs" in path:
+            return 200, {"actions_caches": []}
+        if method == "GET":
+            return 200, {"actions_caches": all_entries}
+        if method == "DELETE":
+            deleted_paths.append(path)
+            return 204, None
+        return 404, {}
+
+    summary = tmp_path / "partial_summary.md"
+    with _MockGitHubCacheServer(handle) as api_url:
+        rc = prune.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "linux-x64",
+                "--lock-hash",
+                NEW_HASH,
+                "--repo-saved",
+                "false",
+                "--gomod-saved",
+                "true",
+                "--gomod-hash",
+                NEW_HASH,
+                "--debs-saved",
+                "true",
+                "--debs-hash",
+                "newdebs",
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--summary-file",
+                str(summary),
+                "--max-confirm-attempts",
+                "1",
+                "--retry-delay-seconds",
+                "0.0",
+            ],
+            sleep_fn=lambda _s: None,
+        )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert deleted_paths == ["/repos/o/r/actions/caches/501"]
+    assert "Confirmed bazel-gomod-1-linux-x64-" in out
+    assert "not confirmed" in out

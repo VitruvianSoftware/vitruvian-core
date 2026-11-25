@@ -1,6 +1,7 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pytest:defs.bzl", "py_test")
 
 # gazelle:ignore
@@ -66,6 +67,7 @@ py_test(
     args = ["$(rootpath restore_keys_test.py)"],
     data = [
         "action.yml",
+        "libxml2_debs.sh",
         "//:.github/actions/bazel-repo-cache-warm/action.yml",
     ],
     env = {
@@ -73,6 +75,25 @@ py_test(
         "WARM_COMPOSITE_ACTION_PATH": "$(rootpath //:.github/actions/bazel-repo-cache-warm/action.yml)",
     },
     deps = ["@pip//pyyaml"],
+)
+
+py_test(
+    name = "libxml2_debs_test",
+    size = "small",
+    srcs = [
+        "libxml2_debs_test.py",
+    ],
+    args = ["$(rootpath libxml2_debs_test.py)"],
+    data = ["libxml2_debs.sh"],
+    env = {"LIBXML2_DEBS_SCRIPT": "$(rootpath libxml2_debs.sh)"},
+)
+
+sh_test(
+    name = "libxml2_debs_install_test",
+    size = "small",
+    srcs = ["libxml2_debs_install_test.sh"],
+    data = ["libxml2_debs.sh"],
+    env = {"LIBXML2_DEBS_SCRIPT": "$(rootpath libxml2_debs.sh)"},
 )
 
 py_test(

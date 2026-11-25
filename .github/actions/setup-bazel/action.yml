@@ -54,48 +54,43 @@ runs:
     # Launchpad fallback, which was returning 502/503). The fallback is now
     # snapshot.ubuntu.com, which keeps every published file at a fixed timestamp,
     # so the pinned checksum always has a working URL.
-    - name: Provide libxml2.so.2 for LLVM's linker (Ubuntu 26.04+)
+    #
+    # To survive Ubuntu mirror outages (e.g. 2026-11-11 archive.ubuntu.com DNS
+    # outage), GitHub-hosted Linux jobs restore the pre-downloaded .debs from
+    # the `ci-debs-1-linux-x64-<sha256s>` Actions cache (saved by
+    # bazel-repo-cache.yaml on main), verify checksums, and fall back to the
+    # mirror list only on a cache miss or checksum mismatch. The URLs and
+    # sha256s live in one place: ./.github/actions/setup-bazel/libxml2_debs.sh.
+    - name: Check libxml2.so.2 and ci-debs cache key
+      id: ci-debs
       if: runner.os == 'Linux'
       shell: bash
       run: |
         set -euo pipefail
-        # Herestring, not `ldconfig -p | grep -q`: under pipefail an early-exit
-        # grep can SIGPIPE ldconfig on large output and flip the verdict.
-        has_libxml2_so2() { grep -q 'libxml2\.so\.2 ' <<<"$(ldconfig -p)"; }
-        if has_libxml2_so2; then
+        if bash "${GITHUB_ACTION_PATH}/libxml2_debs.sh" has-libxml2; then
           echo "libxml2.so.2 already present -- nothing to do"
+          echo "needed=false" >> "${GITHUB_OUTPUT}"
           exit 0
         fi
-        dir="$(mktemp -d)"
-        fetch() { # name sha256 url...
-          local name="$1" sha="$2"
-          shift 2
-          for url in "$@"; do
-            if curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-all-errors -o "${dir}/${name}" "${url}"; then
-              if echo "${sha}  ${dir}/${name}" | sha256sum -c -; then
-                return 0
-              fi
-            fi
-          done
-          echo "::error::failed to fetch ${name} from any mirror"
-          return 1
-        }
-        fetch libicu74.deb \
-          c9a70989678660eed9a1e904c74fa043da8bec8e2036856fc16e31ced79b04f8 \
-          'http://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3.1_amd64.deb' \
-          'http://security.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3.1_amd64.deb' \
-          'http://azure.archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3.1_amd64.deb' \
-          'https://snapshot.ubuntu.com/ubuntu/20261025T000000Z/pool/main/i/icu/libicu74_74.2-1ubuntu3.1_amd64.deb'
-        fetch libxml2.deb \
-          c5a065f85c1e6f605741e365e40cad71c3ceb0e85e2791400bd35b8896e12ad1 \
-          'http://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb' \
-          'http://security.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb' \
-          'http://azure.archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb' \
-          'https://snapshot.ubuntu.com/ubuntu/20261025T000000Z/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb'
-        sudo dpkg -i "${dir}/libicu74.deb" "${dir}/libxml2.deb"
-        has_libxml2_so2 \
-          || { echo "::error::libxml2.so.2 still missing after install"; exit 1; }
-        echo "installed libxml2.so.2 (noble 2.9.14) for LLVM's linker"
+        sha_key="$(bash "${GITHUB_ACTION_PATH}/libxml2_debs.sh" sha-key)"
+        {
+          echo "needed=true"
+          echo "path=${HOME}/.cache/ci-debs"
+          echo "sha_key=${sha_key}"
+        } >> "${GITHUB_OUTPUT}"
+
+    - name: Restore LLVM linker .debs cache
+      if: ${{ runner.os == 'Linux' && runner.environment == 'github-hosted' && steps.ci-debs.outputs.needed == 'true' }}
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.ci-debs.outputs.path }}
+        key: ci-debs-1-linux-x64-${{ steps.ci-debs.outputs.sha_key }}
+
+    - name: Provide libxml2.so.2 for LLVM's linker (Ubuntu 26.04+)
+      if: runner.os == 'Linux' && steps.ci-debs.outputs.needed == 'true'
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/libxml2_debs.sh" install "${{ steps.ci-debs.outputs.path }}"
 
     # Make room for the repository-cache restore on GitHub-hosted Linux.
     #
@@ -163,13 +158,17 @@ runs:
     #
     # Go modules from go.mod are NOT fetched by Bazel's downloader, so
     # --http_connector_attempts / --http_timeout_scaling / downloader.cfg never
-    # apply to them, and the repository cache restored above does not hold
-    # them. gazelle's go_repository (0.51.3; still so in 0.54.0) runs its
-    # fetch_repo tool, which runs `go mod download` with Go's own HTTP client:
-    # no retries, and a fresh download on every CI run. On 2026-11-01 that
-    # failed twice in the merge queue on macOS with "proxy.golang.org ...
-    # net/http: TLS handshake timeout" (run 41353399428 job 124989530940,
-    # run 41361913018 job 125015487496), ejecting the PR at the head.
+    # apply to them, and the archive repository cache (`~/.cache/bazel-repo`)
+    # cannot hold them. gazelle's go_repository (0.51.3) runs its fetch_repo
+    # tool, which runs `go mod download`. Instead, GitHub-hosted jobs restore a
+    # separate `bazel-gomod-1-<os>-<arch>-*` Actions cache containing only
+    # `cache/download` zips at `$HOME/.cache/bazel-gomod` (saved by
+    # `.github/workflows/bazel-repo-cache.yaml` on main) and point gazelle at
+    # it via `GO_REPOSITORY_USE_HOST_MODCACHE=1` + `GOMODCACHE`. GOPROXY below
+    # remains as the pipe-fallback safety net on a cache miss:
+    # on 2026-11-01 `go mod download` failed twice in the merge queue on macOS
+    # with "proxy.golang.org ... net/http: TLS handshake timeout" (run
+    # 41353399428 job 124989530940, run 41361913018 job 125015487496).
     #
     # Go's default is "https://proxy.golang.org,direct". A COMMA falls through
     # to the next entry only on a 404/410 answer, so a timeout fails the fetch.
@@ -183,12 +182,13 @@ runs:
     # tools/conformance (GOPROXY) fails if this line loses the pipe fallback.
     #
     # Every GitHub-hosted job (including main) restores the archive-only
-    # repository cache via actions/cache/restore below. Self-hosted runners
-    # (vitruvian-queue) skip the Actions cache download altogether: they mount
-    # the persistent ReadWriteMany vitruvian-queue-cache PVC at
-    # /home/runner/.cache/bazel-repo and point --repository_cache at it in
-    # "Use the restored repository cache" below, so ephemeral runner pods do
-    # not pull multi-GiB archives over WAN on every job.
+    # repository cache and the Go module cache via actions/cache/restore below.
+    # Self-hosted runners (vitruvian-queue) skip the Actions cache downloads
+    # altogether: they mount the persistent ReadWriteMany vitruvian-queue-cache
+    # PVC at /home/runner/.cache/bazel-repo (which also holds repo contents) and
+    # point --repository_cache at it in "Use the restored repository cache"
+    # below, so ephemeral runner pods do not pull multi-GiB archives over WAN
+    # on every job.
     #
     # setup-bazel 0.19.x is kept with `repository-cache: false` and
     # `cache-save: false`: earlier versions hung after an aborted download
@@ -196,9 +196,9 @@ runs:
     # SEGMENT_DOWNLOAD_TIMEOUT_MINS and `continue-on-error: true`, so a stalled
     # or missing restore becomes a cache miss and Bazel downloads what it needs.
     #
-    # The path must stay the absolute `$HOME/.cache/bazel-repo` string that
-    # bazel-repo-cache.yaml saves under (an Actions cache entry's version hashes
-    # its path strings, so `~/.cache/bazel-repo` would miss).
+    # The paths must stay the absolute `$HOME/.cache/bazel-repo` and
+    # `$HOME/.cache/bazel-gomod` strings that bazel-repo-cache.yaml saves under
+    # (an Actions cache entry's version hashes its path strings, so `~/` would miss).
     - name: Where setup-bazel keeps the repository cache
       id: repo-cache
       shell: bash
@@ -222,7 +222,10 @@ runs:
             fi
           done
         fi
-        echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
+        {
+          echo "path=${HOME}/.cache/bazel-repo"
+          echo "gomod_path=${HOME}/.cache/bazel-gomod"
+        } >> "${GITHUB_OUTPUT}"
 
     # Self-hosted runners share one Bazel repository cache and one Bazelisk
     # cache on an NFS volume, so a broken entry there fails every job until
@@ -268,6 +271,27 @@ runs:
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
 
+    - name: Restore the Bazel Go module cache
+      id: gomod-cache
+      if: ${{ runner.environment == 'github-hosted' }}
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "4"
+      with:
+        path: ${{ steps.repo-cache.outputs.gomod_path }}
+        key: bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-${{ hashFiles('go.work', 'go.work.sum', 'go.sum', 'apps/cli/vitruvian-devx/go.sum', 'apps/desktop/vitruvian-courier/engine/go.sum', 'packages/vitruvian-sdk/go/go.sum', 'packages/pulumi/library/go/go.sum', 'packages/pulumi/library/go/pkg/app/go.sum', 'packages/pulumi/library/go/pkg/bootstrap/go.sum', 'packages/pulumi/library/go/pkg/cai_monitoring/go.sum', 'packages/pulumi/library/go/pkg/centralized_logging/go.sum', 'packages/pulumi/library/go/pkg/cicd/go.sum', 'packages/pulumi/library/go/pkg/cloud_dns/go.sum', 'packages/pulumi/library/go/pkg/cloud_functions/go.sum', 'packages/pulumi/library/go/pkg/cloud_router/go.sum', 'packages/pulumi/library/go/pkg/cloud_storage/go.sum', 'packages/pulumi/library/go/pkg/compute_instance/go.sum', 'packages/pulumi/library/go/pkg/data/go.sum', 'packages/pulumi/library/go/pkg/gcloud/go.sum', 'packages/pulumi/library/go/pkg/google_group/go.sum', 'packages/pulumi/library/go/pkg/iam/go.sum', 'packages/pulumi/library/go/pkg/instance_template/go.sum', 'packages/pulumi/library/go/pkg/kms/go.sum', 'packages/pulumi/library/go/pkg/log_export/go.sum', 'packages/pulumi/library/go/pkg/neon/go.sum', 'packages/pulumi/library/go/pkg/network/go.sum', 'packages/pulumi/library/go/pkg/network_firewall_policy/go.sum', 'packages/pulumi/library/go/pkg/network_peering/go.sum', 'packages/pulumi/library/go/pkg/org_policy/go.sum', 'packages/pulumi/library/go/pkg/private_service_connect/go.sum', 'packages/pulumi/library/go/pkg/project_factory/go.sum', 'packages/pulumi/library/go/pkg/pubsub/go.sum', 'packages/pulumi/library/go/pkg/upstash/go.sum', 'packages/pulumi/library/go/pkg/vpc_service_controls/go.sum') }}
+        restore-keys: |
+          bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-
+
+    - name: Notice partial Go module cache hit
+      if: ${{ runner.environment == 'github-hosted' && steps.gomod-cache.outputs.cache-matched-key != '' && steps.gomod-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      env:
+        MATCHED_KEY: ${{ steps.gomod-cache.outputs.cache-matched-key }}
+      run: |
+        echo "::notice title=Partial Go module cache hit::Restored Go module cache from prefix key '${MATCHED_KEY}' instead of an exact match; newly added Go modules will be fetched from GOPROXY."
+
     - uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
       with:
         # Never on the self-hosted runners: their ~/.cache/bazelisk is one NFS
@@ -292,3 +316,10 @@ runs:
     - name: Use the restored repository cache
       shell: bash
       run: printf '\ncommon --repository_cache=%s\n' "${{ steps.repo-cache.outputs.path }}" >> "${HOME}/.bazelrc"
+
+    - name: Use the restored Go module cache
+      if: ${{ runner.environment == 'github-hosted' }}
+      shell: bash
+      run: |
+        mkdir -p "${{ steps.repo-cache.outputs.gomod_path }}"
+        printf '\ncommon --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1\ncommon --repo_env=GOMODCACHE=%s\n' "${{ steps.repo-cache.outputs.gomod_path }}" >> "${HOME}/.bazelrc"

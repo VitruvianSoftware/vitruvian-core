@@ -969,6 +969,17 @@ fn is_bazel_repo_cache_path(path_val: &str) -> bool {
         || path_val.contains("env.REPO")
         || path_val.contains("$REPO")
         || path_val.contains("${REPO}")
+        || lower.contains("bazel-gomod")
+        || lower.contains("bazel_gomod")
+        || lower.contains("gomod_path")
+        || path_val.contains("env.GOMOD")
+        || path_val.contains("$GOMOD")
+        || path_val.contains("${GOMOD}")
+        || lower.contains("ci-debs")
+        || lower.contains("ci_debs")
+        || path_val.contains("env.DEBS_DIR")
+        || path_val.contains("$DEBS_DIR")
+        || path_val.contains("${DEBS_DIR}")
 }
 
 /// True when any step uses `actions/cache@` or `actions/cache/save@` with a Bazel
@@ -1450,6 +1461,192 @@ pub(crate) fn go_cache_save_problems(content: &str) -> Vec<(String, String, Stri
     problems
 }
 
+#[derive(Default, Clone)]
+struct CacheStepInfo {
+    uses: String,
+    if_expr: Option<String>,
+    path: Option<String>,
+    key: Option<String>,
+    restore_keys: Vec<String>,
+    segment_timeout: Option<String>,
+    run_text: String,
+}
+
+fn parse_composite_cache_steps(content: &str) -> Vec<CacheStepInfo> {
+    const STEP_KEYS: &[&str] = &[
+        "name:",
+        "id:",
+        "if:",
+        "uses:",
+        "run:",
+        "with:",
+        "env:",
+        "shell:",
+        "continue-on-error:",
+        "working-directory:",
+        "timeout-minutes:",
+    ];
+    let mut steps = Vec::new();
+    let mut cur: Option<CacheStepInfo> = None;
+    let mut step_indent: Option<usize> = None;
+    let mut section: Option<(&'static str, usize)> = None; // ("with"|"env"|"run", indent)
+    let mut sub_block: Option<(&'static str, usize)> = None; // ("restore-keys"|"path", indent)
+
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+
+        if let Some((kind, bind)) = sub_block {
+            if ind > bind {
+                if let Some(ref mut st) = cur {
+                    if kind == "restore-keys" {
+                        st.restore_keys.push(s.to_string());
+                    } else if kind == "path" && st.path.is_none() {
+                        st.path = Some(s.to_string());
+                    }
+                }
+                continue;
+            }
+            sub_block = None;
+        }
+
+        if let Some((sec, sind)) = section {
+            if ind <= sind && !(step_indent == Some(ind) && s.starts_with("- ")) {
+                section = None;
+            } else if sec == "run" && ind > sind {
+                if let Some(ref mut st) = cur {
+                    if !st.run_text.is_empty() {
+                        st.run_text.push('\n');
+                    }
+                    st.run_text.push_str(s);
+                }
+                continue;
+            }
+        }
+
+        if let Some(si) = step_indent {
+            if ind < si {
+                if let Some(st) = cur.take() {
+                    steps.push(st);
+                }
+                step_indent = None;
+                section = None;
+            }
+        }
+
+        if let Some(rest) = s.strip_prefix("- ") {
+            if STEP_KEYS.iter().any(|k| rest.starts_with(k))
+                && (step_indent.is_none() || step_indent == Some(ind))
+            {
+                if let Some(st) = cur.take() {
+                    steps.push(st);
+                }
+                step_indent = Some(ind);
+                section = None;
+                let mut st = CacheStepInfo::default();
+                if let Some(v) = rest.strip_prefix("uses:") {
+                    st.uses = v.split('#').next().unwrap_or("").trim().to_string();
+                } else if let Some(v) = rest.strip_prefix("if:") {
+                    st.if_expr = Some(v.split(" #").next().unwrap_or("").trim().to_string());
+                } else if rest.starts_with("with:") {
+                    section = Some(("with", ind));
+                } else if rest.starts_with("env:") {
+                    section = Some(("env", ind));
+                } else if let Some(v) = rest.strip_prefix("run:") {
+                    let t = v.trim();
+                    if t == "|" || t == ">" || t.is_empty() {
+                        section = Some(("run", ind));
+                    } else {
+                        st.run_text = t.to_string();
+                    }
+                }
+                cur = Some(st);
+                continue;
+            }
+        }
+
+        let Some(ref mut st) = cur else { continue };
+        let Some(si) = step_indent else { continue };
+        if ind == si + 2 {
+            if let Some(v) = s.strip_prefix("uses:") {
+                st.uses = v.split('#').next().unwrap_or("").trim().to_string();
+            } else if let Some(v) = s.strip_prefix("if:") {
+                st.if_expr = Some(v.split(" #").next().unwrap_or("").trim().to_string());
+            } else if s.starts_with("with:") {
+                section = Some(("with", ind));
+            } else if s.starts_with("env:") {
+                section = Some(("env", ind));
+            } else if let Some(v) = s.strip_prefix("run:") {
+                let t = v.trim();
+                if t == "|" || t == ">" || t.is_empty() {
+                    section = Some(("run", ind));
+                } else {
+                    st.run_text = t.to_string();
+                }
+            }
+        } else if let Some((sec, sind)) = section {
+            if ind > sind {
+                if sec == "with" {
+                    if let Some(v) = s.strip_prefix("path:") {
+                        let val = v.split('#').next().unwrap_or("").trim();
+                        if val == "|" || val == ">" || val.is_empty() {
+                            sub_block = Some(("path", ind));
+                        } else {
+                            st.path = Some(val.to_string());
+                        }
+                    } else if let Some(v) = s.strip_prefix("key:") {
+                        st.key = Some(v.split(" #").next().unwrap_or("").trim().to_string());
+                    } else if let Some(v) = s.strip_prefix("restore-keys:") {
+                        let inline = v.trim();
+                        if inline != "|" && inline != ">" && !inline.is_empty() {
+                            st.restore_keys.push(inline.to_string());
+                        } else {
+                            sub_block = Some(("restore-keys", ind));
+                        }
+                    }
+                } else if sec == "env" {
+                    if let Some(v) = s.strip_prefix("SEGMENT_DOWNLOAD_TIMEOUT_MINS:") {
+                        st.segment_timeout = Some(v.trim().to_string());
+                    }
+                }
+            }
+        }
+    }
+    if let Some(st) = cur {
+        steps.push(st);
+    }
+    steps
+}
+
+fn check_segment_timeout(timeout_raw: Option<&str>, problems: &mut Vec<(String, String, String)>) {
+    let parsed = timeout_raw.map(|v| {
+        v.trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .parse::<u32>()
+            .ok()
+    });
+    match parsed {
+        Some(Some(minutes)) if (1..=5).contains(&minutes) => {}
+        found => problems.push((
+            format!(
+                "SEGMENT_DOWNLOAD_TIMEOUT_MINS: {}",
+                match found {
+                    None => "unset (10)".to_string(),
+                    Some(None) => "not a number".to_string(),
+                    Some(Some(m)) => m.to_string(),
+                }
+            ),
+            "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1 to 5".to_string(),
+            "a stalled download would hold the restore past the 15-minute jobs' timeout before it gives up".to_string(),
+        )),
+    }
+}
+
 /// What is wrong with how `.github/actions/setup-bazel/action.yml` restores
 /// the repository cache (restore-only), as (found, want, why) triples.
 pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String, String)> {
@@ -1491,85 +1688,652 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
             }
         }
     }
-    let steps = composite_steps(content);
-    let restore_steps: Vec<&(String, Option<String>)> = steps
+    let parsed_steps = parse_composite_cache_steps(content);
+    let restore_steps: Vec<&CacheStepInfo> = parsed_steps
         .iter()
-        .filter(|(u, _)| u.starts_with("actions/cache/restore@"))
+        .filter(|s| s.uses.starts_with("actions/cache/restore@"))
         .collect();
-    if restore_steps.is_empty() {
-        problems.push((
-            "no actions/cache/restore step".to_string(),
-            "actions/cache/restore of ~/.cache/bazel-repo".to_string(),
-            "GitHub-hosted jobs would start with no repository cache at all".to_string(),
-        ));
-    } else {
-        match restore_steps[0].1.as_deref() {
-            Some(if_expr) if repo_restore_step_guarded(if_expr) => {}
-            found => problems.push((
-                format!("restore if: {}", found.unwrap_or("unset (always)")),
-                "restore if: ${{ runner.environment == 'github-hosted' }}".to_string(),
-                "actions/cache/restore must run on all GitHub-hosted jobs (including main) and skip self-hosted queue runners that mount the persistent vitruvian-queue-cache PVC".to_string(),
-            )),
+    let repo_step = restore_steps
+        .iter()
+        .copied()
+        .find(|s| {
+            s.key.as_deref().is_some_and(|k| k.contains("-repository-"))
+                || s.path.as_deref().is_some_and(|p| {
+                    p.contains("bazel-repo") || p.contains("repo-cache.outputs.path")
+                })
+        })
+        .or_else(|| restore_steps.first().copied());
+
+    match repo_step {
+        None => {
+            problems.push((
+                "no actions/cache/restore step".to_string(),
+                "actions/cache/restore of ~/.cache/bazel-repo".to_string(),
+                "GitHub-hosted jobs would start with no repository cache at all".to_string(),
+            ));
+            check_segment_timeout(None, &mut problems);
+        }
+        Some(st) => {
+            match st.if_expr.as_deref() {
+                Some(if_expr) if repo_restore_step_guarded(if_expr) => {}
+                found => problems.push((
+                    format!("restore if: {}", found.unwrap_or("unset (always)")),
+                    "restore if: ${{ runner.environment == 'github-hosted' }}".to_string(),
+                    "actions/cache/restore must run on all GitHub-hosted jobs (including main) and skip self-hosted queue runners that mount the persistent vitruvian-queue-cache PVC".to_string(),
+                )),
+            }
+            match st.key.as_deref() {
+                Some(k) if has_full_repo_hash_key(k) => {}
+                found => problems.push((
+                    format!("restore key: {}", found.unwrap_or("unset")),
+                    "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
+                    "setup-bazel must restore the verified `-repository-full-` key keyed on MODULE.bazel, MODULE.bazel.lock, and .bazelversion, never the old partial `-repository-` key".to_string(),
+                )),
+            }
+            let rk_lines = &st.restore_keys;
+            let rk_valid = rk_lines.len() == 2
+                && rk_lines[0].ends_with("-repository-full-")
+                && rk_lines[1].ends_with("-repository-")
+                && !rk_lines[1].contains("-repository-full-")
+                && rk_lines[0].strip_suffix("full-") == Some(rk_lines[1].as_str());
+            if !rk_valid {
+                problems.push((
+                    format!("restore-keys: {:?}", rk_lines),
+                    "[<platform>-repository-full-, <platform>-repository-]".to_string(),
+                    "restore-keys must list the `-repository-full-` prefix first and the same-platform legacy `-repository-` fallback last so full entries always win".to_string(),
+                ));
+            }
+            if st.path.as_deref().is_some_and(|p| p.contains("~/")) {
+                problems.push((
+                    "path: ~/...".to_string(),
+                    "path: $HOME/.cache/bazel-repo, absolute, as bazel-repo-cache.yaml saves it".to_string(),
+                    "an Actions cache entry's version is a hash of its path strings, so `~/` never matches what bazel-repo-cache.yaml saved: every restore misses".to_string(),
+                ));
+            }
+            check_segment_timeout(st.segment_timeout.as_deref(), &mut problems);
         }
     }
-    let key_val = lines
-        .iter()
-        .find_map(|l| l.strip_prefix("key:").map(str::trim));
-    match key_val {
-        Some(k) if has_full_repo_hash_key(k) => {}
-        found => problems.push((
-            format!("restore key: {}", found.unwrap_or("unset")),
-            "setup-bazel-1-...-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}".to_string(),
-            "setup-bazel must restore the verified `-repository-full-` key keyed on MODULE.bazel, MODULE.bazel.lock, and .bazelversion, never the old partial `-repository-` key".to_string(),
+    problems
+}
+
+pub(crate) fn gomod_restore_problems(content: &str) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let parsed_steps = parse_composite_cache_steps(content);
+    let gomod_step = parsed_steps.iter().find(|s| {
+        s.uses.starts_with("actions/cache/restore@")
+            && (s
+                .key
+                .as_deref()
+                .is_some_and(|k| k.contains("bazel-gomod-1-"))
+                || s.path
+                    .as_deref()
+                    .is_some_and(|p| p.contains("bazel-gomod") || p.contains("gomod_path")))
+    });
+    match gomod_step {
+        None => problems.push((
+            "no bazel-gomod actions/cache/restore step".to_string(),
+            "actions/cache/restore of $HOME/.cache/bazel-gomod".to_string(),
+            "GitHub-hosted jobs would download Go modules from proxy.golang.org on every run"
+                .to_string(),
         )),
+        Some(st) => {
+            match st.if_expr.as_deref() {
+                Some(if_expr) if repo_restore_step_guarded(if_expr) => {}
+                found => problems.push((
+                    format!("gomod restore if: {}", found.unwrap_or("unset (always)")),
+                    "if: ${{ runner.environment == 'github-hosted' }}".to_string(),
+                    "bazel-gomod restore must run only on GitHub-hosted runners".to_string(),
+                )),
+            }
+            let key = st.key.as_deref().unwrap_or("");
+            if !key.starts_with("bazel-gomod-1-") || !key.contains("hashFiles(") {
+                problems.push((
+                    format!("gomod key: {}", if key.is_empty() { "unset" } else { key }),
+                    "bazel-gomod-1-<platform>-${{ hashFiles(...) }}".to_string(),
+                    "gomod cache key must start with bazel-gomod-1- and hash go.work + go.sum files".to_string(),
+                ));
+            }
+            let key_prefix = key.split("${{ hashFiles(").next().unwrap_or("");
+            if st.restore_keys.len() != 1
+                || !st.restore_keys[0].ends_with('-')
+                || (!key_prefix.is_empty() && st.restore_keys[0] != key_prefix)
+            {
+                problems.push((
+                    format!("gomod restore-keys: {:?}", st.restore_keys),
+                    "[bazel-gomod-1-<platform>-]".to_string(),
+                    "gomod restore-keys must list the exact same-platform bazel-gomod-1-<platform>- prefix".to_string(),
+                ));
+            }
+            if st.path.as_deref().is_some_and(|p| p.contains("~/")) {
+                problems.push((
+                    "gomod path: ~/...".to_string(),
+                    "path: $HOME/.cache/bazel-gomod".to_string(),
+                    "an Actions cache entry's version hashes its path string, so `~/` would miss"
+                        .to_string(),
+                ));
+            }
+            check_segment_timeout(st.segment_timeout.as_deref(), &mut problems);
+        }
     }
-    let rk_lines = restore_keys_lines(content);
-    let rk_valid = rk_lines.len() == 2
-        && rk_lines[0].ends_with("-repository-full-")
-        && rk_lines[1].ends_with("-repository-")
-        && !rk_lines[1].contains("-repository-full-")
-        && rk_lines[0].strip_suffix("full-") == Some(rk_lines[1].as_str());
-    if !rk_valid {
-        problems.push((
-            format!("restore-keys: {:?}", rk_lines),
-            "[<platform>-repository-full-, <platform>-repository-]".to_string(),
-            "restore-keys must list the `-repository-full-` prefix first and the same-platform legacy `-repository-` fallback last so full entries always win".to_string(),
-        ));
+    let use_gomod_step = parsed_steps.iter().find(|s| {
+        s.run_text.contains("GO_REPOSITORY_USE_HOST_MODCACHE=1")
+            && s.run_text.contains("GOMODCACHE=")
+    });
+    match use_gomod_step {
+        None => problems.push((
+            "missing GO_REPOSITORY_USE_HOST_MODCACHE / GOMODCACHE bazelrc".to_string(),
+            "common --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1 + GOMODCACHE".to_string(),
+            "gazelle go_repository will ignore the restored Go module cache without both repo_env flags".to_string(),
+        )),
+        Some(st) => {
+            if !st.if_expr.as_deref().is_some_and(repo_restore_step_guarded) {
+                problems.push((
+                    format!(
+                        "use gomod if: {}",
+                        st.if_expr.as_deref().unwrap_or("unset (always)")
+                    ),
+                    "if: ${{ runner.environment == 'github-hosted' }}".to_string(),
+                    "self-hosted runners use their persistent PVC repo contents cache rather than $HOME/.cache/bazel-gomod".to_string(),
+                ));
+            }
+        }
     }
-    if lines
-        .iter()
-        .any(|l| l.starts_with("path:") && l.contains("~/"))
-    {
-        problems.push((
-            "path: ~/...".to_string(),
-            "path: $HOME/.cache/bazel-repo, absolute, as bazel-repo-cache.yaml saves it".to_string(),
-            "an Actions cache entry's version is a hash of its path strings, so `~/` never matches what bazel-repo-cache.yaml saved: every restore misses".to_string(),
-        ));
+    problems
+}
+
+pub(crate) fn debs_restore_problems(content: &str) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let parsed_steps = parse_composite_cache_steps(content);
+    let debs_step = parsed_steps.iter().find(|s| {
+        s.uses.starts_with("actions/cache/restore@")
+            && (s.key.as_deref().is_some_and(|k| k.contains("ci-debs-1-"))
+                || s.path.as_deref().is_some_and(|p| p.contains("ci-debs")))
+    });
+    match debs_step {
+        None => problems.push((
+            "no ci-debs actions/cache/restore step".to_string(),
+            "actions/cache/restore of $HOME/.cache/ci-debs".to_string(),
+            "Ubuntu 26.04 jobs would curl libicu74 and libxml2 .debs from Ubuntu mirrors on every run".to_string(),
+        )),
+        Some(st) => {
+            let norm = st
+                .if_expr
+                .as_deref()
+                .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ").replace('"', "'"))
+                .unwrap_or_default();
+            if !norm.contains("runner.environment == 'github-hosted'")
+                || !norm.contains("runner.os == 'Linux'")
+                || norm.contains("||")
+            {
+                problems.push((
+                    format!("debs restore if: {}", st.if_expr.as_deref().unwrap_or("unset")),
+                    "runner.os == 'Linux' && runner.environment == 'github-hosted'".to_string(),
+                    "ci-debs restore must run only on GitHub-hosted Linux runners".to_string(),
+                ));
+            }
+            let key = st.key.as_deref().unwrap_or("");
+            if !key.starts_with("ci-debs-1-linux-x64-") {
+                problems.push((
+                    format!("debs key: {}", if key.is_empty() { "unset" } else { key }),
+                    "ci-debs-1-linux-x64-<sha256s>".to_string(),
+                    "ci-debs restore key must use the ci-debs-1-linux-x64- prefix".to_string(),
+                ));
+            }
+            if st.path.as_deref().is_some_and(|p| p.contains("~/")) {
+                problems.push((
+                    "debs path: ~/...".to_string(),
+                    "path: $HOME/.cache/ci-debs".to_string(),
+                    "an Actions cache entry's version hashes its path string, so `~/` would miss".to_string(),
+                ));
+            }
+        }
     }
-    let timeout = lines
-        .iter()
-        .find_map(|l| l.strip_prefix("SEGMENT_DOWNLOAD_TIMEOUT_MINS:"))
-        .map(|v| {
-            v.trim()
-                .trim_matches('"')
-                .trim_matches('\'')
-                .parse::<u32>()
-                .ok()
+    problems
+}
+
+fn normalize_platform_token(s: &str) -> String {
+    s.replace(
+        "${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}",
+        "<platform>",
+    )
+    .replace("${{ env.PLATFORM }}", "<platform>")
+}
+
+pub(crate) fn warm_restore_prefix_problems(
+    setup_bazel_yml: &str,
+    warm_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let setup_norm = normalize_platform_token(setup_bazel_yml);
+    let warm_norm = normalize_platform_token(warm_yml);
+    for prefix in [
+        "setup-bazel-1-<platform>-repository-full-",
+        "bazel-gomod-1-<platform>-",
+        "ci-debs-1-linux-x64-",
+    ] {
+        let in_setup = setup_norm.lines().any(|l| {
+            let s = strip(l);
+            !s.starts_with('#') && s.starts_with("key:") && s.contains(prefix)
         });
-    match timeout {
-        Some(Some(minutes)) if (1..=5).contains(&minutes) => {}
-        found => problems.push((
-            format!(
-                "SEGMENT_DOWNLOAD_TIMEOUT_MINS: {}",
-                match found {
-                    None => "unset (10)".to_string(),
-                    Some(None) => "not a number".to_string(),
-                    Some(Some(m)) => m.to_string(),
+        let warm_key_count = warm_norm
+            .lines()
+            .filter(|l| {
+                let s = strip(l);
+                !s.starts_with('#') && s.starts_with("key:") && s.contains(prefix)
+            })
+            .count();
+        if !in_setup || warm_key_count < 2 {
+            problems.push((
+                format!("{prefix} (setup={in_setup}, warm_keys={warm_key_count})"),
+                format!("{prefix} in setup-bazel restore and warm lookup+save"),
+                "cache key prefixes drifted between bazel-repo-cache-warm (save) and setup-bazel (restore)".to_string(),
+            ));
+        }
+    }
+    problems
+}
+
+pub(crate) fn parse_go_work_use_dirs(go_work_content: &str) -> Vec<String> {
+    let mut dirs = Vec::new();
+    let mut in_use_block = false;
+    for raw in go_work_content.lines() {
+        let line = raw.split("//").next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if in_use_block {
+            if line == ")" {
+                in_use_block = false;
+                continue;
+            }
+            dirs.push(unquote(line).to_string());
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("use") {
+            let rest = rest.trim();
+            if rest == "(" {
+                in_use_block = true;
+            } else if !rest.is_empty()
+                && (line == "use" || line.starts_with("use ") || line.starts_with("use\t"))
+            {
+                dirs.push(unquote(rest).to_string());
+            }
+        }
+    }
+    dirs
+}
+
+fn extract_quoted_args_in_hash_files(line: &str) -> Option<Vec<String>> {
+    let start = line.find("hashFiles(")?;
+    let rest = &line[start + "hashFiles(".len()..];
+    let end = rest.find(')')?;
+    let inner = &rest[..end];
+    let mut out = Vec::new();
+    for part in inner.split(',') {
+        let arg = unquote(part.trim());
+        if !arg.is_empty() {
+            out.push(arg.to_string());
+        }
+    }
+    Some(out)
+}
+
+pub(crate) fn expected_gomod_hash_paths(go_work_content: &str) -> BTreeSet<String> {
+    let mut expected: BTreeSet<String> = ["go.work".to_string(), "go.work.sum".to_string()]
+        .into_iter()
+        .collect();
+    for dir in parse_go_work_use_dirs(go_work_content) {
+        let clean = dir.trim_start_matches("./").trim_end_matches('/');
+        if clean == "." || clean.is_empty() {
+            expected.insert("go.sum".to_string());
+        } else {
+            expected.insert(format!("{clean}/go.sum"));
+        }
+    }
+    expected
+}
+
+pub(crate) fn gomod_hash_files_problems(
+    go_work_content: &str,
+    setup_bazel_yml: &str,
+    warm_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let expected = expected_gomod_hash_paths(go_work_content);
+
+    let setup_args = setup_bazel_yml
+        .lines()
+        .map(strip)
+        .filter(|l| !l.starts_with('#'))
+        .find(|l| l.contains("bazel-gomod-1-") && l.contains("hashFiles("))
+        .and_then(extract_quoted_args_in_hash_files);
+    let warm_args = warm_yml
+        .lines()
+        .map(strip)
+        .filter(|l| !l.starts_with('#'))
+        .find(|l| l.starts_with("GOMOD_HASH_INPUT:") && l.contains("hashFiles("))
+        .and_then(extract_quoted_args_in_hash_files);
+
+    for (label, found_opt) in [
+        ("setup-bazel", &setup_args),
+        ("bazel-repo-cache-warm", &warm_args),
+    ] {
+        match found_opt {
+            None => problems.push((
+                format!("{label}: missing gomod hashFiles(...)"),
+                format!("{} paths matching go.work", expected.len()),
+                "bazel-gomod key must hash go.work, go.work.sum, and every go.sum listed in go.work".to_string(),
+            )),
+            Some(args) => {
+                let actual: BTreeSet<String> = args.iter().cloned().collect();
+                let missing: Vec<&String> = expected.difference(&actual).collect();
+                let extra: Vec<&String> = actual.difference(&expected).collect();
+                if !missing.is_empty() || !extra.is_empty() {
+                    problems.push((
+                        format!("{label}: missing={missing:?} extra={extra:?}"),
+                        "exact match with go.work use entries".to_string(),
+                        "bazel-gomod hashFiles list drifted from go.work use modules".to_string(),
+                    ));
                 }
+            }
+        }
+    }
+    if let (Some(a), Some(b)) = (&setup_args, &warm_args) {
+        if a != b {
+            problems.push((
+                "setup-bazel != bazel-repo-cache-warm hashFiles order/list".to_string(),
+                "identical hashFiles(...) arguments".to_string(),
+                "Actions hashFiles() hashes files in argument order, so setup-bazel and warm must list the exact same order".to_string(),
+            ));
+        }
+    }
+    problems
+}
+
+pub(crate) fn warm_workflow_gomod_paths_problems(
+    go_work_content: &str,
+    workflow_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let expected = expected_gomod_hash_paths(go_work_content);
+    for event in ["push", "pull_request"] {
+        let (paths, has_ignore) = extract_event_paths(workflow_yml, event);
+        if has_ignore {
+            problems.push((
+                format!("on.{event}.paths-ignore"),
+                "paths: filter covering all go.work go.sum files".to_string(),
+                "bazel-repo-cache.yaml must use paths: (not paths-ignore) so Go module updates trigger cache verification and saving".to_string(),
+            ));
+        }
+        if paths.is_empty() {
+            problems.push((
+                format!("on.{event}.paths missing"),
+                "paths: covering go.work, go.work.sum, and every go.sum".to_string(),
+                format!("bazel-repo-cache.yaml on.{event}.paths is empty"),
+            ));
+            continue;
+        }
+        let missing: Vec<String> = expected
+            .iter()
+            .filter(|cand| !workflow_paths_match(&paths, cand))
+            .cloned()
+            .collect();
+        if !missing.is_empty() {
+            problems.push((
+                format!("on.{event}.paths unmatched={missing:?}"),
+                "matches every go.work / go.sum in bazel-gomod key".to_string(),
+                format!(
+                    "on.{event}.paths in bazel-repo-cache.yaml does not match all Go module files hashed by the gomod cache key"
+                ),
+            ));
+        }
+    }
+    problems
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MacosBazelJob {
+    job_id: String,
+    uses_macos_app_config: bool,
+    targets: Vec<String>,
+}
+
+fn join_shell_continuations(lines: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    for raw in lines {
+        let line = raw.trim_end_matches('\r');
+        if let Some(body) = line.trim_end().strip_suffix('\\') {
+            buf.push_str(body);
+            buf.push(' ');
+            continue;
+        }
+        buf.push_str(line);
+        out.push(std::mem::take(&mut buf));
+    }
+    if !buf.is_empty() {
+        out.push(buf);
+    }
+    out
+}
+
+fn parse_macos_bazel_jobs(workflow_yml: &str) -> Vec<MacosBazelJob> {
+    let mut in_jobs = false;
+    let mut job_indent: Option<usize> = None;
+    let mut current_id: Option<String> = None;
+    let mut current_lines: Vec<String> = Vec::new();
+    let mut raw_jobs: Vec<(String, Vec<String>)> = Vec::new();
+
+    for raw in workflow_yml.lines() {
+        let line = raw.trim_end_matches('\r');
+        let trimmed = strip(line);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if ind == 0 {
+            if let Some(id) = current_id.take() {
+                raw_jobs.push((id, std::mem::take(&mut current_lines)));
+            }
+            in_jobs = trimmed == "jobs:";
+            job_indent = None;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if job_indent.is_none() {
+            job_indent = Some(ind);
+        }
+        if Some(ind) == job_indent && trimmed.ends_with(':') {
+            if let Some(id) = current_id.take() {
+                raw_jobs.push((id, std::mem::take(&mut current_lines)));
+            }
+            current_id = Some(trimmed.trim_end_matches(':').to_string());
+            continue;
+        }
+        if current_id.is_some() {
+            current_lines.push(line.to_string());
+        }
+    }
+    if let Some(id) = current_id.take() {
+        raw_jobs.push((id, current_lines));
+    }
+
+    let mut units = Vec::new();
+    for (job_id, lines) in raw_jobs {
+        let runs_on = lines
+            .iter()
+            .find_map(|l| {
+                let s = strip(l);
+                s.strip_prefix("runs-on:")
+                    .map(|v| strip_yaml_inline_comment(v.trim()).to_ascii_lowercase())
+            })
+            .unwrap_or_default();
+        if !(runs_on.contains("xcode-") || runs_on.contains("macos-")) {
+            continue;
+        }
+
+        let mut saw_macos_app = false;
+        let mut saw_other_config = false;
+        let mut targets = Vec::new();
+        let mut seen_targets = BTreeSet::new();
+
+        for logical in join_shell_continuations(&lines) {
+            let trimmed = logical.trim_start();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            let code = strip_yaml_inline_comment(&logical);
+            let mut rest = code;
+            while let Some(pos) = rest.find("--config=") {
+                let after = &rest[pos + "--config=".len()..];
+                let val: String = after
+                    .chars()
+                    .take_while(|c| !c.is_whitespace() && !matches!(c, '"' | '\'' | ')'))
+                    .collect();
+                match val.as_str() {
+                    "macos-app" => saw_macos_app = true,
+                    "remotecache-ci" | "remote" | "" => {}
+                    _ => saw_other_config = true,
+                }
+                rest = after;
+            }
+            for args in super::labels::bazel_command_args(code) {
+                for label in super::labels::labels_in(&args) {
+                    if seen_targets.insert(label.clone()) {
+                        targets.push(label);
+                    }
+                }
+            }
+        }
+
+        units.push(MacosBazelJob {
+            job_id,
+            uses_macos_app_config: saw_macos_app && !saw_other_config,
+            targets,
+        });
+    }
+    units
+}
+
+fn extract_job_targets(workflow_yml: &str, job_id: &str) -> Vec<String> {
+    let mut in_jobs = false;
+    let mut job_indent: Option<usize> = None;
+    let mut in_target_job = false;
+    let mut targets_indent: Option<usize> = None;
+    let mut out = Vec::new();
+
+    for raw in workflow_yml.lines() {
+        let line = raw.trim_end_matches('\r');
+        let trimmed = strip(line);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if ind == 0 {
+            in_jobs = trimmed == "jobs:";
+            job_indent = None;
+            in_target_job = false;
+            targets_indent = None;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if job_indent.is_none() {
+            job_indent = Some(ind);
+        }
+        if Some(ind) == job_indent {
+            in_target_job = trimmed == format!("{job_id}:");
+            targets_indent = None;
+            continue;
+        }
+        if !in_target_job {
+            continue;
+        }
+        if let Some(ti) = targets_indent {
+            if ind > ti {
+                for tok in strip_yaml_inline_comment(trimmed).split_whitespace() {
+                    let clean = unquote(tok);
+                    if clean.starts_with("//") {
+                        out.push(clean.to_string());
+                    }
+                }
+                continue;
+            }
+            targets_indent = None;
+        }
+        if let Some(rest) = trimmed.strip_prefix("targets:") {
+            let v = strip_yaml_inline_comment(rest.trim());
+            if v == "|" || v == ">" || v.is_empty() {
+                targets_indent = Some(ind);
+            } else {
+                for tok in unquote(v).split_whitespace() {
+                    let clean = unquote(tok);
+                    if clean.starts_with("//") {
+                        out.push(clean.to_string());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+pub(crate) fn macos_warm_coverage_problems(
+    presubmit_yml: &str,
+    ci_yml: &str,
+    warm_wf_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let verify_targets = extract_job_targets(warm_wf_yml, "warm-macos-verify");
+    let save_targets = extract_job_targets(warm_wf_yml, "warm-macos-save");
+
+    if verify_targets.is_empty() || save_targets.is_empty() {
+        problems.push((
+            format!(
+                "warm-macos-verify={} warm-macos-save={}",
+                verify_targets.len(),
+                save_targets.len()
             ),
-            "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1 to 5".to_string(),
-            "a stalled download would hold the restore past the 15-minute jobs' timeout before it gives up".to_string(),
-        )),
+            "non-empty targets in both warm-macos-verify and warm-macos-save".to_string(),
+            "macOS warm jobs must declare targets to warm and offline-verify".to_string(),
+        ));
+        return problems;
+    }
+    if verify_targets != save_targets {
+        problems.push((
+            "warm-macos-verify != warm-macos-save targets".to_string(),
+            "identical macOS warm targets".to_string(),
+            "warm-macos-verify and warm-macos-save target lists drifted".to_string(),
+        ));
+    }
+
+    let warm_set: BTreeSet<&str> = save_targets.iter().map(String::as_str).collect();
+    for (workflow_name, workflow_yml) in [("presubmit.yaml", presubmit_yml), ("ci.yaml", ci_yml)] {
+        for job in parse_macos_bazel_jobs(workflow_yml) {
+            if !job.uses_macos_app_config || job.targets.is_empty() {
+                continue;
+            }
+            let missing: Vec<&str> = job
+                .targets
+                .iter()
+                .map(String::as_str)
+                .filter(|t| !warm_set.contains(*t))
+                .collect();
+            if !missing.is_empty() {
+                problems.push((
+                    format!("{}:{} missing {:?}", workflow_name, job.job_id, missing),
+                    "all --config=macos-app macOS job targets in warm-macos-{verify,save}"
+                        .to_string(),
+                    format!(
+                        "macOS job {} in {} uses --config=macos-app but has targets absent from bazel-repo-cache.yaml darwin warm list",
+                        job.job_id, workflow_name
+                    ),
+                ));
+            }
+        }
     }
     problems
 }
@@ -1679,30 +2443,46 @@ pub fn check_cache_save(ctx: &Context) {
     let actions_dir = format!("{}/.github/actions", ctx.root);
     let mut ok = true;
 
-    // 1. setup-bazel/action.yml is restore-only (never saves; restores -repository-full- on hosted runners).
+    // 1. setup-bazel/action.yml is restore-only (never saves; restores -repository-full-, gomod, and debs on hosted runners).
     let setup_rel = ".github/actions/setup-bazel/action.yml";
-    match fs::read_to_string(format!("{}/setup-bazel/action.yml", actions_dir)) {
-        Ok(content) => {
-            for (found, want, why) in repository_restore_problems(&content) {
+    let setup_content_opt =
+        fs::read_to_string(format!("{}/setup-bazel/action.yml", actions_dir)).ok();
+    match setup_content_opt.as_deref() {
+        Some(content) => {
+            for (found, want, why) in repository_restore_problems(content) {
                 ctx.emit_fail(
                     "cachesave", setup_rel, &found, &want, &why,
                     "keep setup-bazel restore-only (cache-save: false, repository-cache: false) and restore -repository-full- on GitHub-hosted runners",
                 );
                 ok = false;
             }
-            if saves_bazel_repo_cache(&content) {
+            for (found, want, why) in gomod_restore_problems(content) {
+                ctx.emit_fail(
+                    "cachesave", setup_rel, &found, &want, &why,
+                    "restore bazel-gomod-1- on GitHub-hosted runners only and wire GO_REPOSITORY_USE_HOST_MODCACHE=1 + GOMODCACHE",
+                );
+                ok = false;
+            }
+            for (found, want, why) in debs_restore_problems(content) {
+                ctx.emit_fail(
+                    "cachesave", setup_rel, &found, &want, &why,
+                    "restore ci-debs-1-linux-x64- on GitHub-hosted Linux runners before installing libxml2.so.2",
+                );
+                ok = false;
+            }
+            if saves_bazel_repo_cache(content) {
                 ctx.emit_fail(
                     "cachesave",
                     setup_rel,
-                    "actions/cache save of bazel-repo",
+                    "actions/cache save of warm-owned cache",
                     "actions/cache/restore only",
-                    "setup-bazel must never save the Bazel repository cache",
-                    "remove actions/cache or actions/cache/save of bazel-repo",
+                    "setup-bazel must never save bazel-repo, bazel-gomod, or ci-debs",
+                    "remove actions/cache or actions/cache/save of bazel-repo/bazel-gomod/ci-debs",
                 );
                 ok = false;
             }
         }
-        Err(_) => {
+        None => {
             ctx.emit_fail(
                 "cachesave",
                 setup_rel,
@@ -1712,6 +2492,38 @@ pub fn check_cache_save(ctx: &Context) {
                 "restore .github/actions/setup-bazel/action.yml",
             );
             ok = false;
+        }
+    }
+
+    let warm_comp_rel = ".github/actions/bazel-repo-cache-warm/action.yml";
+    let warm_content_opt =
+        fs::read_to_string(format!("{}/bazel-repo-cache-warm/action.yml", actions_dir)).ok();
+    if let (Some(setup_c), Some(warm_c)) =
+        (setup_content_opt.as_deref(), warm_content_opt.as_deref())
+    {
+        for (found, want, why) in warm_restore_prefix_problems(setup_c, warm_c) {
+            ctx.emit_fail(
+                "cachesave",
+                warm_comp_rel,
+                &found,
+                &want,
+                &why,
+                "align key prefixes between bazel-repo-cache-warm/action.yml and setup-bazel/action.yml",
+            );
+            ok = false;
+        }
+        if let Ok(go_work_c) = fs::read_to_string(format!("{}/go.work", ctx.root)) {
+            for (found, want, why) in gomod_hash_files_problems(&go_work_c, setup_c, warm_c) {
+                ctx.emit_fail(
+                    "cachesave",
+                    warm_comp_rel,
+                    &found,
+                    &want,
+                    &why,
+                    "keep bazel-gomod hashFiles(...) identical in setup-bazel and bazel-repo-cache-warm and matching go.work use entries",
+                );
+                ok = false;
+            }
         }
     }
 
@@ -1749,9 +2561,42 @@ pub fn check_cache_save(ctx: &Context) {
         }
     }
 
-    // 2. No other workflow or action bypasses setup-bazel or saves the Bazel repository cache.
+    // 2. No other workflow or action bypasses setup-bazel or saves warm-owned caches.
     let warm_rel = ".github/workflows/bazel-repo-cache.yaml";
-    let warm_comp_rel = ".github/actions/bazel-repo-cache-warm/action.yml";
+    if let Ok(warm_wf_c) = fs::read_to_string(format!("{}/{}", ctx.root, warm_rel)) {
+        if let Ok(go_work_c) = fs::read_to_string(format!("{}/go.work", ctx.root)) {
+            for (found, want, why) in warm_workflow_gomod_paths_problems(&go_work_c, &warm_wf_c) {
+                ctx.emit_fail(
+                    "cachesave",
+                    warm_rel,
+                    &found,
+                    &want,
+                    &why,
+                    "cover go.work, go.work.sum, and every go.sum in bazel-repo-cache.yaml push and pull_request paths:",
+                );
+                ok = false;
+            }
+        }
+        let presubmit_c =
+            fs::read_to_string(format!("{}/.github/workflows/presubmit.yaml", ctx.root))
+                .unwrap_or_default();
+        let ci_c = fs::read_to_string(format!("{}/.github/workflows/ci.yaml", ctx.root))
+            .unwrap_or_default();
+        if !presubmit_c.is_empty() || !ci_c.is_empty() {
+            for (found, want, why) in macos_warm_coverage_problems(&presubmit_c, &ci_c, &warm_wf_c)
+            {
+                ctx.emit_fail(
+                    "cachesave",
+                    warm_rel,
+                    &found,
+                    &want,
+                    &why,
+                    "add the missing --config=macos-app targets to both warm-macos-verify and warm-macos-save in bazel-repo-cache.yaml",
+                );
+                ok = false;
+            }
+        }
+    }
     let mut files = list_workflows(&ctx.workflows_dir);
     if let Ok(rd) = fs::read_dir(&actions_dir) {
         for entry in rd.flatten() {
@@ -1900,37 +2745,115 @@ pub(crate) fn repo_env_goproxy(content: &str) -> Option<String> {
         })
 }
 
+/// Extract the GOPROXY value written to `$GITHUB_ENV` on a non-comment line.
+pub(crate) fn env_goproxy_export(content: &str) -> Option<String> {
+    const FLAG: &str = "GOPROXY=";
+    content
+        .lines()
+        .map(strip)
+        .filter(|l| !l.starts_with('#') && l.contains("GITHUB_ENV"))
+        .find_map(|l| {
+            let at = l.find(FLAG)?;
+            let rest = &l[at + FLAG.len()..];
+            let token = rest.split_whitespace().next().unwrap_or("");
+            Some(token.trim_matches('"').trim_matches('\'').to_string())
+        })
+}
+
+pub(crate) fn setup_go_goproxy_problems(content: &str) -> Vec<(String, String, String)> {
+    let want = "GOPROXY=https://proxy.golang.org|direct";
+    let mut problems = Vec::new();
+    match env_goproxy_export(content) {
+        None => problems.push((
+            "unset".to_string(),
+            want.to_string(),
+            "setup-go does not export a GOPROXY pipe fallback to GITHUB_ENV".to_string(),
+        )),
+        Some(v) => {
+            if let Some(why) = goproxy_fallback_problem(&v) {
+                problems.push((v, want.to_string(), why));
+            }
+        }
+    }
+    let preserves_caller = content.lines().map(strip).any(|l| {
+        !l.starts_with('#') && (l.contains("${GOPROXY:-}") || l.contains("env.GOPROXY == ''"))
+    });
+    if !preserves_caller {
+        problems.push((
+            "unconditional GOPROXY overwrite".to_string(),
+            "set only when caller GOPROXY is unset".to_string(),
+            "setup-go must not clobber a caller-provided GOPROXY".to_string(),
+        ));
+    }
+    problems
+}
+
 pub fn check_goproxy_fallback(ctx: &Context) {
     let rel = ".github/actions/setup-bazel/action.yml";
-    let content =
-        match fs::read_to_string(format!("{}/{}", ctx.root, rel)) {
-            Ok(c) => c,
-            Err(_) => {
-                ctx.emit_fail(
-                "goproxy", rel, "missing", "--repo_env=GOPROXY=https://proxy.golang.org|direct",
-                "the shared setup action is gone, so nothing sets the Go module fallback for CI",
-                "restore the composite, or move this check to wherever CI's bazelrc is now written",
-            );
-                return;
-            }
-        };
-    let want = "--repo_env=GOPROXY=https://proxy.golang.org|direct";
-    match repo_env_goproxy(&content) {
-        None => ctx.emit_fail(
-            "goproxy", rel, "unset", want,
-            "Go's default GOPROXY (',' separated) fails a go_repository fetch on any proxy.golang.org timeout, ejecting the merge-queue head (#4187)",
-            &format!("add 'common {}' to the action's bazelrc", want),
+    match fs::read_to_string(format!("{}/{}", ctx.root, rel)) {
+        Err(_) => ctx.emit_fail(
+            "goproxy",
+            rel,
+            "missing",
+            "--repo_env=GOPROXY=https://proxy.golang.org|direct",
+            "the shared setup action is gone, so nothing sets the Go module fallback for CI",
+            "restore the composite, or move this check to wherever CI's bazelrc is now written",
         ),
-        Some(v) => match goproxy_fallback_problem(&v) {
-            None => ctx.emit_ok(
-                "goproxy", rel, &v, want,
-                "go_repository fetches fall through to the next source on a proxy timeout; go.sum still pins the bytes",
-            ),
-            Some(why) => ctx.emit_fail(
-                "goproxy", rel, &v, want, &why,
-                &format!("set 'common {}'", want),
-            ),
-        },
+        Ok(content) => {
+            let want = "--repo_env=GOPROXY=https://proxy.golang.org|direct";
+            match repo_env_goproxy(&content) {
+                None => ctx.emit_fail(
+                    "goproxy", rel, "unset", want,
+                    "Go's default GOPROXY (',' separated) fails a go_repository fetch on any proxy.golang.org timeout, ejecting the merge-queue head (#4187)",
+                    &format!("add 'common {}' to the action's bazelrc", want),
+                ),
+                Some(v) => match goproxy_fallback_problem(&v) {
+                    None => ctx.emit_ok(
+                        "goproxy", rel, &v, want,
+                        "go_repository fetches fall through to the next source on a proxy timeout; go.sum still pins the bytes",
+                    ),
+                    Some(why) => ctx.emit_fail(
+                        "goproxy", rel, &v, want, &why,
+                        &format!("set 'common {}'", want),
+                    ),
+                },
+            }
+        }
+    }
+
+    let setup_go_rel = ".github/actions/setup-go/action.yml";
+    match fs::read_to_string(format!("{}/{}", ctx.root, setup_go_rel)) {
+        Err(_) => ctx.emit_fail(
+            "goproxy",
+            setup_go_rel,
+            "missing",
+            "GOPROXY=https://proxy.golang.org|direct",
+            "the shared setup-go composite is missing",
+            "restore .github/actions/setup-go/action.yml",
+        ),
+        Ok(content) => {
+            let probs = setup_go_goproxy_problems(&content);
+            if probs.is_empty() {
+                ctx.emit_ok(
+                    "goproxy",
+                    setup_go_rel,
+                    "https://proxy.golang.org|direct",
+                    "GOPROXY=https://proxy.golang.org|direct",
+                    "non-Bazel Go jobs fall through to direct on proxy timeouts unless caller overrides GOPROXY",
+                );
+            } else {
+                for (found, want, why) in probs {
+                    ctx.emit_fail(
+                        "goproxy",
+                        setup_go_rel,
+                        &found,
+                        &want,
+                        &why,
+                        "export GOPROXY=https://proxy.golang.org|direct via GITHUB_ENV when unset",
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -3151,5 +4074,319 @@ runs:
                   cache: false
 ";
         assert_eq!(go_cache_save_problems(four_space), Vec::new());
+    }
+
+    #[test]
+    fn saves_warm_owned_caches_catches_gomod_and_debs() {
+        assert!(saves_bazel_repo_cache(
+            "- uses: actions/cache/save@abc\n  with:\n    path: ~/.cache/bazel-gomod\n"
+        ));
+        assert!(saves_bazel_repo_cache(
+            "- uses: actions/cache@abc\n  with:\n    path: ${{ env.GOMOD }}\n"
+        ));
+        assert!(saves_bazel_repo_cache(
+            "- uses: actions/cache/save@abc\n  with:\n    path: ${{ env.DEBS_DIR }}\n"
+        ));
+        assert!(saves_bazel_repo_cache(
+            "- uses: actions/cache@abc\n  with:\n    path: ~/.cache/ci-debs\n"
+        ));
+        assert!(!saves_bazel_repo_cache(
+            "- uses: actions/cache/restore@abc\n  with:\n    path: ~/.cache/bazel-gomod\n"
+        ));
+        assert!(!saves_bazel_repo_cache(
+            "- uses: actions/cache/restore@abc\n  with:\n    path: ~/.cache/ci-debs\n"
+        ));
+    }
+
+    #[test]
+    fn gomod_and_debs_restore_problems_enforce_guards_and_reject_broken() {
+        let good = "\
+runs:
+  using: composite
+  steps:
+    - name: Restore LLVM linker .debs cache
+      if: ${{ runner.os == 'Linux' && runner.environment == 'github-hosted' && steps.ci-debs.outputs.needed == 'true' }}
+      uses: actions/cache/restore@abc # v6
+      with:
+        path: ${{ steps.ci-debs.outputs.path }}
+        key: ci-debs-1-linux-x64-${{ steps.ci-debs.outputs.sha_key }}
+    - name: Restore the Bazel repository cache
+      if: ${{ runner.environment == 'github-hosted' }}
+      uses: actions/cache/restore@abc # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
+      with:
+        path: ${{ steps.repo-cache.outputs.path }}
+        key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        restore-keys: |
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
+    - name: Restore the Bazel Go module cache
+      if: ${{ runner.environment == 'github-hosted' }}
+      uses: actions/cache/restore@abc # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
+      with:
+        path: ${{ steps.repo-cache.outputs.gomod_path }}
+        key: bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-${{ hashFiles('go.work', 'go.work.sum', 'go.sum') }}
+        restore-keys: |
+          bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-
+    - name: Use the restored Go module cache
+      if: ${{ runner.environment == 'github-hosted' }}
+      run: |
+        printf 'common --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1\\ncommon --repo_env=GOMODCACHE=%s\\n' x
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.2
+      with:
+        repository-cache: false
+        cache-save: false
+";
+        assert_eq!(repository_restore_problems(good), Vec::new());
+        assert_eq!(gomod_restore_problems(good), Vec::new());
+        assert_eq!(debs_restore_problems(good), Vec::new());
+
+        let unguarded_gomod = good.replace(
+            "    - name: Restore the Bazel Go module cache\n      if: ${{ runner.environment == 'github-hosted' }}\n",
+            "    - name: Restore the Bazel Go module cache\n",
+        );
+        assert!(!gomod_restore_problems(&unguarded_gomod).is_empty());
+
+        let unguarded_debs = good.replace(
+            "runner.os == 'Linux' && runner.environment == 'github-hosted'",
+            "runner.os == 'Linux'",
+        );
+        assert!(!debs_restore_problems(&unguarded_debs).is_empty());
+
+        let missing_modcache_env = good.replace("GO_REPOSITORY_USE_HOST_MODCACHE=1", "OTHER=1");
+        assert!(!gomod_restore_problems(&missing_modcache_env).is_empty());
+    }
+
+    #[test]
+    fn warm_restore_prefix_and_gomod_hash_files_parity() {
+        let go_work = "\
+go 1.26.10
+
+use (
+\t.
+\t./apps/cli/vitruvian-devx
+\t// comment
+\t./packages/vitruvian-sdk/go
+)
+";
+        let setup_good = "\
+        key: ci-debs-1-linux-x64-${{ steps.ci-debs.outputs.sha_key }}
+        key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-full-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        key: bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-${{ hashFiles('go.work', 'go.work.sum', 'go.sum', 'apps/cli/vitruvian-devx/go.sum', 'packages/vitruvian-sdk/go/go.sum') }}
+";
+        let warm_good = "\
+        GOMOD_HASH_INPUT: ${{ hashFiles('go.work', 'go.work.sum', 'go.sum', 'apps/cli/vitruvian-devx/go.sum', 'packages/vitruvian-sdk/go/go.sum') }}
+        key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
+        key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
+        key: bazel-gomod-1-${{ env.PLATFORM }}-${{ env.GOMOD_HASH }}
+        key: bazel-gomod-1-${{ env.PLATFORM }}-${{ env.GOMOD_HASH }}
+        key: ci-debs-1-linux-x64-${{ env.DEBS_SHA_KEY }}
+        key: ci-debs-1-linux-x64-${{ env.DEBS_SHA_KEY }}
+";
+        assert_eq!(
+            warm_restore_prefix_problems(setup_good, warm_good),
+            Vec::new()
+        );
+        assert_eq!(
+            gomod_hash_files_problems(go_work, setup_good, warm_good),
+            Vec::new()
+        );
+
+        let drifted_prefix = warm_good.replace("bazel-gomod-1-", "bazel-gomod-2-");
+        assert!(!warm_restore_prefix_problems(setup_good, &drifted_prefix).is_empty());
+
+        let missing_module = go_work.replace(
+            "./packages/vitruvian-sdk/go",
+            "./packages/vitruvian-sdk/go\n\t./extra/mod",
+        );
+        assert!(!gomod_hash_files_problems(&missing_module, setup_good, warm_good).is_empty());
+
+        let drifted_order = warm_good.replace(
+            "'apps/cli/vitruvian-devx/go.sum', 'packages/vitruvian-sdk/go/go.sum'",
+            "'packages/vitruvian-sdk/go/go.sum', 'apps/cli/vitruvian-devx/go.sum'",
+        );
+        assert!(!gomod_hash_files_problems(go_work, setup_good, &drifted_order).is_empty());
+    }
+
+    #[test]
+    fn setup_go_goproxy_problems_enforces_pipe_fallback_without_clobbering() {
+        let good = "\
+    - name: Default GOPROXY fallback on network errors
+      shell: bash
+      run: |
+        if [ -z \"${GOPROXY:-}\" ]; then
+          echo \"GOPROXY=https://proxy.golang.org|direct\" >> \"$GITHUB_ENV\"
+        fi
+";
+        assert_eq!(setup_go_goproxy_problems(good), Vec::new());
+
+        let missing = "    - uses: actions/setup-go@abc\n";
+        assert!(!setup_go_goproxy_problems(missing).is_empty());
+
+        let comma = good.replace("|direct", ",direct");
+        assert!(!setup_go_goproxy_problems(&comma).is_empty());
+
+        let clobber =
+            "      run: echo \"GOPROXY=https://proxy.golang.org|direct\" >> \"$GITHUB_ENV\"\n";
+        assert!(!setup_go_goproxy_problems(clobber).is_empty());
+    }
+
+    #[test]
+    fn warm_workflow_gomod_paths_checks_glob_and_catches_missing_pulumi_glob() {
+        let go_work = "\
+go 1.26.10
+
+use (
+\t.
+\t./apps/cli/vitruvian-devx
+\t./packages/pulumi/library/go
+\t./packages/pulumi/library/go/pkg/app
+\t./packages/pulumi/library/go/pkg/iam
+)
+";
+        let wf_good = "\
+on:
+  push:
+    branches: [main]
+    paths:
+      - \"go.work\"
+      - \"go.work.sum\"
+      - \"go.sum\"
+      - \"apps/cli/vitruvian-devx/go.sum\"
+      - \"packages/pulumi/library/go/go.sum\"
+      - \"packages/pulumi/library/go/pkg/*/go.sum\"
+  pull_request:
+    paths:
+      - \"go.work\"
+      - \"go.work.sum\"
+      - \"go.sum\"
+      - \"apps/cli/vitruvian-devx/go.sum\"
+      - \"packages/pulumi/library/go/go.sum\"
+      - \"packages/pulumi/library/go/pkg/*/go.sum\"
+";
+        assert_eq!(
+            warm_workflow_gomod_paths_problems(go_work, wf_good),
+            Vec::new()
+        );
+
+        let missing_pulumi_glob = wf_good.replacen(
+            "      - \"packages/pulumi/library/go/pkg/*/go.sum\"\n",
+            "",
+            1,
+        );
+        let probs = warm_workflow_gomod_paths_problems(go_work, &missing_pulumi_glob);
+        assert_eq!(probs.len(), 1);
+        assert!(probs[0].0.contains("on.push.paths"), "{probs:?}");
+        assert!(
+            probs[0]
+                .0
+                .contains("packages/pulumi/library/go/pkg/app/go.sum"),
+            "{probs:?}"
+        );
+
+        let extra_go_work = go_work.replace(
+            "\t./packages/pulumi/library/go/pkg/iam\n",
+            "\t./packages/pulumi/library/go/pkg/iam\n\t./apps/new/mod\n",
+        );
+        let probs_extra = warm_workflow_gomod_paths_problems(&extra_go_work, wf_good);
+        assert_eq!(probs_extra.len(), 2);
+    }
+
+    #[test]
+    fn macos_warm_coverage_checks_all_macos_app_units_and_skips_other_configs() {
+        let presubmit = "\
+jobs:
+  unit-linux:
+    runs-on: ubuntu-26.04
+    steps:
+      - run: bazel test //apps/linux:test
+  unit-courier-app:
+    runs-on: xcode-27
+    steps:
+      - run: |
+          extra_flags=(--config=macos-app)
+          cache_flags=(--config=remotecache-ci)
+          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test; else exit $rc; fi; }
+  unit-other-config:
+    runs-on: macos-27
+    steps:
+      - run: |
+          bazel test --config=custom-mac //apps/other:OtherTest
+";
+        let ci = "\
+jobs:
+  build-test:
+    runs-on: ubuntu-26.04
+    steps:
+      - run: bazel build //tools/ci:affected_targets
+  macos-build:
+    runs-on: xcode-27
+    steps:
+      - run: |
+          cache=(--config=remotecache-ci)
+          bazel test \"${cache[@]}\" --config=macos-app //apps/desktop/vitruvian-code/macos:app_holds_node_test
+          bazel run \"${cache[@]}\" //apps/desktop/vitruvian-speaker:publish -- --dry-run
+  macos-other-config:
+    runs-on: macos-27
+    steps:
+      - run: |
+          bazel test --config=custom-mac //apps/other:OtherCiTest
+";
+        let warm_good = "\
+jobs:
+  warm-macos-verify:
+    steps:
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          bazel-flags: --config=macos-app
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker:publish //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+  warm-macos-save:
+    steps:
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          bazel-flags: --config=macos-app
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker:publish //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+";
+        assert_eq!(
+            macos_warm_coverage_problems(presubmit, ci, warm_good),
+            Vec::new()
+        );
+
+        let missing_manual = warm_good.replace(
+            "//apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests ",
+            "//apps/desktop/vitruvian-courier/app/... ",
+        );
+        let probs = macos_warm_coverage_problems(presubmit, ci, &missing_manual);
+        assert_eq!(probs.len(), 1);
+        assert!(
+            probs[0].0.contains("VitruvianCourierCoreTests"),
+            "{probs:?}"
+        );
+
+        let missing_ci = warm_good.replace(
+            "//apps/desktop/vitruvian-code/macos:app_holds_node_test ",
+            "",
+        );
+        let probs_ci = macos_warm_coverage_problems(presubmit, ci, &missing_ci);
+        assert_eq!(probs_ci.len(), 1);
+        assert!(
+            probs_ci[0].0.contains("ci.yaml:macos-build"),
+            "{probs_ci:?}"
+        );
+        assert!(
+            probs_ci[0].0.contains("app_holds_node_test"),
+            "{probs_ci:?}"
+        );
+
+        let drifted = warm_good.replacen(
+            "//apps/desktop/vitruvian-courier/app:app_holds_engine_test",
+            "",
+            1,
+        );
+        let probs_drift = macos_warm_coverage_problems(presubmit, ci, &drifted);
+        assert!(!probs_drift.is_empty());
     }
 }

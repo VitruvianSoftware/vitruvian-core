@@ -69,6 +69,14 @@ runs:
         go-version-file: ${{ inputs.go-version-file }}
         cache: false
 
+    - name: Default GOPROXY fallback on network errors
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${GOPROXY:-}" ]; then
+          echo "GOPROXY=https://proxy.golang.org|direct" >> "$GITHUB_ENV"
+        fi
+
     - name: Compute setup-go cache key and paths
       id: cache-key
       shell: bash

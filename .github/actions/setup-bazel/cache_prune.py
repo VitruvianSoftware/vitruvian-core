@@ -1,7 +1,7 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-"""Confirm a newly saved `-repository-full-` cache entry on refs/heads/main, then prune superseded and legacy ones."""
+"""Confirm newly saved warm cache entries on refs/heads/main, then prune superseded and legacy ones."""
 
 import argparse
 import os
@@ -14,25 +14,26 @@ from cache_capacity_guard import (
     GitHubCacheApi,
     _write_lines,
     add_common_args,
+    debs_cache_prefix,
     full_repo_cache_prefix,
+    gomod_cache_prefix,
     is_legacy_partial_repo_cache_key,
+    is_superseded_debs_cache_key,
     is_superseded_full_repo_cache_key,
+    is_superseded_gomod_cache_key,
 )
 
 
-def confirm_and_prune_superseded_caches(
+def confirm_and_prune_family(
     api,
-    platform,
-    current_lock_hash,
+    *,
+    new_key,
+    is_superseded_fn,
     max_confirm_attempts=5,
     retry_delay_seconds=2.0,
     sleep_fn=time.sleep,
 ):
-    """Confirm `new_key` exists on `refs/heads/main`, then delete superseded and legacy same-platform entries."""
-    if not platform or not current_lock_hash:
-        raise ValueError("platform and current_lock_hash must be non-empty")
-
-    new_key = f"{full_repo_cache_prefix(platform)}{current_lock_hash}"
+    """Confirm `new_key` exists on `refs/heads/main`, then delete entries matching `is_superseded_fn`."""
     confirmed = False
     last_error = None
 
@@ -84,10 +85,7 @@ def confirm_and_prune_superseded_caches(
         if not isinstance(entry, dict):
             continue
         key = entry.get("key")
-        if not (
-            is_superseded_full_repo_cache_key(key, platform, current_lock_hash)
-            or is_legacy_partial_repo_cache_key(key, platform)
-        ):
+        if not is_superseded_fn(key):
             continue
         cache_id = entry.get("id")
         if isinstance(cache_id, bool) or not isinstance(cache_id, int):
@@ -110,12 +108,110 @@ def confirm_and_prune_superseded_caches(
     }
 
 
+def confirm_and_prune_superseded_caches(
+    api,
+    platform,
+    current_lock_hash,
+    max_confirm_attempts=5,
+    retry_delay_seconds=2.0,
+    sleep_fn=time.sleep,
+):
+    """Confirm `new_key` exists on `refs/heads/main`, then delete superseded and legacy same-platform entries."""
+    if not platform or not current_lock_hash:
+        raise ValueError("platform and current_lock_hash must be non-empty")
+
+    new_key = f"{full_repo_cache_prefix(platform)}{current_lock_hash}"
+    return confirm_and_prune_family(
+        api,
+        new_key=new_key,
+        is_superseded_fn=lambda k: (
+            is_superseded_full_repo_cache_key(k, platform, current_lock_hash)
+            or is_legacy_partial_repo_cache_key(k, platform)
+        ),
+        max_confirm_attempts=max_confirm_attempts,
+        retry_delay_seconds=retry_delay_seconds,
+        sleep_fn=sleep_fn,
+    )
+
+
+def confirm_and_prune_gomod_caches(
+    api,
+    platform,
+    current_gomod_hash,
+    max_confirm_attempts=5,
+    retry_delay_seconds=2.0,
+    sleep_fn=time.sleep,
+):
+    """Confirm `bazel-gomod-1-<platform>-<hash>` exists on main, then delete superseded same-platform entries."""
+    if not platform or not current_gomod_hash:
+        raise ValueError("platform and current_gomod_hash must be non-empty")
+
+    new_key = f"{gomod_cache_prefix(platform)}{current_gomod_hash}"
+    return confirm_and_prune_family(
+        api,
+        new_key=new_key,
+        is_superseded_fn=lambda k: is_superseded_gomod_cache_key(
+            k, platform, current_gomod_hash
+        ),
+        max_confirm_attempts=max_confirm_attempts,
+        retry_delay_seconds=retry_delay_seconds,
+        sleep_fn=sleep_fn,
+    )
+
+
+def confirm_and_prune_debs_caches(
+    api,
+    platform,
+    current_debs_hash,
+    max_confirm_attempts=5,
+    retry_delay_seconds=2.0,
+    sleep_fn=time.sleep,
+):
+    """Confirm `ci-debs-1-<platform>-<hash>` exists on main, then delete superseded same-platform entries."""
+    if not platform or not current_debs_hash:
+        raise ValueError("platform and current_debs_hash must be non-empty")
+
+    new_key = f"{debs_cache_prefix(platform)}{current_debs_hash}"
+    return confirm_and_prune_family(
+        api,
+        new_key=new_key,
+        is_superseded_fn=lambda k: is_superseded_debs_cache_key(
+            k, platform, current_debs_hash
+        ),
+        max_confirm_attempts=max_confirm_attempts,
+        retry_delay_seconds=retry_delay_seconds,
+        sleep_fn=sleep_fn,
+    )
+
+
 def _parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     add_common_args(p)
     p.add_argument("--max-confirm-attempts", type=int, default=5)
     p.add_argument("--retry-delay-seconds", type=float, default=2.0)
+    p.add_argument("--repo-saved", choices=["", "true", "false"], default="")
+    p.add_argument("--gomod-saved", choices=["true", "false"], default="false")
+    p.add_argument("--gomod-hash", default=os.environ.get("GOMOD_HASH", ""))
+    p.add_argument("--debs-saved", choices=["true", "false"], default="false")
+    p.add_argument("--debs-hash", default=os.environ.get("DEBS_SHA_KEY", ""))
     return p.parse_args(argv)
+
+
+def _format_family_message(result, platform):
+    if not result["confirmed"]:
+        return result["warning"]
+    n_err = len(result["errors"])
+    if result["deleted"]:
+        items = ", ".join(f"{k} (id={cid})" for cid, k, _s in result["deleted"])
+        msg = f"Confirmed {result['new_key']}; pruned {len(result['deleted'])} superseded/legacy {platform} cache(s): {items}."
+        if n_err:
+            msg += f" ({n_err} warning(s))"
+        return msg
+    if n_err:
+        return (
+            f"Confirmed {result['new_key']}; pruning finished with {n_err} warning(s)."
+        )
+    return f"Confirmed {result['new_key']}; no superseded or legacy {platform} caches to prune."
 
 
 def main(argv=None, sleep_fn=time.sleep):
@@ -127,50 +223,83 @@ def main(argv=None, sleep_fn=time.sleep):
         _write_lines(args.summary_file, [msg])
         return 0
 
+    legacy_repo_mode = (
+        args.repo_saved == ""
+        and args.gomod_saved == "false"
+        and args.debs_saved == "false"
+    )
+    run_repo = args.repo_saved == "true" or legacy_repo_mode
+    run_gomod = args.gomod_saved == "true"
+    run_debs = args.debs_saved == "true"
+
     err_msg = None
     if not args.repo or "/" not in args.repo:
         err_msg = f"GITHUB_REPOSITORY/--repo is missing or invalid ({args.repo!r})."
     elif not args.token:
         err_msg = "GH_TOKEN/--token is empty; cannot confirm or prune caches."
-    elif not args.platform or not args.lock_hash:
+    elif not args.platform:
+        err_msg = f"platform ({args.platform!r}) is required."
+    elif run_repo and not args.lock_hash:
         err_msg = f"platform ({args.platform!r}) and lock-hash ({args.lock_hash!r}) are required."
+    elif run_gomod and not args.gomod_hash:
+        err_msg = (
+            f"gomod-hash ({args.gomod_hash!r}) is required when --gomod-saved=true."
+        )
+    elif run_debs and not args.debs_hash:
+        err_msg = f"debs-hash ({args.debs_hash!r}) is required when --debs-saved=true."
     if err_msg is not None:
         print(f"::error::{err_msg}", file=sys.stderr, flush=True)
         return 1
 
     api = GitHubCacheApi(args.api_url, args.repo, args.token)
-    result = confirm_and_prune_superseded_caches(
-        api=api,
-        platform=args.platform,
-        current_lock_hash=args.lock_hash,
-        max_confirm_attempts=args.max_confirm_attempts,
-        retry_delay_seconds=args.retry_delay_seconds,
-        sleep_fn=sleep_fn,
-    )
-
-    if not result["confirmed"]:
-        print(f"::warning::{result['warning']}", flush=True)
-        _write_lines(args.summary_file, [result["warning"]])
-        return 0
-
-    for err in result["errors"]:
-        print(f"::warning::{err}", flush=True)
-
-    n_err = len(result["errors"])
-    if result["deleted"]:
-        items = ", ".join(f"{k} (id={cid})" for cid, k, _s in result["deleted"])
-        msg = f"Confirmed {result['new_key']}; pruned {len(result['deleted'])} superseded/legacy {args.platform} cache(s): {items}."
-        if n_err:
-            msg += f" ({n_err} warning(s))"
-    elif n_err:
-        msg = (
-            f"Confirmed {result['new_key']}; pruning finished with {n_err} warning(s)."
+    families = []
+    if run_repo:
+        families.append(
+            confirm_and_prune_superseded_caches(
+                api=api,
+                platform=args.platform,
+                current_lock_hash=args.lock_hash,
+                max_confirm_attempts=args.max_confirm_attempts,
+                retry_delay_seconds=args.retry_delay_seconds,
+                sleep_fn=sleep_fn,
+            )
         )
-    else:
-        msg = f"Confirmed {result['new_key']}; no superseded or legacy {args.platform} caches to prune."
+    if run_gomod:
+        families.append(
+            confirm_and_prune_gomod_caches(
+                api=api,
+                platform=args.platform,
+                current_gomod_hash=args.gomod_hash,
+                max_confirm_attempts=args.max_confirm_attempts,
+                retry_delay_seconds=args.retry_delay_seconds,
+                sleep_fn=sleep_fn,
+            )
+        )
+    if run_debs:
+        families.append(
+            confirm_and_prune_debs_caches(
+                api=api,
+                platform=args.platform,
+                current_debs_hash=args.debs_hash,
+                max_confirm_attempts=args.max_confirm_attempts,
+                retry_delay_seconds=args.retry_delay_seconds,
+                sleep_fn=sleep_fn,
+            )
+        )
 
-    print(msg, flush=True)
-    _write_lines(args.summary_file, [msg])
+    messages = []
+    for result in families:
+        if not result["confirmed"]:
+            print(f"::warning::{result['warning']}", flush=True)
+            messages.append(result["warning"])
+            continue
+        for err in result["errors"]:
+            print(f"::warning::{err}", flush=True)
+        msg = _format_family_message(result, args.platform)
+        print(msg, flush=True)
+        messages.append(msg)
+
+    _write_lines(args.summary_file, messages)
     return 0
 
 
