@@ -139,8 +139,47 @@ jobs:
       # PyYAML; if it were merely present-by-default on the runner image, an
       # image change would make this gate find zero pairs. The script also
       # refuses to run without it, so the two cannot disagree silently.
+      - name: Compute PyYAML wheel cache key
+        id: pyyaml-cache-key
+        env:
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+          PYYAML_VERSION: '6.0.4'
+        run: |
+          set -euo pipefail
+          py_ver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          echo "path=${RUNNER_TEMP}/pyyaml-wheels" >> "$GITHUB_OUTPUT"
+          echo "key=pip-pyyaml-${RUNNER_OS}-${RUNNER_ARCH}-py${py_ver}-${PYYAML_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${PYYAML_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore PyYAML wheel cache (read-only)
+        id: pyyaml-cache-restore
+        if: github.ref != 'refs/heads/main' && steps.pyyaml-cache-key.outputs.key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.pyyaml-cache-key.outputs.path }}
+          key: ${{ steps.pyyaml-cache-key.outputs.key }}
+
+      - name: Restore and save PyYAML wheel cache (main only)
+        id: pyyaml-cache-save
+        if: github.ref == 'refs/heads/main' && steps.pyyaml-cache-key.outputs.key != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.pyyaml-cache-key.outputs.path }}
+          key: ${{ steps.pyyaml-cache-key.outputs.key }}
+
       - name: Install PyYAML
-        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
+        env:
+          CACHE_HIT: ${{ steps.pyyaml-cache-restore.outputs.cache-hit == 'true' || steps.pyyaml-cache-save.outputs.cache-hit == 'true' }}
+          WHEEL_DIR: ${{ steps.pyyaml-cache-key.outputs.path }}
+          PYYAML_VERSION: ${{ steps.pyyaml-cache-key.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${WHEEL_DIR}"
+          if [ "${CACHE_HIT}" != "true" ] || [ -z "$(find "${WHEEL_DIR}" -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \))" ]; then
+            python3 -m pip download --disable-pip-version-check -d "${WHEEL_DIR}" "pyyaml==${PYYAML_VERSION}"
+          fi
+          python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "pyyaml==${PYYAML_VERSION}"
 
       - name: Build //tools/ci:gitops_values_render (no Bazel on this job)
         id: values-render-bin
@@ -197,8 +236,47 @@ jobs:
           mode: tar
           member-path: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64/promtool
 
+      - name: Compute PyYAML wheel cache key
+        id: pyyaml-cache-key
+        env:
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+          PYYAML_VERSION: '6.0.4'
+        run: |
+          set -euo pipefail
+          py_ver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+          echo "path=${RUNNER_TEMP}/pyyaml-wheels" >> "$GITHUB_OUTPUT"
+          echo "key=pip-pyyaml-${RUNNER_OS}-${RUNNER_ARCH}-py${py_ver}-${PYYAML_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${PYYAML_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore PyYAML wheel cache (read-only)
+        id: pyyaml-cache-restore
+        if: github.ref != 'refs/heads/main' && steps.pyyaml-cache-key.outputs.key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.pyyaml-cache-key.outputs.path }}
+          key: ${{ steps.pyyaml-cache-key.outputs.key }}
+
+      - name: Restore and save PyYAML wheel cache (main only)
+        id: pyyaml-cache-save
+        if: github.ref == 'refs/heads/main' && steps.pyyaml-cache-key.outputs.key != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.pyyaml-cache-key.outputs.path }}
+          key: ${{ steps.pyyaml-cache-key.outputs.key }}
+
       - name: Install PyYAML
-        run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
+        env:
+          CACHE_HIT: ${{ steps.pyyaml-cache-restore.outputs.cache-hit == 'true' || steps.pyyaml-cache-save.outputs.cache-hit == 'true' }}
+          WHEEL_DIR: ${{ steps.pyyaml-cache-key.outputs.path }}
+          PYYAML_VERSION: ${{ steps.pyyaml-cache-key.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${WHEEL_DIR}"
+          if [ "${CACHE_HIT}" != "true" ] || [ -z "$(find "${WHEEL_DIR}" -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \))" ]; then
+            python3 -m pip download --disable-pip-version-check -d "${WHEEL_DIR}" "pyyaml==${PYYAML_VERSION}"
+          fi
+          python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "pyyaml==${PYYAML_VERSION}"
 
       - name: Run rule unit tests
         run: |

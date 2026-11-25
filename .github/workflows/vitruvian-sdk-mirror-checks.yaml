@@ -37,6 +37,14 @@ name: Vitruvian SDK Mirror Checks
 # mirror's CI would fail after the next export".
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/vitruvian-sdk/**'
+      - 'packages/pycompat/vitruvian-pycompat/**'
+      - 'tools/copybara/copy.bara.sky'
+      - 'tools/copybara/sdk_export_check.py'
+      - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   pull_request:
     paths:
       - 'packages/vitruvian-sdk/**'
@@ -46,10 +54,10 @@ on:
       - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   workflow_dispatch:
 
-# A newer push to the same pull request replaces the older run.
+# Per-commit keying on non-PR events so pushes to main do not evict each other.
 concurrency:
-  group: vitruvian-sdk-mirror-checks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -69,9 +77,52 @@ jobs:
 
       # The version Bazel builds the same checks with (MODULE.bazel,
       # rust.toolchain), and the one the mirror's workflows install.
-      - name: Rust 1.98.1
+      - name: Compute Rust 1.98.1 cache key
+        id: rust-cache-key
+        env:
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
-          rustup toolchain install 1.98.1 --profile minimal
+          set -euo pipefail
+          rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+          host_triple="$(rustc -vV 2>/dev/null | awk '/^host:/ { print $2 }')"
+          if [ -z "$host_triple" ]; then
+            case "${RUNNER_OS}:${RUNNER_ARCH}" in
+              Linux:X64) host_triple="x86_64-unknown-linux-gnu" ;;
+              Linux:ARM64) host_triple="aarch64-unknown-linux-gnu" ;;
+              macOS:ARM64) host_triple="aarch64-apple-darwin" ;;
+              macOS:X64) host_triple="x86_64-apple-darwin" ;;
+              *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+            esac
+          fi
+          echo "path=${rustup_home}/toolchains/1.98.1-${host_triple}" >> "$GITHUB_OUTPUT"
+          echo "key=rustup-toolchain-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Rust 1.98.1 toolchain cache (read-only)
+        id: rust-cache-restore
+        if: github.ref != 'refs/heads/main' && steps.rust-cache-key.outputs.key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Restore and save Rust 1.98.1 toolchain cache (main only)
+        id: rust-cache-save
+        if: github.ref == 'refs/heads/main' && steps.rust-cache-key.outputs.key != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Rust 1.98.1
+        env:
+          CACHE_HIT: ${{ steps.rust-cache-restore.outputs.cache-hit == 'true' || steps.rust-cache-save.outputs.cache-hit == 'true' }}
+          TOOLCHAIN_DIR: ${{ steps.rust-cache-key.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [ "${CACHE_HIT}" != "true" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           rustup default 1.98.1
           cargo --version
 
@@ -97,9 +148,52 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Rust 1.98.1
+      - name: Compute Rust 1.98.1 cache key
+        id: rust-cache-key
+        env:
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
-          rustup toolchain install 1.98.1 --profile minimal
+          set -euo pipefail
+          rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+          host_triple="$(rustc -vV 2>/dev/null | awk '/^host:/ { print $2 }')"
+          if [ -z "$host_triple" ]; then
+            case "${RUNNER_OS}:${RUNNER_ARCH}" in
+              Linux:X64) host_triple="x86_64-unknown-linux-gnu" ;;
+              Linux:ARM64) host_triple="aarch64-unknown-linux-gnu" ;;
+              macOS:ARM64) host_triple="aarch64-apple-darwin" ;;
+              macOS:X64) host_triple="x86_64-apple-darwin" ;;
+              *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+            esac
+          fi
+          echo "path=${rustup_home}/toolchains/1.98.1-${host_triple}" >> "$GITHUB_OUTPUT"
+          echo "key=rustup-toolchain-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Rust 1.98.1 toolchain cache (read-only)
+        id: rust-cache-restore
+        if: github.ref != 'refs/heads/main' && steps.rust-cache-key.outputs.key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Restore and save Rust 1.98.1 toolchain cache (main only)
+        id: rust-cache-save
+        if: github.ref == 'refs/heads/main' && steps.rust-cache-key.outputs.key != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Rust 1.98.1
+        env:
+          CACHE_HIT: ${{ steps.rust-cache-restore.outputs.cache-hit == 'true' || steps.rust-cache-save.outputs.cache-hit == 'true' }}
+          TOOLCHAIN_DIR: ${{ steps.rust-cache-key.outputs.path }}
+        run: |
+          set -euo pipefail
+          if [ "${CACHE_HIT}" != "true" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           rustup default 1.98.1
           cargo --version
 
