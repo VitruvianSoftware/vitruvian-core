@@ -166,7 +166,7 @@ struct ModelPickerMenuContent: View {
         switch engine.configuration.activeProvider.route {
         case .antigravity, .opencode, .ollama:
             return true
-        case .claude, .custom:
+        case .claude, .custom, .registry:
             return false
         }
     }

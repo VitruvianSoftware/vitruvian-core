@@ -424,7 +424,8 @@ public struct AgentErrorCardView: View {
     public let failure: AgentLiveFailure
     public let strings: VitruvianCodeChatStrings
     public let onRetry: () -> Void
-    public let onUseCommandLine: () -> Void
+    /// Nil for an agent with no command line (one from the ACP registry): no button.
+    public let onUseCommandLine: (() -> Void)?
     public let onDismiss: () -> Void
     /// Signs in with one of `failure.signInMethods` (`ACPAuth`).
     public let onSignIn: ((AgentSignInMethod) -> Void)?
@@ -433,7 +434,7 @@ public struct AgentErrorCardView: View {
         failure: AgentLiveFailure,
         strings: VitruvianCodeChatStrings,
         onRetry: @escaping () -> Void,
-        onUseCommandLine: @escaping () -> Void,
+        onUseCommandLine: (() -> Void)?,
         onDismiss: @escaping () -> Void,
         onSignIn: ((AgentSignInMethod) -> Void)? = nil
     ) {
@@ -568,6 +569,7 @@ public struct AgentErrorCardView: View {
                 .opacity(failure.isLocked ? 0.5 : 1.0)
                 .help(strings.retry)
 
+                if let onUseCommandLine {
                 Button {
                     onUseCommandLine()
                 } label: {
@@ -587,6 +589,7 @@ public struct AgentErrorCardView: View {
                 }
                 .buttonStyle(.plain)
                 .help(strings.useCommandLineForChat)
+                }
 
                 Spacer(minLength: 0)
             }

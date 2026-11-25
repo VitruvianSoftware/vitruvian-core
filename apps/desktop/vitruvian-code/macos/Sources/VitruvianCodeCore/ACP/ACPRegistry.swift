@@ -40,7 +40,7 @@ import Foundation
 
 /// Why a registry operation failed. The cases match T3 Code's
 /// `AcpRegistryOperationErrorReason`.
-public struct ACPRegistryError: Error, Equatable, Sendable, CustomStringConvertible {
+public struct ACPRegistryError: LocalizedError, Equatable, Sendable, CustomStringConvertible {
     public enum Reason: String, Equatable, Sendable {
         case registryUnavailable = "registry_unavailable"
         case agentNotFound = "agent_not_found"
@@ -62,6 +62,7 @@ public struct ACPRegistryError: Error, Equatable, Sendable, CustomStringConverti
     }
 
     public var description: String { detail }
+    public var errorDescription: String? { detail }
 }
 
 public enum ACPRegistry {
@@ -754,12 +755,24 @@ public actor ACPRegistryInstaller {
     /// The installed copy of `agentID` at `version`, if one is there and
     /// still sound. Never installs.
     public func installed(agentID: String, version: String) -> ACPRegistryInstall? {
-        guard ACPRegistry.isAgentID(agentID), ACPRegistry.isVersion(version),
-              let data = FileManager.default.contents(atPath: receiptPath(agentID: agentID, version: version)),
+        Self.installedReceipt(agentsDirectory: agentsDirectory, agentID: agentID, version: version)
+    }
+
+    /// The same lookup without the installer, for a chat about to start
+    /// (`ACPRegistryConnection`) and for Settings. Never installs.
+    public static func installedReceipt(stateDirectory: String, agentID: String, version: String) -> ACPRegistryInstall? {
+        installedReceipt(agentsDirectory: (stateDirectory as NSString).appendingPathComponent("agents"),
+                         agentID: agentID, version: version)
+    }
+
+    static func installedReceipt(agentsDirectory: String, agentID: String, version: String) -> ACPRegistryInstall? {
+        guard ACPRegistry.isAgentID(agentID), ACPRegistry.isVersion(version) else { return nil }
+        let root = ((agentsDirectory as NSString).appendingPathComponent(agentID) as NSString)
+            .appendingPathComponent(ACPRegistry.versionFolderName(version))
+        guard let data = FileManager.default.contents(atPath: (root as NSString).appendingPathComponent("receipt.json")),
               let receipt = try? JSONDecoder().decode(ACPRegistryInstall.self, from: data),
               receipt.agentID == agentID, receipt.version == version,
-              (try? executableInside(root: versionRoot(agentID: agentID, version: version),
-                                     path: receipt.executablePath)) != nil else { return nil }
+              (try? Self.executableInside(root: root, path: receipt.executablePath)) != nil else { return nil }
         return receipt
     }
 
@@ -882,10 +895,10 @@ public actor ACPRegistryInstaller {
         if lstat(staged, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG {
             chmod(staged, 0o755)
         }
-        _ = try executableInside(root: extraction, path: staged)
+        _ = try Self.executableInside(root: extraction, path: staged)
         try? FileManager.default.removeItem(atPath: installRoot)
         try moveItem(extraction, installRoot)
-        let executable = try executableInside(root: installRoot, path: finalExecutable)
+        let executable = try Self.executableInside(root: installRoot, path: finalExecutable)
         return ACPRegistryInstall(agentID: agent.id, name: agent.name, version: agent.version, distribution: .binary,
                                   executablePath: executable, arguments: resolved.args, environment: resolved.env,
                                   binDirectory: nil, packageSpec: nil)
@@ -912,7 +925,7 @@ public actor ACPRegistryInstaller {
             packageEnvironment["UV_TOOL_DIR"] = packageRoot
             packageEnvironment["UV_TOOL_BIN_DIR"] = binDirectory
         }
-        let managerDirectory = (resolvingSymlinks(manager) as NSString).deletingLastPathComponent
+        let managerDirectory = (Self.resolvingSymlinks(manager) as NSString).deletingLastPathComponent
         packageEnvironment["PATH"] = Self.prependPath(managerDirectory, to: packageEnvironment["PATH"])
 
         let installArguments = resolved.kind == .npx ? ["install", "--global", spec] : ["tool", "install", "--force", spec]
@@ -948,7 +961,7 @@ public actor ACPRegistryInstaller {
             throw ACPRegistryError(.installFailed, "npm installed \(spec), but its command could not be found.")
         }
         let path = ((globalPrefix as NSString).appendingPathComponent("bin") as NSString).appendingPathComponent(command)
-        return try executableInside(root: root, path: path)
+        return try Self.executableInside(root: root, path: path)
     }
 
     private func discoverUv(_ agent: ACPRegistry.Agent, spec: String, manager: String,
@@ -971,7 +984,7 @@ public actor ACPRegistryInstaller {
         let binDirectory = try await singlePath(manager, ["tool", "dir", "--bin"], environment: environment)
         for candidate in ACPRegistry.packageCommandCandidates(agentID: agent.id, packageName: identity.name) {
             let path = (binDirectory as NSString).appendingPathComponent(candidate)
-            if let found = try? executableInside(root: root, path: path) { return found }
+            if let found = try? Self.executableInside(root: root, path: path) { return found }
         }
         throw ACPRegistryError(.installFailed, "uv installed \(spec), but its command could not be found.")
     }
@@ -986,6 +999,21 @@ public actor ACPRegistryInstaller {
         let path = (agentsDirectory as NSString).appendingPathComponent(agentID)
         if FileManager.default.fileExists(atPath: path) {
             try FileManager.default.removeItem(atPath: path)
+        }
+    }
+
+    /// Removes one installed version of `agentID`, and the agent's folder
+    /// once no version is left.
+    public func uninstall(agentID: String, version: String) throws {
+        guard ACPRegistry.isAgentID(agentID), ACPRegistry.isVersion(version) else {
+            throw ACPRegistryError(.installFailed, "Invalid agent id or version.")
+        }
+        let fileManager = FileManager.default
+        let root = versionRoot(agentID: agentID, version: version)
+        if fileManager.fileExists(atPath: root) { try fileManager.removeItem(atPath: root) }
+        let agentRoot = (agentsDirectory as NSString).appendingPathComponent(agentID)
+        if let left = try? fileManager.contentsOfDirectory(atPath: agentRoot), left.isEmpty {
+            try? fileManager.removeItem(atPath: agentRoot)
         }
     }
 
@@ -1028,9 +1056,9 @@ public actor ACPRegistryInstaller {
 
     /// The real path of `path` when it is a regular executable file whose
     /// real path is inside `root`'s real path; throws otherwise.
-    nonisolated func executableInside(root: String, path: String) throws -> String {
-        let realRoot = resolvingSymlinks(root)
-        let realPath = resolvingSymlinks(path)
+    static func executableInside(root: String, path: String) throws -> String {
+        let realRoot = Self.resolvingSymlinks(root)
+        let realPath = Self.resolvingSymlinks(path)
         guard realPath.hasPrefix(realRoot + "/") else {
             throw ACPRegistryError(.archiveInvalid, "The agent's command resolves outside its install folder.")
         }
@@ -1041,7 +1069,7 @@ public actor ACPRegistryInstaller {
         return realPath
     }
 
-    private nonisolated func resolvingSymlinks(_ path: String) -> String {
+    static func resolvingSymlinks(_ path: String) -> String {
         guard let resolved = realpath(path, nil) else { return path }
         defer { free(resolved) }
         return String(cString: resolved)
