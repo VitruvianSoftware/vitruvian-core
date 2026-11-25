@@ -7,8 +7,8 @@ load("@rules_android//providers:providers.bzl", "ApkInfo")
 def _multi_abi_android_transition_impl(_settings, _attr):
     return {
         "//command_line_option:android_platforms": [
-            Label("@rules_android//:arm64-v8a"),
-            Label("@rules_android//:armeabi-v7a"),
+            "@rules_android//:arm64-v8a",
+            "@rules_android//:armeabi-v7a",
         ],
     }
 
