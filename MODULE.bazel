@@ -49,8 +49,27 @@ bazel_dep(name = "rules_apple", version = "5.1.0", repo_name = "build_bazel_rule
 # Loads CcInfo from rules_cc (Bazel 9 removed the builtin). 2.6.0 moved the
 # clippy aspect out of lint/ into the separate aspect_rules_lint_rust module;
 # rather than take that module we dropped clippy from tools/lint/linters.bzl
-# (nothing to lint -- Cargo members=[], zero .rs files), so 2.7.1 is a clean bump.
-bazel_dep(name = "aspect_rules_lint", version = "2.7.1")
+# (nothing to lint -- Cargo members=[], zero .rs files).
+bazel_dep(name = "aspect_rules_lint", version = "2.9.1")
+
+# rules_buf is not used directly: aspect_rules_lint (its buf lint aspect) and
+# protovalidate both depend on it, and it registers the buf toolchain. It is
+# declared here only to take the latest release; the transitive floors are
+# 0.5.2 and 0.3.0. 0.6.x raises gazelle's floor to 0.54.0 (bumped below).
+#
+# The buf binary version is NOT rules_buf's default: protovalidate pins
+# buf.toolchains(v1.50.0), and the extension takes the highest version any
+# module asks for. Declaring the latest release here makes it win. The sha256
+# is of the release's sha256.txt; each per-platform binary is then downloaded
+# against its line in that file, so every download stays checksummed.
+bazel_dep(name = "rules_buf", version = "0.6.1")
+
+buf = use_extension("@rules_buf//buf:extensions.bzl", "buf")
+buf.toolchains(
+    sha256 = "b05b543026f48418579c3e37b9c4f9b776b895085e453775ded018a06e631823",
+    version = "v1.75.0",
+)
+
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_multitool", version = "1.11.1")
@@ -73,7 +92,7 @@ bazel_dep(name = "rules_python", version = "1.8.3")
 bazel_dep(name = "aspect_gazelle_prebuilt", version = "0.0.20")
 
 # Bare gazelle stays for the go_deps extension (Go dependency resolution).
-bazel_dep(name = "gazelle", version = "0.51.3")
+bazel_dep(name = "gazelle", version = "0.54.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "rules_oci", version = "2.3.0")
 bazel_dep(name = "tar.bzl", version = "0.10.5")
@@ -133,6 +152,15 @@ go_deps.gazelle_override(
 go_deps.gazelle_override(
     directives = ["gazelle:proto disable"],
     path = "go.mau.fi/mautrix-gvoice",
+)
+
+# github.com/google/safeopen (pulled in by rules_buf 0.6.x's go.mod): it checks
+# in its own BUILD files, which point at an @go_sys repo that does not exist
+# here. rules_buf sets this same override, but only as a dev dependency, so it
+# does not reach us. Regenerate the BUILD files instead.
+go_deps.gazelle_override(
+    build_file_generation = "clean",
+    path = "github.com/google/safeopen",
 )
 
 # go.mau.fi/webp (cgo libwebp, used by whatsmeow for stickers): gazelle files
@@ -1267,7 +1295,7 @@ http_file(
 # protobuf pulls it transitively and the default (0.10.1) loads the Bazel-9-
 # removed CcInfo builtin and fails analysis.
 bazel_dep(name = "protobuf", version = "35.1")
-bazel_dep(name = "protovalidate", version = "1.2.0")
+bazel_dep(name = "protovalidate", version = "1.2.2")
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 bazel_dep(name = "grpc-java", version = "1.78.0")
 bazel_dep(name = "bazel_jar_jar", version = "0.1.12")

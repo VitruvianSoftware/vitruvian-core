@@ -34,5 +34,13 @@ dependencies = []
 # See https://docs.astral.sh/ruff/configuration/
 [tool.ruff]
 
+[tool.ruff.lint]
+# Ruff comes from aspect_rules_lint's own tool lockfile, so a rules_lint bump
+# can move it a minor version. Ruff 0.16 grew its default rule set from 59 to
+# 413 rules (and dropped E741 and 17 others), which took `aspect lint` from 15
+# Ruff findings to 620 with no code change. Name the pre-0.16 default set so
+# a tool upgrade cannot change what we enforce; widening it is its own change.
+select = ["E4", "E7", "E9", "F"]
+
 # See https://docs.astral.sh/ty/reference/configuration/
 [tool.ty.rules]
