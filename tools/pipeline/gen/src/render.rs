@@ -689,22 +689,36 @@ pub fn render_presubmit_workflow(
         b.push_str("; else exit $rc; fi; }\n");
 
         // Artifacts are copied HERE, inside the build step, because the flags
-        // above are what decide where Bazel writes: --android_platforms puts
-        // outputs in a different bin directory than the default one, and the
-        // `bazel-bin` symlink in the workspace does not point at it. Asking
-        // `bazel info` with the same flags is the only reliable answer, and a
-        // later step cannot -- shell variables do not survive between steps.
+        // above are what decide where Bazel writes: --android_platforms and
+        // rules_android 0.8.1 transitions put outputs in a different bin
+        // directory (-ST-<hash>) than `bazel info bazel-bin` or the workspace
+        // `bazel-bin` symlink. Asking `bazel cquery --output=files` with the
+        // same flags is the only reliable answer, and a later step cannot --
+        // shell variables do not survive between steps.
         //
-        // cp -L because bazel-bin is a symlink into the output base, which on
-        // CI lives outside the checkout, where upload-artifact will not follow.
+        // cp -L because bazel-out may hold symlinks into the output base, which
+        // on CI lives outside the checkout, where upload-artifact will not follow.
         if !u.artifacts.is_empty() {
-            {}
-            b.push_str("          bin=$(bazel info \"${extra_flags[@]}\" \"${cache_flags[@]}\" bazel-bin)\n");
             for (n, path) in &u.artifacts {
-                b.push_str(&format!("          mkdir -p .pipeline-artifacts/{n}\n"));
-                b.push_str(&format!(
-                    "          cp -L \"$bin/{path}\" .pipeline-artifacts/{n}/\n"
+                let trimmed = path.trim_start_matches('/');
+                let label = shell_quote(&artifact_label(trimmed));
+                let pattern = shell_quote(&format!("/{}$", escape_ere(trimmed)));
+                let err_msg = shell_quote(&format!(
+                    "artifact {n}: expected exactly one existing file, got:"
                 ));
+                let dest_dir = shell_quote(&format!(".pipeline-artifacts/{n}"));
+                let dest_dir_slash = shell_quote(&format!(".pipeline-artifacts/{n}/"));
+                b.push_str(&format!(
+                    "          cquery_out=$(bazel cquery \"${{extra_flags[@]}}\" \"${{cache_flags[@]}}\" --output=files {label})\n"
+                ));
+                b.push_str(&format!(
+                    "          f=$(printf '%s\\n' \"$cquery_out\" | grep -E {pattern} || true)\n"
+                ));
+                b.push_str(&format!(
+                    "          if [ \"$(printf '%s\\n' \"$f\" | grep -c . || true)\" -ne 1 ] || [ ! -f \"$f\" ]; then echo {err_msg} >&2; printf '%s\\n' \"$f\" >&2; exit 1; fi\n"
+                ));
+                b.push_str(&format!("          mkdir -p {dest_dir}\n"));
+                b.push_str(&format!("          cp -L \"$f\" {dest_dir_slash}\n"));
             }
         }
         b.push_str("\n");
@@ -873,4 +887,30 @@ pub fn render_presubmit_workflow(
     b.push_str("          overwrite: true\n");
 
     Ok(b)
+}
+
+fn artifact_label(path: &str) -> String {
+    let trimmed = path.trim_start_matches('/');
+    match trimmed.rsplit_once('/') {
+        Some((dir, base)) => format!("//{dir}:{base}"),
+        None => format!("//:{trimmed}"),
+    }
+}
+
+fn escape_ere(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(
+            c,
+            '\\' | '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|'
+        ) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\"'\"'"))
 }

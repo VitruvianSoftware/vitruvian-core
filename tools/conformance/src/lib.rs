@@ -355,6 +355,7 @@ impl Context {
             ("SWIFTPREFS", "Swift test preferences (tests save under TEST_TMPDIR, never in ~/Library/Preferences)"),
             ("RELEASETAGS", "Release-tag exemptions (no rolling tag starts with a release-please release tag prefix)"),
             ("OCIBASE", "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)"),
+            ("MAVENPIN", "Maven lock files (every maven.install in MODULE.bazel sets lock_file)"),
             ("PROMGRAPH", "Backstage Prometheus graphs (every prometheus.io/rule names a recording rule)"),
             ("PROMALERT", "Backstage Prometheus alerts (each component lists only its own namespace's alerts)"),
             ("STANDALONE_DEPS", "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)"),

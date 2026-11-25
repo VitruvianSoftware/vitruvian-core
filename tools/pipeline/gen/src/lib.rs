@@ -380,9 +380,161 @@ mod tests {
         assert!(got.contains("--test_env=ANDROID_SERIAL"));
         assert!(got.contains("extra_flags+=(\"--fat_apk_cpu=arm64-v8a,x86_64\")"));
         assert!(got.contains("      ANDROID_NDK_HOME: \"${{ env.ANDROID_NDK_ROOT }}\"\n"));
-        assert!(got.contains("cp -L \"$bin/app.apk\" .pipeline-artifacts/alpha/"));
+        assert!(!got.contains("bazel info"));
+        assert!(got.contains(
+            "bazel cquery \"${extra_flags[@]}\" \"${cache_flags[@]}\" --output=files '//:app.apk'"
+        ));
+        assert!(got.contains("grep -E '/app\\.apk$'"));
+        assert!(got.contains("cp -L \"$f\" '.pipeline-artifacts/alpha/'"));
         assert!(got.find("name: alpha").unwrap() < got.find("name: zebra").unwrap());
         assert!(got.contains("--config=remotecache-ci"));
+    }
+
+    #[test]
+    fn nested_artifact_label_and_anchored_pattern_render() {
+        let mut u = unit("remote");
+        u.artifacts.insert(
+            "vitruvian-remote-apk".into(),
+            "apps/mobile/vitruvian-remote/app.apk".into(),
+        );
+        u.build_flags =
+            vec!["--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64".into()];
+        let got = render(&[u]);
+        assert!(!got.contains("bazel info"));
+        assert!(got.contains(
+            "cquery_out=$(bazel cquery \"${extra_flags[@]}\" \"${cache_flags[@]}\" --output=files '//apps/mobile/vitruvian-remote:app.apk')"
+        ));
+        assert!(got.contains("grep -E '/apps/mobile/vitruvian-remote/app\\.apk$'"));
+        assert!(got
+            .contains("'artifact vitruvian-remote-apk: expected exactly one existing file, got:'"));
+        assert!(got.contains("mkdir -p '.pipeline-artifacts/vitruvian-remote-apk'"));
+        assert!(got.contains("cp -L \"$f\" '.pipeline-artifacts/vitruvian-remote-apk/'"));
+    }
+
+    #[test]
+    fn emitted_artifact_check_handles_unsigned_multiple_missing_and_valid() {
+        let mut u = unit("remote");
+        u.artifacts.insert(
+            "vitruvian-remote-apk".into(),
+            "apps/mobile/vitruvian-remote/app.apk".into(),
+        );
+        let got = render(&[u]);
+        let start = got
+            .find("          cquery_out=$(bazel cquery")
+            .expect("cquery line");
+        let end = got
+            .find("      - name: Upload vitruvian-remote-apk")
+            .expect("upload step");
+        let snippet: String = got[start..end]
+            .lines()
+            .map(|l| l.strip_prefix("          ").unwrap_or(l))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let base = std::env::temp_dir().join(format!("gen-artifact-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let bin_dir = base.join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let bazel_stub = bin_dir.join("bazel");
+        std::fs::write(
+            &bazel_stub,
+            "#!/usr/bin/env bash\nprintf '%s' \"$STUB_CQUERY_OUT\"\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bazel_stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let run_case = |case: &str, cquery_out: &str, create_rel: Option<&str>| {
+            let work = base.join(case);
+            std::fs::create_dir_all(&work).unwrap();
+            if let Some(rel) = create_rel {
+                let p = work.join(rel);
+                std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                std::fs::write(&p, b"apk-bytes").unwrap();
+            }
+            let script = format!(
+                "set -euo pipefail\nextra_flags=('--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64')\ncache_flags=('--config=remotecache-ci')\n{snippet}\n"
+            );
+            let path_env = format!(
+                "{}:{}",
+                bin_dir.display(),
+                std::env::var("PATH").unwrap_or_default()
+            );
+            std::process::Command::new("bash")
+                .args(["-c", &script])
+                .current_dir(&work)
+                .env("PATH", path_env)
+                .env("STUB_CQUERY_OUT", cquery_out)
+                .output()
+                .unwrap()
+        };
+
+        // 1. Only app_unsigned.apk: must not match app.apk and must fail with clear error.
+        let out = run_case(
+            "unsigned_only",
+            "bazel-out/k8-fastbuild-ST-111/bin/apps/mobile/vitruvian-remote/app_unsigned.apk\n",
+            None,
+        );
+        assert!(!out.status.success());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(
+                "artifact vitruvian-remote-apk: expected exactly one existing file, got:"
+            ),
+            "{stderr}"
+        );
+
+        // 2. Multiple matching app.apk outputs: must fail and print candidates.
+        let p1 = "bazel-out/k8-fastbuild-ST-aaa/bin/apps/mobile/vitruvian-remote/app.apk";
+        let p2 = "bazel-out/k8-fastbuild-ST-bbb/bin/apps/mobile/vitruvian-remote/app.apk";
+        let out = run_case("multiple", &format!("{p1}\n{p2}\n"), Some(p1));
+        assert!(!out.status.success());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(
+                "artifact vitruvian-remote-apk: expected exactly one existing file, got:"
+            ),
+            "{stderr}"
+        );
+        assert!(stderr.contains(p1) && stderr.contains(p2), "{stderr}");
+
+        // 3. Matching file missing on disk: must fail and print the missing candidate.
+        let out = run_case("missing_file", &format!("{p1}\n"), None);
+        assert!(!out.status.success());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(
+                "artifact vitruvian-remote-apk: expected exactly one existing file, got:"
+            ),
+            "{stderr}"
+        );
+        assert!(stderr.contains(p1), "{stderr}");
+
+        // 4. Both app_unsigned.apk and one existing app.apk: succeeds and copies only app.apk.
+        let valid_rel =
+            "bazel-out/k8-fastbuild-ST-deadbeef/bin/apps/mobile/vitruvian-remote/app.apk";
+        let unsigned_rel =
+            "bazel-out/k8-fastbuild-ST-deadbeef/bin/apps/mobile/vitruvian-remote/app_unsigned.apk";
+        let out = run_case(
+            "valid",
+            &format!("{unsigned_rel}\n{valid_rel}\n"),
+            Some(valid_rel),
+        );
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let copied = base.join("valid/.pipeline-artifacts/vitruvian-remote-apk/app.apk");
+        assert_eq!(std::fs::read(&copied).unwrap(), b"apk-bytes");
+        assert!(!base
+            .join("valid/.pipeline-artifacts/vitruvian-remote-apk/app_unsigned.apk")
+            .exists());
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
