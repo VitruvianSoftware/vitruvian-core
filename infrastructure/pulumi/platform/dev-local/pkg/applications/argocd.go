@@ -75,10 +75,11 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 	// login's full blast radius. Instead create a dedicated local account that
 	// ONLY carries API tokens (apiKey capability, no UI login) and bind it via
 	// RBAC below. Config-driven: empty name => no account is created, preserving
-	// the prior behavior. Role defaults to the built-in full-access `role:admin`;
-	// override argocd_api_account_role to scope it down (e.g. role:readonly).
+	// the prior behavior. Role defaults to the built-in `role:readonly`, so a
+	// leaked MCP token can read but never sync, delete or exec; set
+	// argocd_api_account_role (e.g. role:admin) only when automation needs writes.
 	apiAccount := conf.GetString("argocd_api_account", "")
-	apiAccountRole := conf.GetString("argocd_api_account_role", "role:admin")
+	apiAccountRole := conf.GetString("argocd_api_account_role", "role:readonly")
 
 	// RBAC: read-only by default plus an org-admin role. Only bind an admin subject
 	// when an SSO identity is configured — the homelab has no SSO connector by

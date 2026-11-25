@@ -46,9 +46,9 @@ config:
   #   monorepo:argocd_admin_email: "you@example.com"  # binds org-admin (needs an SSO connector)
   # Optional dedicated apiKey-only account for API tokens (e.g. the Argo CD MCP
   # server). Empty => not created. Mint with `argocd account generate-token
-  # --account <name>`. Defaults to full-access role:admin; scope down via _role:
+  # --account <name>`. Defaults to role:readonly; widen via _role only if needed:
   #   monorepo:argocd_api_account: "mcp"
-  #   monorepo:argocd_api_account_role: "role:readonly"   # default: role:admin
+  #   monorepo:argocd_api_account_role: "role:readonly"   # default
   monorepo:telepresence_enabled: "false"
   monitoring:namespace: monitoring
   database:namespace: database

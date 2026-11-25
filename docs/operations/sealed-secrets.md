@@ -117,7 +117,7 @@ Then restart Claude Desktop (Cmd-Q) and confirm both MCP servers connect.
 
 ## Notes
 
-- The `mcp` ArgoCD account (apiKey, role:admin) is created by pulumi
+- The `mcp` ArgoCD account (apiKey, role:readonly by default) is created by pulumi
   (`argocd_api_account` in `infrastructure/pulumi/platform/dev-local`; the enablement lives in
   the gitignored `Pulumi.local.yaml` on the operator's machine).
 - Losing **both** the Bitwarden items and the live cluster means re-bootstrapping from
