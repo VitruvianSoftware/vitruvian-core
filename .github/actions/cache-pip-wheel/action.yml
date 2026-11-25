@@ -114,7 +114,7 @@ runs:
         block_text = "\n".join(collected) + "\n"
         block_sha = hashlib.sha256(block_text.encode("utf-8")).hexdigest()
         py_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
-# Bump the v1 segment to drop a bad cache entry.
+        # Bump the v1 segment to drop a bad cache entry.
         key = f"pip-wheel-v1-{runner_os}-{runner_arch}-py{py_ver}-{target_norm}-{block_sha}"
         wheel_dir = os.path.join(runner_temp, "pip-wheels", key)
         req_out = os.path.join(runner_temp, f"pip-req-{key}.txt")
