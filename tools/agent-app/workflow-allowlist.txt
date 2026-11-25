@@ -97,3 +97,9 @@ sentry-apply.yaml action
 # The production Environment still holds every production run for James's
 # approval, and the Zitadel apply refuses a destructive plan on a manual run.
 delivery-oauth-user-inspector.yaml unit environment
+
+# Warms and saves the Bazel repository download cache on main (Linux and macOS).
+# No inputs. Its save jobs hold actions: write and are gated to refs/heads/main;
+# workflow-run also enforces --ref main. Added so an agent can trigger a warm save
+# after cache eviction without waiting for the daily 07:23 UTC schedule.
+bazel-repo-cache.yaml

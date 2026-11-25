@@ -220,15 +220,13 @@ jobs:
           # image, as the `buildcache` tag -- NOT in the Actions cache, where
           # these three image builds held about 2.2 GiB of the repo's shared
           # 10 GiB budget and pushed it over the limit, evicting other jobs'
-          # entries. Pull requests still write their own cache to the Actions
-          # cache as before (it is scoped to the PR and pruned when it closes)
-          # and additionally read main's from the registry; the image packages
-          # are public, so that read needs no login.
+          # entries. Non-main runs (PRs, merge queue) read from the registry and
+          # gha caches without writing; only main writes cache-to.
           # ignore-error: a failed cache upload must not fail the image build.
           cache-from: |
             type=registry,ref=${{ env.IMAGE }}:buildcache
             type=gha,scope=gods-eye-view-image
-          cache-to: ${{ github.event_name == 'pull_request' && 'type=gha,mode=max,scope=gods-eye-view-image' || format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true', env.IMAGE) }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,ignore-error=true', env.IMAGE) || '' }}
 
       - name: Load image for verification
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
