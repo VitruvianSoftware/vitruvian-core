@@ -75,6 +75,7 @@ Task-oriented recipes for day-to-day work.
   checklist from empty directory to production.
 - [Speed up builds with caching](guides/build-cache.md) — local disk cache, shared
   cache, BuildBuddy.
+- [Read-only MCP servers for the homelab](guides/homelab-mcp-servers.md) — what each AI-assistant MCP server can see, why it can't write, and why Argo CD is read through the Kubernetes MCP.
 - [Remote build execution](guides/remote-build.md) — opt-in RBE via `--config=remote`.
 - [Configure your orchestrator team](guides/orchestrator-team-file.md) — map the ten
   orchestrator roles to your own agents, models, and repo notes in `.agents/team.json`.
