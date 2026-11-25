@@ -2092,7 +2092,7 @@ pub(crate) fn warm_workflow_gomod_paths_problems(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct MacosPresubmitUnit {
+struct MacosBazelJob {
     job_id: String,
     uses_macos_app_config: bool,
     targets: Vec<String>,
@@ -2117,14 +2117,14 @@ fn join_shell_continuations(lines: &[String]) -> Vec<String> {
     out
 }
 
-fn parse_macos_presubmit_units(presubmit_yml: &str) -> Vec<MacosPresubmitUnit> {
+fn parse_macos_bazel_jobs(workflow_yml: &str) -> Vec<MacosBazelJob> {
     let mut in_jobs = false;
     let mut job_indent: Option<usize> = None;
     let mut current_id: Option<String> = None;
     let mut current_lines: Vec<String> = Vec::new();
     let mut raw_jobs: Vec<(String, Vec<String>)> = Vec::new();
 
-    for raw in presubmit_yml.lines() {
+    for raw in workflow_yml.lines() {
         let line = raw.trim_end_matches('\r');
         let trimmed = strip(line);
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -2208,7 +2208,7 @@ fn parse_macos_presubmit_units(presubmit_yml: &str) -> Vec<MacosPresubmitUnit> {
             }
         }
 
-        units.push(MacosPresubmitUnit {
+        units.push(MacosBazelJob {
             job_id,
             uses_macos_app_config: saw_macos_app && !saw_other_config,
             targets,
@@ -2283,6 +2283,7 @@ fn extract_job_targets(workflow_yml: &str, job_id: &str) -> Vec<String> {
 
 pub(crate) fn macos_warm_coverage_problems(
     presubmit_yml: &str,
+    ci_yml: &str,
     warm_wf_yml: &str,
 ) -> Vec<(String, String, String)> {
     let mut problems = Vec::new();
@@ -2310,25 +2311,28 @@ pub(crate) fn macos_warm_coverage_problems(
     }
 
     let warm_set: BTreeSet<&str> = save_targets.iter().map(String::as_str).collect();
-    for unit in parse_macos_presubmit_units(presubmit_yml) {
-        if !unit.uses_macos_app_config || unit.targets.is_empty() {
-            continue;
-        }
-        let missing: Vec<&str> = unit
-            .targets
-            .iter()
-            .map(String::as_str)
-            .filter(|t| !warm_set.contains(*t))
-            .collect();
-        if !missing.is_empty() {
-            problems.push((
-                format!("{} missing {:?}", unit.job_id, missing),
-                "all --config=macos-app presubmit unit targets in warm-macos-{verify,save}".to_string(),
-                format!(
-                    "macOS presubmit unit {} uses --config=macos-app but has targets absent from bazel-repo-cache.yaml darwin warm list",
-                    unit.job_id
-                ),
-            ));
+    for (workflow_name, workflow_yml) in [("presubmit.yaml", presubmit_yml), ("ci.yaml", ci_yml)] {
+        for job in parse_macos_bazel_jobs(workflow_yml) {
+            if !job.uses_macos_app_config || job.targets.is_empty() {
+                continue;
+            }
+            let missing: Vec<&str> = job
+                .targets
+                .iter()
+                .map(String::as_str)
+                .filter(|t| !warm_set.contains(*t))
+                .collect();
+            if !missing.is_empty() {
+                problems.push((
+                    format!("{}:{} missing {:?}", workflow_name, job.job_id, missing),
+                    "all --config=macos-app macOS job targets in warm-macos-{verify,save}"
+                        .to_string(),
+                    format!(
+                        "macOS job {} in {} uses --config=macos-app but has targets absent from bazel-repo-cache.yaml darwin warm list",
+                        job.job_id, workflow_name
+                    ),
+                ));
+            }
         }
     }
     problems
@@ -2573,10 +2577,14 @@ pub fn check_cache_save(ctx: &Context) {
                 ok = false;
             }
         }
-        if let Ok(presubmit_c) =
+        let presubmit_c =
             fs::read_to_string(format!("{}/.github/workflows/presubmit.yaml", ctx.root))
-        {
-            for (found, want, why) in macos_warm_coverage_problems(&presubmit_c, &warm_wf_c) {
+                .unwrap_or_default();
+        let ci_c = fs::read_to_string(format!("{}/.github/workflows/ci.yaml", ctx.root))
+            .unwrap_or_default();
+        if !presubmit_c.is_empty() || !ci_c.is_empty() {
+            for (found, want, why) in macos_warm_coverage_problems(&presubmit_c, &ci_c, &warm_wf_c)
+            {
                 ctx.emit_fail(
                     "cachesave",
                     warm_rel,
@@ -4308,6 +4316,25 @@ jobs:
       - run: |
           bazel test --config=custom-mac //apps/other:OtherTest
 ";
+        let ci = "\
+jobs:
+  build-test:
+    runs-on: ubuntu-26.04
+    steps:
+      - run: bazel build //tools/ci:affected_targets
+  macos-build:
+    runs-on: xcode-27
+    steps:
+      - run: |
+          cache=(--config=remotecache-ci)
+          bazel test \"${cache[@]}\" --config=macos-app //apps/desktop/vitruvian-code/macos:app_holds_node_test
+          bazel run \"${cache[@]}\" //apps/desktop/vitruvian-speaker:publish -- --dry-run
+  macos-other-config:
+    runs-on: macos-27
+    steps:
+      - run: |
+          bazel test --config=custom-mac //apps/other:OtherCiTest
+";
         let warm_good = "\
 jobs:
   warm-macos-verify:
@@ -4315,16 +4342,16 @@ jobs:
       - uses: ./.github/actions/bazel-repo-cache-warm
         with:
           bazel-flags: --config=macos-app
-          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker:publish //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
   warm-macos-save:
     steps:
       - uses: ./.github/actions/bazel-repo-cache-warm
         with:
           bazel-flags: --config=macos-app
-          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker:publish //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
 ";
         assert_eq!(
-            macos_warm_coverage_problems(presubmit, warm_good),
+            macos_warm_coverage_problems(presubmit, ci, warm_good),
             Vec::new()
         );
 
@@ -4332,11 +4359,26 @@ jobs:
             "//apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests ",
             "//apps/desktop/vitruvian-courier/app/... ",
         );
-        let probs = macos_warm_coverage_problems(presubmit, &missing_manual);
+        let probs = macos_warm_coverage_problems(presubmit, ci, &missing_manual);
         assert_eq!(probs.len(), 1);
         assert!(
             probs[0].0.contains("VitruvianCourierCoreTests"),
             "{probs:?}"
+        );
+
+        let missing_ci = warm_good.replace(
+            "//apps/desktop/vitruvian-code/macos:app_holds_node_test ",
+            "",
+        );
+        let probs_ci = macos_warm_coverage_problems(presubmit, ci, &missing_ci);
+        assert_eq!(probs_ci.len(), 1);
+        assert!(
+            probs_ci[0].0.contains("ci.yaml:macos-build"),
+            "{probs_ci:?}"
+        );
+        assert!(
+            probs_ci[0].0.contains("app_holds_node_test"),
+            "{probs_ci:?}"
         );
 
         let drifted = warm_good.replacen(
@@ -4344,7 +4386,7 @@ jobs:
             "",
             1,
         );
-        let probs_drift = macos_warm_coverage_problems(presubmit, &drifted);
+        let probs_drift = macos_warm_coverage_problems(presubmit, ci, &drifted);
         assert!(!probs_drift.is_empty());
     }
 }
