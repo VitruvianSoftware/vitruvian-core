@@ -51,6 +51,11 @@ ignoreUntil = 2027-02-15
 reason = "npm minimatch 9.0.9 in apps/suites/vitruvian-relay/connector/dc, reached only through glob 10.5.0 (above), which declares minimatch ^9.0.4. Fixed only in 11.0.1, a major glob 10 does not accept. Not reachable: glob is never imported by desktop-commander 0.3.1, so no pattern reaches minimatch. Revisit with the glob entry."
 
 [[IgnoredVulns]]
+id = "GHSA-6jcc-5g8w-32mx"
+ignoreUntil = 2027-02-15
+reason = "npm i18next 22.5.1, reached via @backstage/core-app-api 1.20.5 in Backstage (catalogs.backstage), which declares i18next ^22. Fixed only in 26.3.4, four majors higher; forcing it under Backstage risks a runtime break like the uuid override (#3004). Not reachable with untrusted input: addResourceBundle only receives Backstage's bundled translation resources. Revisit when Backstage moves to i18next 26."
+
+[[IgnoredVulns]]
 id = "GHSA-w5hq-g745-h8pq"
 ignoreUntil = 2026-12-23
 reason = "npm uuid 3.4.0, reached via @material-table/core 3.2.5 in @backstage/core-components. Fixed only in 11.1.1 (12.0.1, 13.0.1); uuid dropped its default export in v7, and overriding uuid@3 to 11.1.1 crashed the Backstage catalog page at runtime (#3004). uuid@8/9/10 remain overridden to ^11.1.1."
