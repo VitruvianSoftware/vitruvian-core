@@ -986,7 +986,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     /// Effective connection kind for this chat (`chatConnectionOverride` wins over provider setting).
     public func effectiveConnectionKind(for provider: VitruvianCodeCLIProvider) -> AgentConnectionKind? {
-        chatConnectionOverride ?? provider.connection
+        // A registry agent has no command line: it always runs over ACP.
+        if provider.route == .registry { return .acp }
+        return chatConnectionOverride ?? provider.connection
     }
 
     private func effectiveProvider(for provider: VitruvianCodeCLIProvider) -> VitruvianCodeCLIProvider {

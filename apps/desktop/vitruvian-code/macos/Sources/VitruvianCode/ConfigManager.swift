@@ -33,6 +33,9 @@ struct CLIProvider: Codable, Identifiable, Equatable {
     var commandTemplate: String
     var isBuiltIn: Bool
     var connection: AgentConnectionKind?
+    var claudeConfigDirectory: String? = nil
+    /// The ACP registry agent this provider runs (`VitruvianCodeCLIProvider.registryAgent`).
+    var registryAgent: VitruvianCodeRegistryAgent? = nil
 
     /// Same id the Gemini CLI provider used, so a saved selection carries over.
     static let antigravity = CLIProvider(
@@ -68,13 +71,17 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         name: String,
         commandTemplate: String,
         isBuiltIn: Bool,
-        connection: AgentConnectionKind? = nil
+        connection: AgentConnectionKind? = nil,
+        claudeConfigDirectory: String? = nil,
+        registryAgent: VitruvianCodeRegistryAgent? = nil
     ) {
         self.id = id
         self.name = name
         self.commandTemplate = commandTemplate
         self.isBuiltIn = isBuiltIn
         self.connection = connection
+        self.claudeConfigDirectory = claudeConfigDirectory
+        self.registryAgent = registryAgent
     }
 
     /// The same provider as the shared code holds it: field for field.
@@ -84,7 +91,9 @@ struct CLIProvider: Codable, Identifiable, Equatable {
             name: shared.name,
             commandTemplate: shared.commandTemplate,
             isBuiltIn: shared.isBuiltIn,
-            connection: shared.connection
+            connection: shared.connection,
+            claudeConfigDirectory: shared.claudeConfigDirectory,
+            registryAgent: shared.registryAgent
         )
     }
 
@@ -94,7 +103,9 @@ struct CLIProvider: Codable, Identifiable, Equatable {
             name: name,
             commandTemplate: commandTemplate,
             isBuiltIn: isBuiltIn,
-            connection: connection
+            connection: connection,
+            claudeConfigDirectory: claudeConfigDirectory,
+            registryAgent: registryAgent
         )
     }
 }
@@ -162,6 +173,9 @@ class ConfigManager: ObservableObject {
 
     /// The currently selected provider.
     var activeProvider: CLIProvider { CLIProvider(engine.activeProvider) }
+
+    /// Adds and removes ACP registry agents (Settings, Providers).
+    func makeRegistryInstaller() -> ACPRegistryInstaller { engine.makeRegistryInstaller() }
     
     /// What the approval mode shows when `.env` does not say.
     private static let defaultApprovalMode = "yolo"

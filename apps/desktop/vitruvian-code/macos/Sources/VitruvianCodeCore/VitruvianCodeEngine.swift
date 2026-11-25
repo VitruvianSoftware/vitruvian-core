@@ -93,6 +93,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     if spec.provider.route == .antigravity && spec.provider.connection == .acp {
                         return AntigravityACPConnection(spec: spec, environment: current)
                     }
+                    if spec.provider.route == .registry {
+                        return ACPRegistryConnection.make(spec: spec, environment: current)
+                    }
                     if spec.provider.runsOnClaudeSDK {
                         return ClaudeSDKConnection(spec: spec, environment: current)
                     }
@@ -357,6 +360,16 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
 
     public let session: VitruvianCodeQuickPromptSession
     private let environment: Environment
+
+    /// The installer Settings adds and removes ACP registry agents with: the
+    /// real network and programs, installing under this app's state folder.
+    /// Installing happens only when Settings calls `install`.
+    public func makeRegistryInstaller() -> ACPRegistryInstaller {
+        ACPRegistryInstaller(
+            stateDirectory: environment.stateDirectory,
+            host: .live(home: environment.home),
+            environment: VitruvianCodeSupport.childEnvironment(base: environment.processEnvironment, home: environment.home))
+    }
     private let host: any VitruvianCodeHost
     /// The bot this app launched, as opposed to one adopted from the PID file.
     private var managedPID: Int32?
@@ -645,7 +658,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             query = ("opencode", ["models"])
         case .ollama:
             query = ("ollama", ["list"])
-        case .claude, .custom:
+        case .claude, .custom, .registry:
             query = nil
         }
         guard let query else {
@@ -690,6 +703,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                                                        home: environment.home,
                                                        isExecutable: environment.isExecutable,
                                                        fileExists: environment.fileExists)
+        case .registry:
+            // The copy the user installed from Settings, or nothing: a turn never installs.
+            guard let agent = provider.registryAgent else { return nil }
+            return ACPRegistryInstaller.installedReceipt(stateDirectory: environment.stateDirectory,
+                                                         agentID: agent.agentID, version: agent.version)?.executablePath
         case .custom:
             break
         }

@@ -103,6 +103,10 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
     /// A Claude config folder (`CLAUDE_CONFIG_DIR`) for the Claude SDK connection, or nil for
     /// Claude Code's own default. Settings have no control for it yet.
     public var claudeConfigDirectory: String?
+    /// The ACP registry agent this provider runs, installed by the user from
+    /// Settings, or nil for every other provider. Its turns always run over
+    /// ACP with the installed copy (`ACPRegistryConnection`).
+    public var registryAgent: VitruvianCodeRegistryAgent?
 
     public init(
         id: UUID,
@@ -110,7 +114,8 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         commandTemplate: String,
         isBuiltIn: Bool = true,
         connection: AgentConnectionKind? = nil,
-        claudeConfigDirectory: String? = nil
+        claudeConfigDirectory: String? = nil,
+        registryAgent: VitruvianCodeRegistryAgent? = nil
     ) {
         self.id = id
         self.name = name
@@ -118,6 +123,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         self.isBuiltIn = isBuiltIn
         self.connection = connection
         self.claudeConfigDirectory = claudeConfigDirectory
+        self.registryAgent = registryAgent
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -127,6 +133,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         case isBuiltIn
         case connection
         case claudeConfigDirectory
+        case registryAgent
     }
 
     public init(from decoder: any Decoder) throws {
@@ -138,6 +145,8 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         let rawConnection = try container.decodeIfPresent(String.self, forKey: .connection)
         self.connection = rawConnection.flatMap(AgentConnectionKind.init(rawValue:))
         self.claudeConfigDirectory = try container.decodeIfPresent(String.self, forKey: .claudeConfigDirectory)
+        // An entry an older version cannot read is kept as a command of the user's own.
+        self.registryAgent = try? container.decodeIfPresent(VitruvianCodeRegistryAgent.self, forKey: .registryAgent)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -148,6 +157,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         try container.encode(isBuiltIn, forKey: .isBuiltIn)
         try container.encodeIfPresent(connection, forKey: .connection)
         try container.encodeIfPresent(claudeConfigDirectory, forKey: .claudeConfigDirectory)
+        try container.encodeIfPresent(registryAgent, forKey: .registryAgent)
     }
 
     public static let antigravity = VitruvianCodeCLIProvider(
@@ -221,6 +231,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
     /// arguments are (`VitruvianCodeSupport.agentArguments`).
     public var route: VitruvianCodeProviderRoute {
         if id == Self.antigravity.id { return .antigravity }
+        if !isBuiltIn, registryAgent != nil { return .registry }
         let program = commandTemplate.trimmingCharacters(in: .whitespaces)
             .components(separatedBy: .whitespaces).first ?? ""
         if program.hasSuffix("ollama") || id == Self.ollama.id { return .ollama }
@@ -238,6 +249,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         case .ollama: return "ollama"
         case .opencode: return "opencode"
         case .antigravity, .custom: return "agy"
+        case .registry: return registryAgent?.agentID ?? "agent"
         }
     }
 
@@ -262,6 +274,8 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
             return [nil, .commandLine, .claudeSDK]
         case .opencode, .custom:
             return [nil, .commandLine]
+        case .registry:
+            return [.acp]
         }
     }
 }
@@ -278,6 +292,20 @@ public enum VitruvianCodeProviderRoute: Equatable, Sendable {
     case opencode
     /// The provider's own command template; what it prints is the reply.
     case custom
+    /// An agent installed from the ACP registry, always over ACP.
+    case registry
+}
+
+/// Which ACP registry agent a provider runs: its registry id and the exact
+/// version installed under `<state>/agents/<id>/<version>/`.
+public struct VitruvianCodeRegistryAgent: Codable, Equatable, Sendable {
+    public var agentID: String
+    public var version: String
+
+    public init(agentID: String, version: String) {
+        self.agentID = agentID
+        self.version = version
+    }
 }
 
 /// How a provider's own command ended, from what it printed and its exit.
@@ -1603,7 +1631,8 @@ public enum VitruvianCodeSupport {
                 VitruvianCodeModelOption(id: "qwen3:latest", name: "qwen3:latest"),
                 VitruvianCodeModelOption(id: "llama3.2:latest", name: "llama3.2:latest"),
             ]
-        case .custom:
+        case .custom, .registry:
+            // A registry agent offers its models over ACP, in its session's options.
             return []
         }
     }
@@ -1683,7 +1712,7 @@ public enum VitruvianCodeSupport {
             return parseOllamaModels(raw)
         case .claude:
             return defaultModels(for: .claude)
-        case .custom:
+        case .custom, .registry:
             return []
         }
     }

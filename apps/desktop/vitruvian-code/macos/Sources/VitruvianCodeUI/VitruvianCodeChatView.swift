@@ -1451,7 +1451,8 @@ public struct VitruvianCodeChatView: View {
                                 failure: liveFailure,
                                 strings: strings,
                                 onRetry: { engine.retryQuickPrompt() },
-                                onUseCommandLine: { engine.useCommandLineForCurrentChat() },
+                                onUseCommandLine: engine.configuration.activeProvider.route == .registry
+                                    ? nil : { engine.useCommandLineForCurrentChat() },
                                 onDismiss: { session.dismissFailedTurn() },
                                 onSignIn: { method in engine.signInForCurrentChat(with: method) }
                             )

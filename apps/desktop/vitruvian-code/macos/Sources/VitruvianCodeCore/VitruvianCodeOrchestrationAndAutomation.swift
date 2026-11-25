@@ -102,7 +102,8 @@ public struct VitruvianCodeHibernationEvaluator: Equatable, Sendable {
     public static func supportsSessionResume(_ route: VitruvianCodeProviderRoute) -> Bool {
         switch route {
         case .claude, .ollama, .opencode, .antigravity: return true
-        case .custom: return false
+        // A registry agent's session is not put to sleep: not every agent can load one back.
+        case .custom, .registry: return false
         }
     }
 
