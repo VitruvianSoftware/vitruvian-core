@@ -1,0 +1,106 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Cache pip wheel
+description: Restore and (on main only) save pip wheels for a pinned package, retrying with a fresh download if a cached install fails.
+
+inputs:
+  package:
+    description: PyPI package name (e.g. pyyaml).
+    required: true
+  version:
+    description: Exact pinned package version (e.g. 6.0.4).
+    required: true
+
+outputs:
+  cache-hit:
+    description: Whether an exact-key wheel cache hit occurred.
+    value: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
+  wheel-dir:
+    description: Path to the cached pip wheel directory.
+    value: ${{ steps.cache-key.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute pip wheel cache key and path
+      id: cache-key
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+        PIP_PACKAGE: ${{ inputs.package }}
+        PIP_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${PIP_PACKAGE}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::Invalid package name '${PIP_PACKAGE}'" >&2
+          exit 1
+        fi
+        if [[ ! "${PIP_VERSION}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+          echo "::error::Invalid package version '${PIP_VERSION}'" >&2
+          exit 1
+        fi
+        py_ver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+        echo "path=${RUNNER_TEMP}/pip-wheels/${PIP_PACKAGE}-${PIP_VERSION}" >> "$GITHUB_OUTPUT"
+        # Bump the v1 segment to drop a bad cache entry.
+        echo "key=pip-wheel-v1-${RUNNER_OS}-${RUNNER_ARCH}-py${py_ver}-${PIP_PACKAGE}-${PIP_VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore pip wheel cache (read-only)
+      id: cache-restore
+      if: github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.cache-key.outputs.path }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Restore and save pip wheel cache (main only)
+      id: cache-save
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ steps.cache-key.outputs.path }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Install pip package from wheel cache
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
+        WHEEL_DIR: ${{ steps.cache-key.outputs.path }}
+        PIP_PACKAGE: ${{ inputs.package }}
+        PIP_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        pkg_spec="${PIP_PACKAGE}==${PIP_VERSION}"
+        mkdir -p "${WHEEL_DIR}"
+        if [ "${CACHE_HIT}" = "true" ] && [ -n "$(find "${WHEEL_DIR}" -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \))" ]; then
+          if ! python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "${pkg_spec}"; then
+            echo "::warning::Cached wheels for ${pkg_spec} failed to install; clearing and re-downloading"
+            rm -rf "${WHEEL_DIR}"
+            mkdir -p "${WHEEL_DIR}"
+            python3 -m pip download --disable-pip-version-check -d "${WHEEL_DIR}" "${pkg_spec}"
+            python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "${pkg_spec}"
+          fi
+        else
+          rm -rf "${WHEEL_DIR}"
+          mkdir -p "${WHEEL_DIR}"
+          python3 -m pip download --disable-pip-version-check -d "${WHEEL_DIR}" "${pkg_spec}"
+          python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "${pkg_spec}"
+        fi
