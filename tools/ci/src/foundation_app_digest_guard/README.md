@@ -7,6 +7,7 @@ Component package providing implementation for `tools/ci/src/foundation_app_dige
 - `[lib.rs:Pair]`
 - `[lib.rs:digest_pairs]`
 - `[lib.rs:invalid_pairs]`
+- `[lib.rs:artifact_registry_ref]`: every digest must be `<location>-docker.pkg.dev/<project>/<repository>/<image>@sha256:<64 hex>` (#4279)
 - `[lib.rs:missing_digest_apps]`
 - `[lib.rs:run]`
 

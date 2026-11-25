@@ -121,7 +121,87 @@ pub fn invalid_pairs(pairs: &[Pair<'_>]) -> Option<Vec<u8>> {
         }
         seen.push(var);
     }
+    // A second pass, so the checks above (which protect $GITHUB_ENV itself)
+    // keep their own messages whatever order the pairs come in.
+    for p in pairs {
+        if !artifact_registry_ref(p.digest) {
+            return Some(cat(&[
+                b"the digest for '",
+                p.app,
+                b"' is not an Artifact Registry image pinned by digest (",
+                AR_REF_SHAPE,
+                b")",
+            ]));
+        }
+    }
     None
+}
+
+/// The one image reference shape a digest may have, as the refusal names it.
+pub const AR_REF_SHAPE: &[u8] =
+    b"<location>-docker.pkg.dev/<project>/<repository>/<image>@sha256:<64 hex>";
+
+/// True for an Artifact Registry Docker image pinned by digest, and nothing
+/// else (#4279): `<location>-docker.pkg.dev/<project>/<repository>/<image>@sha256:<64 hex>`,
+/// where `<image>` may itself have more `/` segments.
+///
+/// Before this the guard took any non-empty value, so an agent that can
+/// dispatch the (reviewer-free) development deploy could run any image,
+/// from any registry, as a foundation workload. Refused:
+/// - any other registry (ghcr.io, docker.io, a host that only ENDS in
+///   `docker.pkg.dev` after a dot, or puts it in the path);
+/// - a tag (`:latest`), or a tag and a digest together, since only the digest
+///   is immutable;
+/// - a short, upper-case or non-sha256 digest;
+/// - empty, `.` or `..` path segments, and characters a repository or image
+///   name cannot have.
+pub fn artifact_registry_ref(r: &[u8]) -> bool {
+    let Some(at) = r.iter().rposition(|&c| c == b'@') else {
+        return false;
+    };
+    let (name, digest) = (&r[..at], &r[at + 1..]);
+    let Some(hex) = digest.strip_prefix(b"sha256:") else {
+        return false;
+    };
+    if hex.len() != 64
+        || !hex
+            .iter()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(c))
+    {
+        return false;
+    }
+    let segs: Vec<&[u8]> = name.split(|&c| c == b'/').collect();
+    if segs.len() < 4 {
+        return false;
+    }
+    let Some(location) = segs[0].strip_suffix(b"-docker.pkg.dev") else {
+        return false;
+    };
+    let lower_digit = |c: &u8| c.is_ascii_lowercase() || c.is_ascii_digit();
+    if location.is_empty()
+        || !location.iter().all(|c| lower_digit(c) || *c == b'-')
+        || location.starts_with(b"-")
+        || location.ends_with(b"-")
+    {
+        return false;
+    }
+    // A GCP project id: 6 to 30 characters, lower-case letters, digits and
+    // hyphens, starting with a letter and not ending with a hyphen.
+    let project = segs[1];
+    if !(6..=30).contains(&project.len())
+        || !project[0].is_ascii_lowercase()
+        || project.ends_with(b"-")
+        || !project.iter().all(|c| lower_digit(c) || *c == b'-')
+    {
+        return false;
+    }
+    segs[2..].iter().all(|s| {
+        !s.is_empty()
+            && *s != b"."
+            && *s != b".."
+            && s.iter()
+                .all(|c| lower_digit(c) || matches!(c, b'.' | b'_' | b'-'))
+    })
 }
 
 /// Pure function: returns space-separated list of app names that are
@@ -384,6 +464,54 @@ mod tests {
         assert_eq!(m(pf, b"x=1\n,app=sha256:aaa"), b"app");
         assert_eq!(m(pf, b"x=1\napp=sha256:aaa"), b"app");
         assert_eq!(m(pf, b"app=sha256:aaa\n,x=1"), b"");
+    }
+
+    const HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn artifact_registry_refs_pinned_by_digest_pass() {
+        for r in [
+            format!(
+                "us-west1-docker.pkg.dev/prj-d-bu1-app-1a2b/oauth-user-inspector/app@sha256:{HEX}"
+            ),
+            format!("us-docker.pkg.dev/my-proj1/repo/nested/image@sha256:{HEX}"),
+            format!("europe-west4-docker.pkg.dev/abcdef/r_1.x/i-2@sha256:{HEX}"),
+        ] {
+            assert!(artifact_registry_ref(r.as_bytes()), "{r}");
+        }
+    }
+
+    #[test]
+    fn anything_else_is_refused() {
+        let ar = "us-west1-docker.pkg.dev/prj-d-bu1-app-1a2b/repo/app";
+        for r in [
+            String::new(),
+            "sha256:aaa".to_string(),
+            format!("sha256:{HEX}"),
+            format!("ghcr.io/vitruviansoftware/app@sha256:{HEX}"),
+            format!("docker.io/library/nginx@sha256:{HEX}"),
+            format!("evil.example/us-west1-docker.pkg.dev/p/r/i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev.evil.example/prj-d-x1/r/i@sha256:{HEX}"),
+            format!("evil.us-west1-docker.pkg.dev/prj-d-x1/r/i@sha256:{HEX}"),
+            format!("-docker.pkg.dev/prj-d-x1/r/i@sha256:{HEX}"),
+            format!("Us-west1-docker.pkg.dev/prj-d-x1/r/i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/prj-d-x1/r@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/short/r/i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/1prj-d-x1/r/i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/prj-d-x1-/r/i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/prj-d-x1/r/../i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/prj-d-x1/r//i@sha256:{HEX}"),
+            format!("us-west1-docker.pkg.dev/prj-d-x1/R/i@sha256:{HEX}"),
+            format!("{ar}:latest"),
+            format!("{ar}:v1@sha256:{HEX}"),
+            format!("{ar}@sha256:{}", HEX.to_uppercase()),
+            format!("{ar}@sha256:{}", &HEX[1..]),
+            format!("{ar}@sha256:{HEX}0"),
+            format!("{ar}@sha512:{HEX}"),
+            format!("{ar}@sha256:{}g", &HEX[1..]),
+        ] {
+            assert!(!artifact_registry_ref(r.as_bytes()), "{r}");
+        }
     }
 
     #[test]

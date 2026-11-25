@@ -30,6 +30,12 @@
 
 use ci_testkit::{assert_has, bin, read, write, Output, Run, TempDir};
 
+// Image references the guard accepts: Artifact Registry, pinned by digest.
+const A: &str = "us-west1-docker.pkg.dev/prj-d-bu1-app-1a2b/oauth-user-inspector/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const B: &str = "us-west1-docker.pkg.dev/prj-d-bu1-app-1a2b/mcp-slack/app@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const C: &str = "us-west1-docker.pkg.dev/prj-d-bu1-app-1a2b/zitadel-apps/app@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const D: &str = "us-docker.pkg.dev/prj-d-bu1-app-1a2b/unrelated/nested/app@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
 const THREE: &str = "config:
   gcp-app-infra:oauth-user-inspector_workload_enabled: \"true\"
   gcp-app-infra:zitadel-apps_workload_enabled: \"false\"
@@ -73,7 +79,7 @@ fn error_line(missing: &str) -> String {
 #[test]
 fn every_enabled_workload_has_a_digest_passes() {
     let l = Leaf::new(THREE);
-    let o = l.run("oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb");
+    let o = l.run(&format!("oauth-user-inspector={A},mcp-slack={B}"));
     assert_eq!(o.code, 0, "{o:?}");
     assert_eq!(
         o.stdout,
@@ -81,7 +87,7 @@ fn every_enabled_workload_has_a_digest_passes() {
     );
     assert_eq!(
         l.env(),
-        "OAUTH_USER_INSPECTOR_IMAGE_DIGEST=sha256:aaa\nMCP_SLACK_IMAGE_DIGEST=sha256:bbb\n"
+        format!("OAUTH_USER_INSPECTOR_IMAGE_DIGEST={A}\nMCP_SLACK_IMAGE_DIGEST={B}\n")
     );
 }
 
@@ -90,7 +96,7 @@ fn an_empty_digest_is_refused_like_a_missing_one() {
     // `app=${{ needs.x.outputs.digest }}` with an empty output: the key is
     // there but there is no image. The script passed this; it must not.
     let l = Leaf::new(THREE);
-    let o = l.run("oauth-user-inspector=,mcp-slack=sha256:bbb");
+    let o = l.run(&format!("oauth-user-inspector=,mcp-slack={B}"));
     assert_eq!(o.code, 1, "{o:?}");
     assert_eq!(
         o.stdout,
@@ -101,7 +107,7 @@ fn an_empty_digest_is_refused_like_a_missing_one() {
     );
     assert_eq!(
         l.env(),
-        "MCP_SLACK_IMAGE_DIGEST=sha256:bbb\n",
+        format!("MCP_SLACK_IMAGE_DIGEST={B}\n"),
         "nothing exported for the empty one"
     );
 }
@@ -114,16 +120,16 @@ fn a_whitespace_only_digest_is_refused_and_not_exported() {
     // mcp-slack is missing there too and the error says so.
     for (digests, missing) in [
         (
-            "oauth-user-inspector=\n,mcp-slack=sha256:bbb",
+            format!("oauth-user-inspector=\n,mcp-slack={B}"),
             "oauth-user-inspector mcp-slack",
         ),
         (
-            "oauth-user-inspector= ,mcp-slack=sha256:bbb",
+            format!("oauth-user-inspector= ,mcp-slack={B}"),
             "oauth-user-inspector",
         ),
     ] {
         let l = Leaf::new(THREE);
-        let o = l.run(digests);
+        let o = l.run(&digests);
         assert_eq!(o.code, 1, "{digests:?}: {o:?}");
         assert!(
             o.stdout.ends_with(&error_line(missing)),
@@ -141,7 +147,7 @@ fn a_whitespace_only_digest_is_refused_and_not_exported() {
 #[test]
 fn one_enabled_workload_missing_its_digest_is_refused() {
     let l = Leaf::new(THREE);
-    let o = l.run("oauth-user-inspector=sha256:aaa");
+    let o = l.run(&format!("oauth-user-inspector={A}"));
     assert_eq!(o.code, 1, "{o:?}");
     // stdout, like the script's echo: the runner turns it into an annotation.
     assert_eq!(
@@ -165,7 +171,7 @@ fn no_digests_at_all_reports_every_enabled_workload() {
 #[test]
 fn a_digest_for_a_disabled_workload_does_not_excuse_an_enabled_one() {
     let l = Leaf::new(THREE);
-    let o = l.run("mcp-slack=sha256:bbb,zitadel-apps=sha256:ccc");
+    let o = l.run(&format!("mcp-slack={B},zitadel-apps={C}"));
     assert_eq!(o.code, 1);
     assert_has(
         &o.stdout,
@@ -185,11 +191,13 @@ fn no_workloads_enabled_passes() {
 #[test]
 fn an_extra_digest_for_an_app_not_in_the_file_is_harmless() {
     let l = Leaf::new(THREE);
-    let o = l.run("oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb,unrelated-app=sha256:zzz");
+    let o = l.run(&format!(
+        "oauth-user-inspector={A},mcp-slack={B},unrelated-app={D}"
+    ));
     assert_eq!(o.code, 0, "{o:?}");
     assert_has(
         &l.env(),
-        "UNRELATED_APP_IMAGE_DIGEST=sha256:zzz\n",
+        &format!("UNRELATED_APP_IMAGE_DIGEST={D}\n"),
         "still exported",
     );
 }
@@ -200,31 +208,20 @@ fn an_extra_digest_for_an_app_not_in_the_file_is_harmless() {
 fn exports_are_appended_and_skip_empty_names_or_digests() {
     let l = Leaf::new(THREE);
     write(l.dir.join("env"), "EARLIER=1\n");
-    let o = l.run(",oauth-user-inspector=sha256:a=b,,x=,=y,mcp-slack=sha256:c,");
+    let o = l.run(&format!(",oauth-user-inspector={A},,x=,=y,mcp-slack={B},"));
     assert_eq!(o.code, 0, "{o:?}");
-    // The digest is everything after the FIRST `=`.
     assert_eq!(
         l.env(),
-        "EARLIER=1\nOAUTH_USER_INSPECTOR_IMAGE_DIGEST=sha256:a=b\nMCP_SLACK_IMAGE_DIGEST=sha256:c\n"
+        format!("EARLIER=1\nOAUTH_USER_INSPECTOR_IMAGE_DIGEST={A}\nMCP_SLACK_IMAGE_DIGEST={B}\n")
     );
-}
-
-#[test]
-fn a_pair_without_equals_exports_itself_and_still_counts_as_missing() {
-    // `${pair%%=*}` and `${pair#*=}` are both the pair when it has no `=`.
-    let l = Leaf::new("config:\n  ns:ok-app_workload_enabled: \"true\"\n");
-    let o = l.run("ok-app");
-    assert_eq!(o.code, 1, "{o:?}");
-    assert_eq!(l.env(), "OK_APP_IMAGE_DIGEST=ok-app\n");
-    assert_has(&o.stdout, &error_line("ok-app"), "no `ok-app=`, so missing");
 }
 
 #[test]
 fn only_the_first_line_of_the_digests_is_exported() {
     let l = Leaf::new("config:\n  ns:ok-app_workload_enabled: \"true\"\n");
-    let o = l.run("ok-app=1\nz=2");
+    let o = l.run(&format!("ok-app={A}\nz=2"));
     assert_eq!(o.code, 0, "{o:?}");
-    assert_eq!(l.env(), "OK_APP_IMAGE_DIGEST=1\n");
+    assert_eq!(l.env(), format!("OK_APP_IMAGE_DIGEST={A}\n"));
 }
 
 // --- failing closed ------------------------------------------------------------
@@ -284,9 +281,9 @@ fn whitespace_inside_a_digest_is_refused() {
 #[test]
 fn a_trailing_newline_from_a_yaml_block_is_harmless() {
     let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
-    let o = l.run("app=sha256:aaa\n");
+    let o = l.run(&format!("app={A}\n"));
     assert_eq!(o.code, 0, "{o:?}");
-    assert_eq!(l.env(), "APP_IMAGE_DIGEST=sha256:aaa\n");
+    assert_eq!(l.env(), format!("APP_IMAGE_DIGEST={A}\n"));
 }
 
 #[test]
@@ -295,30 +292,37 @@ fn a_digest_after_a_newline_is_refused_not_passed_unexported() {
     // first line, so this printed OK while APP_IMAGE_DIGEST was never
     // exported and the deploy rendered an EMPTY image.
     let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
-    let o = l.run("x=1\n,app=sha256:aaa");
+    let o = l.run(&format!("x={B}\n,app={A}"));
     assert_eq!(o.code, 1, "{o:?}");
     assert_eq!(
         o.stdout,
         format!("exporting X_IMAGE_DIGEST\n{}", error_line("app"))
     );
-    assert_eq!(l.env(), "X_IMAGE_DIGEST=1\n", "app was not exported");
+    assert_eq!(
+        l.env(),
+        format!("X_IMAGE_DIGEST={B}\n"),
+        "app was not exported"
+    );
 }
 
 #[test]
 fn a_name_the_guard_cannot_read_is_reported_missing_whole() {
     // No `ns:` prefix / a name outside [a-z0-9-]: the script's sed left the
     // line as it was, which no digest matches. The guard must refuse, not pass.
-    // (`My_App=1` itself is refused as a name, so the digest side here is a
+    // (`My_App=...` itself is refused as a name, so the digest side here is a
     // valid name that still cannot match the unreadable line.)
     for (file, digests) in [
-        ("config:\n  b_workload_enabled: \"true\"\n", "b=1"),
+        (
+            "config:\n  b_workload_enabled: \"true\"\n",
+            format!("b={A}"),
+        ),
         (
             "config:\n  ns:My_App_workload_enabled: \"true\"\n",
-            "my-app=1",
+            format!("my-app={A}"),
         ),
     ] {
         let l = Leaf::new(file);
-        let o = l.run(digests);
+        let o = l.run(&digests);
         assert_eq!(o.code, 1, "{file:?}: {o:?}");
         let line = file.lines().nth(1).unwrap();
         assert_has(&o.stdout, &error_line(line), "the whole line is the name");
@@ -345,7 +349,7 @@ fn an_unset_github_env_stops_the_guard() {
     let o = Run::new(&bin("BIN"))
         .cwd(l.dir.path())
         .args([
-            "oauth-user-inspector=a,mcp-slack=b",
+            format!("oauth-user-inspector={A},mcp-slack={B}").as_str(),
             "Pulumi.production.yaml",
         ])
         .go();
@@ -364,7 +368,7 @@ fn an_unwritable_github_env_stops_the_guard() {
         .cwd(l.dir.path())
         .env("GITHUB_ENV", l.dir.join("no/such/dir/env"))
         .args([
-            "oauth-user-inspector=a,mcp-slack=b",
+            format!("oauth-user-inspector={A},mcp-slack={B}").as_str(),
             "Pulumi.production.yaml",
         ])
         .go();
@@ -417,4 +421,57 @@ fn an_unreadable_pulumi_file_is_refused() {
         "annotated",
     );
     assert!(!o.stdout.contains("digest guard: OK"), "{o:?}");
+}
+
+// --- only Artifact Registry images pinned by digest (#4279) -------------------
+
+fn not_ar(app: &str) -> String {
+    format!(
+        "the digest for '{app}' is not an Artifact Registry image pinned by digest (<location>-docker.pkg.dev/<project>/<repository>/<image>@sha256:<64 hex>)"
+    )
+}
+
+#[test]
+fn an_image_from_another_registry_is_refused_and_nothing_is_exported() {
+    let hex = "a".repeat(64);
+    for r in [
+        format!("ghcr.io/vitruviansoftware/app@sha256:{hex}"),
+        format!("docker.io/library/nginx@sha256:{hex}"),
+        format!("us-west1-docker.pkg.dev.evil.example/prj-d-x1/r/i@sha256:{hex}"),
+        format!("evil.example/us-west1-docker.pkg.dev/prj-d-x1/r/i@sha256:{hex}"),
+    ] {
+        assert_refused(&format!("app={r}"), &not_ar("app"));
+    }
+}
+
+#[test]
+fn a_tag_or_a_short_digest_is_refused() {
+    let ar = "us-west1-docker.pkg.dev/prj-d-bu1-app-1a2b/repo/app";
+    for r in [
+        format!("{ar}:latest"),
+        format!("{ar}@sha256:aaa"),
+        "sha256:aaa".to_string(),
+        format!("sha256:{}", "a".repeat(64)),
+    ] {
+        assert_refused(&format!("app={r}"), &not_ar("app"));
+    }
+}
+
+#[test]
+fn a_bad_reference_anywhere_refuses_the_whole_input() {
+    // A valid pair first must not be exported ahead of the refusal.
+    let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
+    let o = l.run(&format!(
+        "app={A},other=ghcr.io/x/y@sha256:{}",
+        "b".repeat(64)
+    ));
+    assert_eq!(o.code, 1, "{o:?}");
+    assert_eq!(o.stdout, refusal(&not_ar("other")));
+    assert_eq!(l.env(), "", "nothing exported");
+}
+
+#[test]
+fn a_pair_without_equals_is_refused_not_exported() {
+    // `ok-app` alone would export OK_APP_IMAGE_DIGEST=ok-app, which is no image.
+    assert_refused("ok-app", &not_ar("ok-app"));
 }
