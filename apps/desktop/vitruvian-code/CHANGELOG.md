@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.47.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.46.0...vitruvian-code-v1.47.0) (2026-11-25)
+
+
+### Features
+
+* **vitruvian-code:** read chat history from the agent's session/list ([#5487](https://github.com/VitruvianSoftware/vitruvian-core/issues/5487)) ([1815819](https://github.com/VitruvianSoftware/vitruvian-core/commit/18158195b46262f02a4a6ca364814164a9aa3162))
+* **vitruvian-code:** sign in to an agent from the failure card ([#5486](https://github.com/VitruvianSoftware/vitruvian-core/issues/5486)) ([c5ad92c](https://github.com/VitruvianSoftware/vitruvian-core/commit/c5ad92c498a05f26f4a1f3969e52c982ceda6d8b))
+
 ## [1.46.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.1...vitruvian-code-v1.46.0) (2026-11-24)
 
 
