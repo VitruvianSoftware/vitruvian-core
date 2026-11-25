@@ -18,6 +18,14 @@ sit waiting on a human.
 > so a required review would leave every bot PR stuck `REVIEW_REQUIRED` forever.
 > Flip the toggle on once there is a second reviewer.
 
+### `image-update-pr-automerge.yaml` — auto-merge image digest bump PRs
+
+**What it does:** on every bot-authored PR from an `image-updates/*` branch
+(argocd-image-updater's write-back, opened by the `image-updates-*-pr.yaml`
+workflows), enables auto-merge as the `vitruvian-copybara-sync` App so the
+digest bump merges through the queue on green CI. Merging rolls the image out
+via ArgoCD. Label a PR `do-not-automerge` (or draft it) to hold it.
+
 ### `release-pr-automerge.yaml` — auto-merge release-please PRs
 
 **What it does:** on every bot-authored `release-please--*` PR, enables
