@@ -23,6 +23,7 @@
 # gazelle:exclude packages
 # gazelle:exclude dist
 
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 
@@ -77,4 +78,18 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/backstage:__subpackages__"],
+)
+
+# Config, catalog, release and template files the backend's drift-guard tests
+# compare against (//apps/web/backstage/packages/backend:unit_tests).
+js_library(
+    name = "backend_test_data",
+    srcs = [
+        "Dockerfile",
+        "app-config.yaml",
+        "backstage.json",
+        "catalog-info.yaml",
+        "release-manifest.json",
+    ] + glob(["templates/*/template.yaml"]),
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

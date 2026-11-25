@@ -97,3 +97,11 @@ sh_test(
         "docs/**/*.md",
     ]),
 )
+
+# Read by the Backstage backend's catalog and scorecard tests
+# (//apps/web/backstage/packages/backend:unit_tests).
+js_library(
+    name = "catalog_info",
+    srcs = ["catalog-info.yaml"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
+)
