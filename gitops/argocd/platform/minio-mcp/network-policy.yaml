@@ -1,0 +1,66 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# The MCP server may be reached only by the platform gateway's Envoy pods (on
+# 8090), and may reach only MinIO (9000) and kube-dns. It has no login of its
+# own, so this keeps other pods in the cluster from calling it directly and
+# keeps the pod from reaching anything else (apiserver, other namespaces, the
+# internet) if it is ever compromised.
+# Label/entity selectors ONLY -- never node-IP ipBlocks, which Cilium never
+# matches (#2565). No toFQDNs: Cilium's DNS proxy does not answer here (#1428).
+# Same shape as cicd-telemetry/network-policy.yaml and
+# actions-runners-manifests/network-policy.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: minio-mcp
+  namespace: minio-mcp
+spec:
+  endpointSelector:
+    matchLabels:
+      app: minio-mcp
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: envoy-gateway-system
+            gateway.envoyproxy.io/owning-gateway-name: platform
+      toPorts:
+        - ports:
+            - port: "8090"
+              protocol: TCP
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: minio
+            app: minio
+      toPorts:
+        - ports:
+            - port: "9000"
+              protocol: TCP

@@ -1,0 +1,38 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# The minio-mcp namespace, declared here (not only via the minio-mcp
+# Application's CreateNamespace) because this Application syncs FIRST (wave -4)
+# and applies the minio-mcp-credentials SealedSecret into it, and because
+# platform-config (wave -3) creates the minio-mcp-tls Certificate and
+# ReferenceGrant here. Without the namespace those syncs would fail until the
+# minio-mcp app happened to create it.
+#
+# Pod Security "restricted" is enforced: the MCP server pod runs as non-root,
+# drops every capability, forbids privilege escalation and uses the runtime
+# default seccomp profile, so it meets the strictest profile as it is.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio-mcp
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

@@ -62,3 +62,17 @@ spec:
     name: letsencrypt-cloudflare
   dnsNames:
     - otel.lab.ipv1337.dev
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-mcp-tls
+  namespace: minio-mcp
+spec:
+  secretName: minio-mcp-tls
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-cloudflare
+  dnsNames:
+    - minio-mcp.lab.ipv1337.dev

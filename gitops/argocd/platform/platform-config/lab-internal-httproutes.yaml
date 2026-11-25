@@ -118,3 +118,31 @@ spec:
           name: opentelemetry-collector
           port: 4318
           weight: 1
+---
+# Read-only MinIO MCP server. LAN/tailnet only: the A record points at the
+# Gateway's private LB IP and there is no tunnel CNAME for this name. The server
+# has no login of its own, so the network is the only boundary.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio-mcp
+  namespace: minio-mcp
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+      namespace: envoy-gateway-system
+  hostnames:
+    - minio-mcp.lab.ipv1337.dev
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: minio-mcp
+          port: 8090
+          weight: 1

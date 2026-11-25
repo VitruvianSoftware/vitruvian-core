@@ -1,0 +1,57 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# minio-mcp — git-source Application (raw manifests), same pattern as ntfy.
+# A read-only MinIO MCP server (quay.io/minio/aistor/mcp-server-aistor) so MCP
+# clients can list buckets and objects in the homelab MinIO.
+#
+# Reachable only from the LAN and the tailnet, at https://minio-mcp.lab.ipv1337.dev/mcp
+# (platform-config/lab-internal-*.yaml, the same way grafana.lab is). The server
+# has no login of its own: the tailnet is the only boundary, and the MinIO
+# credential it holds (mcp-readonly) can list but not read objects.
+#
+# sync-wave 2, same as ntfy: needs the Gateway (envoy-gateway) and the
+# minio-mcp-credentials SealedSecret + namespace (sealed-secrets-manifests,
+# wave -4) first.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: minio-mcp
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform-project
+  source:
+    repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+    targetRevision: main
+    path: gitops/argocd/platform/minio-mcp
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: minio-mcp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

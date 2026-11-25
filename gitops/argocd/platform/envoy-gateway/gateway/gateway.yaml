@@ -138,3 +138,19 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Internal-only read-only MinIO MCP server (minio-mcp.lab.ipv1337.dev
+    # resolves to this Gateway's private LB IP; see platform-config/lab-internal-*.yaml).
+    - name: https-minio-mcp
+      protocol: HTTPS
+      port: 443
+      hostname: "minio-mcp.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: minio-mcp-tls
+            namespace: minio-mcp
+      allowedRoutes:
+        namespaces:
+          from: All
