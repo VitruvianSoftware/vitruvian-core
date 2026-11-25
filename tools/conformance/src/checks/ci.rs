@@ -1978,12 +1978,7 @@ fn extract_quoted_args_in_hash_files(line: &str) -> Option<Vec<String>> {
     Some(out)
 }
 
-pub(crate) fn gomod_hash_files_problems(
-    go_work_content: &str,
-    setup_bazel_yml: &str,
-    warm_yml: &str,
-) -> Vec<(String, String, String)> {
-    let mut problems = Vec::new();
+pub(crate) fn expected_gomod_hash_paths(go_work_content: &str) -> BTreeSet<String> {
     let mut expected: BTreeSet<String> = ["go.work".to_string(), "go.work.sum".to_string()]
         .into_iter()
         .collect();
@@ -1995,6 +1990,16 @@ pub(crate) fn gomod_hash_files_problems(
             expected.insert(format!("{clean}/go.sum"));
         }
     }
+    expected
+}
+
+pub(crate) fn gomod_hash_files_problems(
+    go_work_content: &str,
+    setup_bazel_yml: &str,
+    warm_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let expected = expected_gomod_hash_paths(go_work_content);
 
     let setup_args = setup_bazel_yml
         .lines()
@@ -2039,6 +2044,290 @@ pub(crate) fn gomod_hash_files_problems(
                 "setup-bazel != bazel-repo-cache-warm hashFiles order/list".to_string(),
                 "identical hashFiles(...) arguments".to_string(),
                 "Actions hashFiles() hashes files in argument order, so setup-bazel and warm must list the exact same order".to_string(),
+            ));
+        }
+    }
+    problems
+}
+
+pub(crate) fn warm_workflow_gomod_paths_problems(
+    go_work_content: &str,
+    workflow_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let expected = expected_gomod_hash_paths(go_work_content);
+    for event in ["push", "pull_request"] {
+        let (paths, has_ignore) = extract_event_paths(workflow_yml, event);
+        if has_ignore {
+            problems.push((
+                format!("on.{event}.paths-ignore"),
+                "paths: filter covering all go.work go.sum files".to_string(),
+                "bazel-repo-cache.yaml must use paths: (not paths-ignore) so Go module updates trigger cache verification and saving".to_string(),
+            ));
+        }
+        if paths.is_empty() {
+            problems.push((
+                format!("on.{event}.paths missing"),
+                "paths: covering go.work, go.work.sum, and every go.sum".to_string(),
+                format!("bazel-repo-cache.yaml on.{event}.paths is empty"),
+            ));
+            continue;
+        }
+        let missing: Vec<String> = expected
+            .iter()
+            .filter(|cand| !workflow_paths_match(&paths, cand))
+            .cloned()
+            .collect();
+        if !missing.is_empty() {
+            problems.push((
+                format!("on.{event}.paths unmatched={missing:?}"),
+                "matches every go.work / go.sum in bazel-gomod key".to_string(),
+                format!(
+                    "on.{event}.paths in bazel-repo-cache.yaml does not match all Go module files hashed by the gomod cache key"
+                ),
+            ));
+        }
+    }
+    problems
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MacosPresubmitUnit {
+    job_id: String,
+    uses_macos_app_config: bool,
+    targets: Vec<String>,
+}
+
+fn join_shell_continuations(lines: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    for raw in lines {
+        let line = raw.trim_end_matches('\r');
+        if let Some(body) = line.trim_end().strip_suffix('\\') {
+            buf.push_str(body);
+            buf.push(' ');
+            continue;
+        }
+        buf.push_str(line);
+        out.push(std::mem::take(&mut buf));
+    }
+    if !buf.is_empty() {
+        out.push(buf);
+    }
+    out
+}
+
+fn parse_macos_presubmit_units(presubmit_yml: &str) -> Vec<MacosPresubmitUnit> {
+    let mut in_jobs = false;
+    let mut job_indent: Option<usize> = None;
+    let mut current_id: Option<String> = None;
+    let mut current_lines: Vec<String> = Vec::new();
+    let mut raw_jobs: Vec<(String, Vec<String>)> = Vec::new();
+
+    for raw in presubmit_yml.lines() {
+        let line = raw.trim_end_matches('\r');
+        let trimmed = strip(line);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if ind == 0 {
+            if let Some(id) = current_id.take() {
+                raw_jobs.push((id, std::mem::take(&mut current_lines)));
+            }
+            in_jobs = trimmed == "jobs:";
+            job_indent = None;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if job_indent.is_none() {
+            job_indent = Some(ind);
+        }
+        if Some(ind) == job_indent && trimmed.ends_with(':') {
+            if let Some(id) = current_id.take() {
+                raw_jobs.push((id, std::mem::take(&mut current_lines)));
+            }
+            current_id = Some(trimmed.trim_end_matches(':').to_string());
+            continue;
+        }
+        if current_id.is_some() {
+            current_lines.push(line.to_string());
+        }
+    }
+    if let Some(id) = current_id.take() {
+        raw_jobs.push((id, current_lines));
+    }
+
+    let mut units = Vec::new();
+    for (job_id, lines) in raw_jobs {
+        let runs_on = lines
+            .iter()
+            .find_map(|l| {
+                let s = strip(l);
+                s.strip_prefix("runs-on:")
+                    .map(|v| strip_yaml_inline_comment(v.trim()).to_ascii_lowercase())
+            })
+            .unwrap_or_default();
+        if !(runs_on.contains("xcode-") || runs_on.contains("macos-")) {
+            continue;
+        }
+
+        let mut saw_macos_app = false;
+        let mut saw_other_config = false;
+        let mut targets = Vec::new();
+        let mut seen_targets = BTreeSet::new();
+
+        for logical in join_shell_continuations(&lines) {
+            let trimmed = logical.trim_start();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            let code = strip_yaml_inline_comment(&logical);
+            let mut rest = code;
+            while let Some(pos) = rest.find("--config=") {
+                let after = &rest[pos + "--config=".len()..];
+                let val: String = after
+                    .chars()
+                    .take_while(|c| !c.is_whitespace() && !matches!(c, '"' | '\'' | ')'))
+                    .collect();
+                match val.as_str() {
+                    "macos-app" => saw_macos_app = true,
+                    "remotecache-ci" | "remote" | "" => {}
+                    _ => saw_other_config = true,
+                }
+                rest = after;
+            }
+            for args in super::labels::bazel_command_args(code) {
+                for label in super::labels::labels_in(&args) {
+                    if seen_targets.insert(label.clone()) {
+                        targets.push(label);
+                    }
+                }
+            }
+        }
+
+        units.push(MacosPresubmitUnit {
+            job_id,
+            uses_macos_app_config: saw_macos_app && !saw_other_config,
+            targets,
+        });
+    }
+    units
+}
+
+fn extract_job_targets(workflow_yml: &str, job_id: &str) -> Vec<String> {
+    let mut in_jobs = false;
+    let mut job_indent: Option<usize> = None;
+    let mut in_target_job = false;
+    let mut targets_indent: Option<usize> = None;
+    let mut out = Vec::new();
+
+    for raw in workflow_yml.lines() {
+        let line = raw.trim_end_matches('\r');
+        let trimmed = strip(line);
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if ind == 0 {
+            in_jobs = trimmed == "jobs:";
+            job_indent = None;
+            in_target_job = false;
+            targets_indent = None;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        if job_indent.is_none() {
+            job_indent = Some(ind);
+        }
+        if Some(ind) == job_indent {
+            in_target_job = trimmed == format!("{job_id}:");
+            targets_indent = None;
+            continue;
+        }
+        if !in_target_job {
+            continue;
+        }
+        if let Some(ti) = targets_indent {
+            if ind > ti {
+                for tok in strip_yaml_inline_comment(trimmed).split_whitespace() {
+                    let clean = unquote(tok);
+                    if clean.starts_with("//") {
+                        out.push(clean.to_string());
+                    }
+                }
+                continue;
+            }
+            targets_indent = None;
+        }
+        if let Some(rest) = trimmed.strip_prefix("targets:") {
+            let v = strip_yaml_inline_comment(rest.trim());
+            if v == "|" || v == ">" || v.is_empty() {
+                targets_indent = Some(ind);
+            } else {
+                for tok in unquote(v).split_whitespace() {
+                    let clean = unquote(tok);
+                    if clean.starts_with("//") {
+                        out.push(clean.to_string());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+pub(crate) fn macos_warm_coverage_problems(
+    presubmit_yml: &str,
+    warm_wf_yml: &str,
+) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    let verify_targets = extract_job_targets(warm_wf_yml, "warm-macos-verify");
+    let save_targets = extract_job_targets(warm_wf_yml, "warm-macos-save");
+
+    if verify_targets.is_empty() || save_targets.is_empty() {
+        problems.push((
+            format!(
+                "warm-macos-verify={} warm-macos-save={}",
+                verify_targets.len(),
+                save_targets.len()
+            ),
+            "non-empty targets in both warm-macos-verify and warm-macos-save".to_string(),
+            "macOS warm jobs must declare targets to warm and offline-verify".to_string(),
+        ));
+        return problems;
+    }
+    if verify_targets != save_targets {
+        problems.push((
+            "warm-macos-verify != warm-macos-save targets".to_string(),
+            "identical macOS warm targets".to_string(),
+            "warm-macos-verify and warm-macos-save target lists drifted".to_string(),
+        ));
+    }
+
+    let warm_set: BTreeSet<&str> = save_targets.iter().map(String::as_str).collect();
+    for unit in parse_macos_presubmit_units(presubmit_yml) {
+        if !unit.uses_macos_app_config || unit.targets.is_empty() {
+            continue;
+        }
+        let missing: Vec<&str> = unit
+            .targets
+            .iter()
+            .map(String::as_str)
+            .filter(|t| !warm_set.contains(*t))
+            .collect();
+        if !missing.is_empty() {
+            problems.push((
+                format!("{} missing {:?}", unit.job_id, missing),
+                "all --config=macos-app presubmit unit targets in warm-macos-{verify,save}".to_string(),
+                format!(
+                    "macOS presubmit unit {} uses --config=macos-app but has targets absent from bazel-repo-cache.yaml darwin warm list",
+                    unit.job_id
+                ),
             ));
         }
     }
@@ -2270,6 +2559,36 @@ pub fn check_cache_save(ctx: &Context) {
 
     // 2. No other workflow or action bypasses setup-bazel or saves warm-owned caches.
     let warm_rel = ".github/workflows/bazel-repo-cache.yaml";
+    if let Ok(warm_wf_c) = fs::read_to_string(format!("{}/{}", ctx.root, warm_rel)) {
+        if let Ok(go_work_c) = fs::read_to_string(format!("{}/go.work", ctx.root)) {
+            for (found, want, why) in warm_workflow_gomod_paths_problems(&go_work_c, &warm_wf_c) {
+                ctx.emit_fail(
+                    "cachesave",
+                    warm_rel,
+                    &found,
+                    &want,
+                    &why,
+                    "cover go.work, go.work.sum, and every go.sum in bazel-repo-cache.yaml push and pull_request paths:",
+                );
+                ok = false;
+            }
+        }
+        if let Ok(presubmit_c) =
+            fs::read_to_string(format!("{}/.github/workflows/presubmit.yaml", ctx.root))
+        {
+            for (found, want, why) in macos_warm_coverage_problems(&presubmit_c, &warm_wf_c) {
+                ctx.emit_fail(
+                    "cachesave",
+                    warm_rel,
+                    &found,
+                    &want,
+                    &why,
+                    "add the missing --config=macos-app targets to both warm-macos-verify and warm-macos-save in bazel-repo-cache.yaml",
+                );
+                ok = false;
+            }
+        }
+    }
     let mut files = list_workflows(&ctx.workflows_dir);
     if let Ok(rd) = fs::read_dir(&actions_dir) {
         for entry in rd.flatten() {
@@ -3905,5 +4224,127 @@ use (
         let clobber =
             "      run: echo \"GOPROXY=https://proxy.golang.org|direct\" >> \"$GITHUB_ENV\"\n";
         assert!(!setup_go_goproxy_problems(clobber).is_empty());
+    }
+
+    #[test]
+    fn warm_workflow_gomod_paths_checks_glob_and_catches_missing_pulumi_glob() {
+        let go_work = "\
+go 1.26.10
+
+use (
+\t.
+\t./apps/cli/vitruvian-devx
+\t./packages/pulumi/library/go
+\t./packages/pulumi/library/go/pkg/app
+\t./packages/pulumi/library/go/pkg/iam
+)
+";
+        let wf_good = "\
+on:
+  push:
+    branches: [main]
+    paths:
+      - \"go.work\"
+      - \"go.work.sum\"
+      - \"go.sum\"
+      - \"apps/cli/vitruvian-devx/go.sum\"
+      - \"packages/pulumi/library/go/go.sum\"
+      - \"packages/pulumi/library/go/pkg/*/go.sum\"
+  pull_request:
+    paths:
+      - \"go.work\"
+      - \"go.work.sum\"
+      - \"go.sum\"
+      - \"apps/cli/vitruvian-devx/go.sum\"
+      - \"packages/pulumi/library/go/go.sum\"
+      - \"packages/pulumi/library/go/pkg/*/go.sum\"
+";
+        assert_eq!(
+            warm_workflow_gomod_paths_problems(go_work, wf_good),
+            Vec::new()
+        );
+
+        let missing_pulumi_glob = wf_good.replacen(
+            "      - \"packages/pulumi/library/go/pkg/*/go.sum\"\n",
+            "",
+            1,
+        );
+        let probs = warm_workflow_gomod_paths_problems(go_work, &missing_pulumi_glob);
+        assert_eq!(probs.len(), 1);
+        assert!(probs[0].0.contains("on.push.paths"), "{probs:?}");
+        assert!(
+            probs[0]
+                .0
+                .contains("packages/pulumi/library/go/pkg/app/go.sum"),
+            "{probs:?}"
+        );
+
+        let extra_go_work = go_work.replace(
+            "\t./packages/pulumi/library/go/pkg/iam\n",
+            "\t./packages/pulumi/library/go/pkg/iam\n\t./apps/new/mod\n",
+        );
+        let probs_extra = warm_workflow_gomod_paths_problems(&extra_go_work, wf_good);
+        assert_eq!(probs_extra.len(), 2);
+    }
+
+    #[test]
+    fn macos_warm_coverage_checks_all_macos_app_units_and_skips_other_configs() {
+        let presubmit = "\
+jobs:
+  unit-linux:
+    runs-on: ubuntu-26.04
+    steps:
+      - run: bazel test //apps/linux:test
+  unit-courier-app:
+    runs-on: xcode-27
+    steps:
+      - run: |
+          extra_flags=(--config=macos-app)
+          cache_flags=(--config=remotecache-ci)
+          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test; else exit $rc; fi; }
+  unit-other-config:
+    runs-on: macos-27
+    steps:
+      - run: |
+          bazel test --config=custom-mac //apps/other:OtherTest
+";
+        let warm_good = "\
+jobs:
+  warm-macos-verify:
+    steps:
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          bazel-flags: --config=macos-app
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+  warm-macos-save:
+    steps:
+      - uses: ./.github/actions/bazel-repo-cache-warm
+        with:
+          bazel-flags: --config=macos-app
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests //apps/desktop/vitruvian-courier/app:app_holds_engine_test
+";
+        assert_eq!(
+            macos_warm_coverage_problems(presubmit, warm_good),
+            Vec::new()
+        );
+
+        let missing_manual = warm_good.replace(
+            "//apps/desktop/vitruvian-courier/app:VitruvianCourierCoreTests ",
+            "//apps/desktop/vitruvian-courier/app/... ",
+        );
+        let probs = macos_warm_coverage_problems(presubmit, &missing_manual);
+        assert_eq!(probs.len(), 1);
+        assert!(
+            probs[0].0.contains("VitruvianCourierCoreTests"),
+            "{probs:?}"
+        );
+
+        let drifted = warm_good.replacen(
+            "//apps/desktop/vitruvian-courier/app:app_holds_engine_test",
+            "",
+            1,
+        );
+        let probs_drift = macos_warm_coverage_problems(presubmit, &drifted);
+        assert!(!probs_drift.is_empty());
     }
 }

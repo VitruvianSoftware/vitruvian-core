@@ -40,6 +40,7 @@ py_test(
         "SETUP_GO_ACTION_PATH": "$(rootpath action.yml)",
         "GO_CACHE_WORKFLOW_PATH": "$(rootpath //:.github/workflows/go-cache.yaml)",
     },
+    deps = ["@pip//pyyaml"],
 )
 
 py_test(

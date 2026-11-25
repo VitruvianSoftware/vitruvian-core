@@ -272,6 +272,7 @@ runs:
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
 
     - name: Restore the Bazel Go module cache
+      id: gomod-cache
       if: ${{ runner.environment == 'github-hosted' }}
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -282,6 +283,14 @@ runs:
         key: bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-${{ hashFiles('go.work', 'go.work.sum', 'go.sum', 'apps/cli/vitruvian-devx/go.sum', 'apps/desktop/vitruvian-courier/engine/go.sum', 'packages/vitruvian-sdk/go/go.sum', 'packages/pulumi/library/go/go.sum', 'packages/pulumi/library/go/pkg/app/go.sum', 'packages/pulumi/library/go/pkg/bootstrap/go.sum', 'packages/pulumi/library/go/pkg/cai_monitoring/go.sum', 'packages/pulumi/library/go/pkg/centralized_logging/go.sum', 'packages/pulumi/library/go/pkg/cicd/go.sum', 'packages/pulumi/library/go/pkg/cloud_dns/go.sum', 'packages/pulumi/library/go/pkg/cloud_functions/go.sum', 'packages/pulumi/library/go/pkg/cloud_router/go.sum', 'packages/pulumi/library/go/pkg/cloud_storage/go.sum', 'packages/pulumi/library/go/pkg/compute_instance/go.sum', 'packages/pulumi/library/go/pkg/data/go.sum', 'packages/pulumi/library/go/pkg/gcloud/go.sum', 'packages/pulumi/library/go/pkg/google_group/go.sum', 'packages/pulumi/library/go/pkg/iam/go.sum', 'packages/pulumi/library/go/pkg/instance_template/go.sum', 'packages/pulumi/library/go/pkg/kms/go.sum', 'packages/pulumi/library/go/pkg/log_export/go.sum', 'packages/pulumi/library/go/pkg/neon/go.sum', 'packages/pulumi/library/go/pkg/network/go.sum', 'packages/pulumi/library/go/pkg/network_firewall_policy/go.sum', 'packages/pulumi/library/go/pkg/network_peering/go.sum', 'packages/pulumi/library/go/pkg/org_policy/go.sum', 'packages/pulumi/library/go/pkg/private_service_connect/go.sum', 'packages/pulumi/library/go/pkg/project_factory/go.sum', 'packages/pulumi/library/go/pkg/pubsub/go.sum', 'packages/pulumi/library/go/pkg/upstash/go.sum', 'packages/pulumi/library/go/pkg/vpc_service_controls/go.sum') }}
         restore-keys: |
           bazel-gomod-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-
+
+    - name: Notice partial Go module cache hit
+      if: ${{ runner.environment == 'github-hosted' && steps.gomod-cache.outputs.cache-matched-key != '' && steps.gomod-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      env:
+        MATCHED_KEY: ${{ steps.gomod-cache.outputs.cache-matched-key }}
+      run: |
+        echo "::notice title=Partial Go module cache hit::Restored Go module cache from prefix key '${MATCHED_KEY}' instead of an exact match; newly added Go modules will be fetched from GOPROXY."
 
     - uses: bazel-contrib/setup-bazel@f34d6a05eae3c24acab7fa54587492daeaeffdab # 0.19.2
       with:

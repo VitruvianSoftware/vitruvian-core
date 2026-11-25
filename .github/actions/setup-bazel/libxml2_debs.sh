@@ -101,7 +101,7 @@ install_all() {
 		cp "$icu_cached" "${dir}/${LIBICU74_NAME}"
 	else
 		echo "Cache miss/mismatch for ${LIBICU74_NAME}; fetching from Ubuntu mirrors"
-		download_verified "$LIBICU74_NAME" "$LIBICU74_SHA256" "${dir}/${LIBICU74_NAME}" "${LIBICU74_URLS[@]}"
+		download_verified "$LIBICU74_NAME" "$LIBICU74_SHA256" "${dir}/${LIBICU74_NAME}" "${LIBICU74_URLS[@]}" || return 1
 	fi
 
 	if [ -n "$cache_dir" ] && verify_sha256 "$LIBXML2_SHA256" "$xml_cached"; then
@@ -109,7 +109,7 @@ install_all() {
 		cp "$xml_cached" "${dir}/${LIBXML2_NAME}"
 	else
 		echo "Cache miss/mismatch for ${LIBXML2_NAME}; fetching from Ubuntu mirrors"
-		download_verified "$LIBXML2_NAME" "$LIBXML2_SHA256" "${dir}/${LIBXML2_NAME}" "${LIBXML2_URLS[@]}"
+		download_verified "$LIBXML2_NAME" "$LIBXML2_SHA256" "${dir}/${LIBXML2_NAME}" "${LIBXML2_URLS[@]}" || return 1
 	fi
 
 	sudo dpkg -i "${dir}/${LIBICU74_NAME}" "${dir}/${LIBXML2_NAME}"
@@ -120,30 +120,32 @@ install_all() {
 	echo "installed libxml2.so.2 (noble 2.9.14) for LLVM's linker"
 }
 
-cmd="${1:-}"
-case "$cmd" in
-sha-key)
-	printf '%s-%s\n' "$LIBICU74_SHA256" "$LIBXML2_SHA256"
-	;;
-has-libxml2)
-	has_libxml2_so2
-	;;
-fetch)
-	[ "$#" -eq 2 ] || {
-		echo "usage: $0 fetch <dest_dir>" >&2
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	cmd="${1:-}"
+	case "$cmd" in
+	sha-key)
+		printf '%s-%s\n' "$LIBICU74_SHA256" "$LIBXML2_SHA256"
+		;;
+	has-libxml2)
+		has_libxml2_so2
+		;;
+	fetch)
+		[ "$#" -eq 2 ] || {
+			echo "usage: $0 fetch <dest_dir>" >&2
+			exit 2
+		}
+		fetch_all "$2"
+		;;
+	install)
+		[ "$#" -le 2 ] || {
+			echo "usage: $0 install [cache_dir]" >&2
+			exit 2
+		}
+		install_all "${2:-}"
+		;;
+	*)
+		echo "usage: $0 {sha-key|has-libxml2|fetch <dest_dir>|install [cache_dir]}" >&2
 		exit 2
-	}
-	fetch_all "$2"
-	;;
-install)
-	[ "$#" -le 2 ] || {
-		echo "usage: $0 install [cache_dir]" >&2
-		exit 2
-	}
-	install_all "${2:-}"
-	;;
-*)
-	echo "usage: $0 {sha-key|has-libxml2|fetch <dest_dir>|install [cache_dir]}" >&2
-	exit 2
-	;;
-esac
+		;;
+	esac
+fi

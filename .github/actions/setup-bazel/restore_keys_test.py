@@ -145,6 +145,28 @@ def test_setup_bazel_action_restore_keys_exact_order_and_same_platform_legacy_la
     ]
     assert len(debs_steps) == 1, f"{path}: expected 1 ci-debs restore step"
 
+    steps = _load_steps(path)
+    gomod_idx = next(
+        i
+        for i, s in enumerate(steps)
+        if isinstance(s, dict)
+        and str((s.get("with") or {}).get("key") or "").startswith("bazel-gomod-1-")
+    )
+    assert steps[gomod_idx].get("id") == "gomod-cache", (
+        f"{path}: gomod restore step must define id: gomod-cache"
+    )
+    notice_step = steps[gomod_idx + 1]
+    notice_if = str(notice_step.get("if") or "")
+    assert "steps.gomod-cache.outputs.cache-matched-key != ''" in notice_if, (
+        f"{path}: partial-hit notice step must check cache-matched-key != '', got {notice_if!r}"
+    )
+    assert "steps.gomod-cache.outputs.cache-hit != 'true'" in notice_if, (
+        f"{path}: partial-hit notice step must check cache-hit != 'true', got {notice_if!r}"
+    )
+    assert "::notice" in str(notice_step.get("run") or ""), (
+        f"{path}: partial-hit notice step must emit ::notice"
+    )
+
 
 def test_warm_composite_action_lookup_has_no_restore_keys():
     path = _resolve_path(
