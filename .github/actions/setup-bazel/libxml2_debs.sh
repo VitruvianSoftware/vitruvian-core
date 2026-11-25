@@ -96,18 +96,22 @@ install_all() {
 	local icu_cached="${cache_dir}/${LIBICU74_NAME}"
 	local xml_cached="${cache_dir}/${LIBXML2_NAME}"
 
-	if [ -n "$cache_dir" ] && verify_sha256 "$LIBICU74_SHA256" "$icu_cached"; then
+	# Copy first, then check the copy: the file dpkg installs is the one verified.
+	if [ -n "$cache_dir" ] && [ -f "$icu_cached" ] && cp "$icu_cached" "${dir}/${LIBICU74_NAME}" &&
+		verify_sha256 "$LIBICU74_SHA256" "${dir}/${LIBICU74_NAME}"; then
 		echo "Cache hit for ${LIBICU74_NAME} (${LIBICU74_SHA256})"
-		cp "$icu_cached" "${dir}/${LIBICU74_NAME}"
 	else
+		rm -f "${dir}/${LIBICU74_NAME}"
 		echo "Cache miss/mismatch for ${LIBICU74_NAME}; fetching from Ubuntu mirrors"
 		download_verified "$LIBICU74_NAME" "$LIBICU74_SHA256" "${dir}/${LIBICU74_NAME}" "${LIBICU74_URLS[@]}" || return 1
 	fi
 
-	if [ -n "$cache_dir" ] && verify_sha256 "$LIBXML2_SHA256" "$xml_cached"; then
+	# Copy first, then check the copy: the file dpkg installs is the one verified.
+	if [ -n "$cache_dir" ] && [ -f "$xml_cached" ] && cp "$xml_cached" "${dir}/${LIBXML2_NAME}" &&
+		verify_sha256 "$LIBXML2_SHA256" "${dir}/${LIBXML2_NAME}"; then
 		echo "Cache hit for ${LIBXML2_NAME} (${LIBXML2_SHA256})"
-		cp "$xml_cached" "${dir}/${LIBXML2_NAME}"
 	else
+		rm -f "${dir}/${LIBXML2_NAME}"
 		echo "Cache miss/mismatch for ${LIBXML2_NAME}; fetching from Ubuntu mirrors"
 		download_verified "$LIBXML2_NAME" "$LIBXML2_SHA256" "${dir}/${LIBXML2_NAME}" "${LIBXML2_URLS[@]}" || return 1
 	fi
