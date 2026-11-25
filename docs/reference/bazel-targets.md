@@ -122,7 +122,7 @@ bazel run //<project-package>:{setup,preview,up,refresh,destroy,config,stack,sta
 
 Project packages include:
 - `//infrastructure/pulumi/platform/repo-config` (repository configuration, GitHub settings, sync-auth credentials)
-- `//infrastructure/pulumi/platform/{dev-local,stripe,zitadel-apps,zitadel-apps-mcp-slack,zitadel-apps-relay}`
+- `//infrastructure/pulumi/platform/{dev-local,stripe,zitadel-apps,zitadel-apps-mcp-slack,zitadel-apps-relay,zitadel-mcp-viewer}`
 - `//infrastructure/pulumi/foundation/...` (all stages × environments: org-folders, gcp-projects, etc.)
 - `//apps/suites/vitruvian-tabs/infra/{identity,build,data,app}`
 - `//apps/web/oauth-user-inspector/infra/{identity,app}`

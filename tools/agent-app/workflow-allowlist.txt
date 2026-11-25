@@ -61,6 +61,11 @@ delivery-pagerduty.yaml unit environment
 # 2026-11-09 on James's go-ahead ("Let wren run it"). It changes live sign-in
 # for the relay's clients only; the stack refuses the role check without a grant.
 zitadel-apps-relay-apply.yaml action
+# Applies the read-only Zitadel machine user mcp-viewer (ORG_OWNER_VIEWER) and its
+# expiring PAT (zitadel-mcp-viewer). action is preview (default) or up; run
+# preview first. Added 2026-11-25 with James's approval of the stack plan. The
+# workflow never prints the PAT.
+zitadel-mcp-viewer-apply.yaml action
 # Rebuilds the site's downloads list from the latest releases and opens (or
 # refreshes) its pull request, which the merge queue still tests. No inputs.
 # Its daily 05:00 UTC run is otherwise the only way to refresh a stale or

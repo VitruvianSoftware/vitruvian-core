@@ -254,6 +254,7 @@ fn every_socat_listener_in_workflows_binds_loopback() {
             ".github/workflows/zitadel-apps-mcp-slack-apply.yaml",
             1usize,
         ),
+        (".github/workflows/zitadel-mcp-viewer-apply.yaml", 1usize),
     ] {
         assert_eq!(
             per_file_counts.get(wf).copied().unwrap_or(0),
