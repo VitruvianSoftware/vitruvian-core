@@ -57,7 +57,9 @@ concurrency:
 
 jobs:
   reset:
-    if: ${{ inputs.confirm == inputs.stack }}
+    # Runs only from main: a hand-started run of a branch must not get this
+    # job's Environment secrets. //tools/conformance (DISPATCHGATE) checks it.
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm == inputs.stack }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     environment: pulumi-admin

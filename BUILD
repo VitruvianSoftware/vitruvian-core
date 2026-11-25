@@ -286,6 +286,7 @@ filegroup(
         "//catalog:__pkg__",
         "//tools/ci:__pkg__",
         "//tools/ci/actionpins:__pkg__",
+        "//tools/conformance:__pkg__",
         "//tools/delivery/gen:__pkg__",
     ],
 )

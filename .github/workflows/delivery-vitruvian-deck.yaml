@@ -293,7 +293,7 @@ jobs:
   # release-gated promotions and do not chain behind this one.
   vitruvian-deck-beta:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_deck == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-deck' && inputs.environment == 'beta'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_deck == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-deck' && inputs.environment == 'beta'))
     concurrency:
       group: delivery-vitruvian-deck-beta
       cancel-in-progress: false
@@ -345,7 +345,7 @@ jobs:
 
   # PROMOTION rung 1/1 — release-gated on a vitruvian-deck-v* release, never reached by a push.
   vitruvian-deck-production:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-deck-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-deck' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-deck-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-deck' && inputs.environment == 'production'))
     concurrency:
       group: delivery-vitruvian-deck-production
       cancel-in-progress: false

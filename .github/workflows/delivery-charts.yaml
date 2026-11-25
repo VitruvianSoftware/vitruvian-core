@@ -284,7 +284,7 @@ jobs:
   # Single rung: delivers on an affected push (and on a dispatch naming it).
   charts-publish:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_charts == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'charts' && inputs.environment == 'publish'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_charts == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'charts' && inputs.environment == 'publish'))
     concurrency:
       group: delivery-charts-publish
       cancel-in-progress: false

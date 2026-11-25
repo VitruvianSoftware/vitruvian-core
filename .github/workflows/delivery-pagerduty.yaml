@@ -284,7 +284,7 @@ jobs:
   # GitHub Environment: pagerduty-production (its reviewer gate and WIF vars).
   pagerduty-production:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_pagerduty == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'pagerduty' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_pagerduty == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'pagerduty' && inputs.environment == 'production'))
     concurrency:
       group: delivery-pagerduty-production
       cancel-in-progress: false

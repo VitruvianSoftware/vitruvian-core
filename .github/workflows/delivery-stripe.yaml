@@ -286,7 +286,7 @@ jobs:
   # GitHub Environment: stripe-sandbox (its reviewer gate and WIF vars).
   stripe-sandbox:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_stripe == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'stripe' && inputs.environment == 'sandbox'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_stripe == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'stripe' && inputs.environment == 'sandbox'))
     concurrency:
       group: delivery-stripe-sandbox
       cancel-in-progress: false
@@ -395,7 +395,7 @@ jobs:
   # GitHub Environment: stripe-production (its reviewer gate and WIF vars).
   stripe-production:
     needs: [orchestrate, stripe-sandbox]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_stripe == 'true')) && needs.stripe-sandbox.result == 'success' && needs.stripe-sandbox.outputs.applied == 'true') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'stripe' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_stripe == 'true')) && needs.stripe-sandbox.result == 'success' && needs.stripe-sandbox.outputs.applied == 'true') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'stripe' && inputs.environment == 'production'))
     concurrency:
       group: delivery-stripe-production
       cancel-in-progress: false

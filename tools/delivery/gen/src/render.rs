@@ -2548,10 +2548,21 @@ fn release_arm_after(u: &Unit, prior_job: &str) -> String {
     )
 }
 
+/// The ref every hand-started (workflow_dispatch) run must come from. A
+/// dispatch runs the workflow file AND the code of the ref it is started on,
+/// so without this anyone who can push a branch could run that branch's code
+/// in a job that holds a GitHub Environment's deploy secrets. The
+/// Environments' own deployment-branch policies (repo-config) block that too;
+/// this is the second lock, and it also skips the job cleanly instead of
+/// failing it at the Environment check. Push runs come from main already, and
+/// release runs from their tag, so only the dispatch arm carries it.
+/// //tools/conformance (`DISPATCHGATE`) fails any workflow that drops it.
+pub(crate) const DISPATCH_FROM_MAIN: &str = "github.ref == 'refs/heads/main'";
+
 fn dispatch_arm(u: &Unit, env: &str) -> String {
     format!(
-        "(github.event_name == 'workflow_dispatch' && inputs.unit == '{}' && inputs.environment == '{}')",
-        u.name, env
+        "(github.event_name == 'workflow_dispatch' && {} && inputs.unit == '{}' && inputs.environment == '{}')",
+        DISPATCH_FROM_MAIN, u.name, env
     )
 }
 
@@ -2562,12 +2573,13 @@ fn dispatch_arm_any_rung(units: &[&Unit]) -> String {
         .collect();
     if clauses.len() == 1 {
         return format!(
-            "(github.event_name == 'workflow_dispatch' && {})",
-            clauses[0]
+            "(github.event_name == 'workflow_dispatch' && {} && {})",
+            DISPATCH_FROM_MAIN, clauses[0]
         );
     }
     format!(
-        "(github.event_name == 'workflow_dispatch' && ({}))",
+        "(github.event_name == 'workflow_dispatch' && {} && ({}))",
+        DISPATCH_FROM_MAIN,
         clauses.join(" || ")
     )
 }

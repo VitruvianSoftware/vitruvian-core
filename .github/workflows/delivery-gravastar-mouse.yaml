@@ -293,7 +293,7 @@ jobs:
   # release-gated promotions and do not chain behind this one.
   gravastar-mouse-publish-beta:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_gravastar_mouse_publish == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse-publish' && inputs.environment == 'beta'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_gravastar_mouse_publish == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'gravastar-mouse-publish' && inputs.environment == 'beta'))
     concurrency:
       group: delivery-gravastar-mouse-publish-beta
       cancel-in-progress: false
@@ -326,7 +326,7 @@ jobs:
 
   # PROMOTION rung 1/1 — release-gated on a gravastar-mouse-v* release, never reached by a push.
   gravastar-mouse-publish-production:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'gravastar-mouse-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'gravastar-mouse-publish' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'gravastar-mouse-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'gravastar-mouse-publish' && inputs.environment == 'production'))
     concurrency:
       group: delivery-gravastar-mouse-publish-production
       cancel-in-progress: false

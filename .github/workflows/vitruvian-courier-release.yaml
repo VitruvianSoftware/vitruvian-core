@@ -138,7 +138,9 @@ jobs:
 
   publish-package:
     needs: release-please
-    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    # Runs only from main: a hand-started run of a branch must not get this
+    # job's Environment secrets. //tools/conformance (DISPATCHGATE) checks it.
+    if: ${{ github.ref == 'refs/heads/main' && always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
     # Vitruvian Courier's Telegram app ID lives in this environment's secrets.
     environment: vitruvian-courier-release
     # The same Xcode as CI and developers (.xcode-version); see ci.yaml.

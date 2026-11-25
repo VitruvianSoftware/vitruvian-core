@@ -324,7 +324,7 @@ jobs:
   # fallback — so this job is what makes the deploy below possible at all.
   oauth-user-inspector-build:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector'))
     concurrency:
       group: delivery-oauth-user-inspector-build
       cancel-in-progress: false
@@ -390,7 +390,7 @@ jobs:
     # `always() && !cancelled()` (not the implicit success()-of-needs):
     # orchestrate may legitimately be skipped or red, and the fail-open arm
     # below has to be reachable in exactly those cases.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'development'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'development'))
     concurrency:
       group: delivery-zitadel-apps-development
       cancel-in-progress: false
@@ -417,7 +417,7 @@ jobs:
     # not.
     # A companion that is SKIPPED — its repo-variable gate is off — must not
     # block the deploy, while one that FAILED must.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-development.result != 'failure' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'development'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-development.result != 'failure' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'development'))
     concurrency:
       group: delivery-oauth-user-inspector-development
       cancel-in-progress: false
@@ -450,7 +450,7 @@ jobs:
   # deploy still RUNNING is waited for (up to 40 min) and then judged; still
   # running after that, it blocks as not yet soaked.
   oauth-user-inspector-require-dev-soak:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
     runs-on: ubuntu-26.04
     timeout-minutes: 50
     permissions:
@@ -511,7 +511,7 @@ jobs:
     # red development stops the expand too, and the gate's wait for a
     # development deploy still running keeps this Pulumi update from
     # starting under that deploy's account-wide lock.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && needs.oauth-user-inspector-require-dev-soak.result == 'success' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && needs.oauth-user-inspector-require-dev-soak.result == 'success' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-zitadel-apps-nonproduction
       cancel-in-progress: false
@@ -541,7 +541,7 @@ jobs:
     # success()-of-all-needs rather than ANDing with it, so without this
     # clause a RED interlock would still let the promotion run — the gate
     # silently a no-op, which is how it was found broken before.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.oauth-user-inspector-require-dev-soak.result == 'success' && needs.zitadel-apps-nonproduction.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.oauth-user-inspector-require-dev-soak.result == 'success' && needs.zitadel-apps-nonproduction.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-oauth-user-inspector-nonproduction
       cancel-in-progress: false
@@ -573,7 +573,7 @@ jobs:
   # whose force-replace DELETES the live OIDC client.
   zitadel-apps-production:
     needs: [oauth-user-inspector-nonproduction]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.oauth-user-inspector-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.oauth-user-inspector-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'production'))
     concurrency:
       group: delivery-zitadel-apps-production
       cancel-in-progress: false
@@ -599,7 +599,7 @@ jobs:
     # not.
     # A companion that is SKIPPED — its repo-variable gate is off — must not
     # block the deploy, while one that FAILED must.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-production.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.oauth-user-inspector-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-production.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.oauth-user-inspector-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'production'))
     concurrency:
       group: delivery-oauth-user-inspector-production
       cancel-in-progress: false
@@ -632,7 +632,7 @@ jobs:
   # GitHub Environment: foundation-proj-development (its reviewer gate and WIF vars).
   oauth-user-inspector-identity-development:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'development'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'development'))
     concurrency:
       group: delivery-oauth-user-inspector-identity-development
       cancel-in-progress: false
@@ -652,7 +652,7 @@ jobs:
   # GitHub Environment: foundation-proj-nonproduction (its reviewer gate and WIF vars).
   oauth-user-inspector-identity-nonproduction:
     needs: [orchestrate, oauth-user-inspector-identity-development]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) && needs.oauth-user-inspector-identity-development.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) && needs.oauth-user-inspector-identity-development.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-oauth-user-inspector-identity-nonproduction
       cancel-in-progress: false
@@ -672,7 +672,7 @@ jobs:
   # GitHub Environment: foundation-proj-production (its reviewer gate and WIF vars).
   oauth-user-inspector-identity-production:
     needs: [orchestrate, oauth-user-inspector-identity-nonproduction]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) && needs.oauth-user-inspector-identity-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) && needs.oauth-user-inspector-identity-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'production'))
     concurrency:
       group: delivery-oauth-user-inspector-identity-production
       cancel-in-progress: false

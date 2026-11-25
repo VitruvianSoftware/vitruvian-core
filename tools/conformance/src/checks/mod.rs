@@ -26,6 +26,7 @@ mod catalog;
 mod catalog_entries;
 mod ci;
 mod delivery;
+mod dispatch_gate;
 mod governance;
 mod iac;
 mod labels;
@@ -110,6 +111,7 @@ pub fn run_all(ctx: &Context) {
     security::check_gitleaks_allowlist_paths(ctx);
     security::check_guard_review_paths(ctx);
     security::check_release_tag_exemptions(ctx);
+    dispatch_gate::check_dispatch_gate(ctx);
 
     swift_tests::check_test_preferences(ctx);
 }
