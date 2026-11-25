@@ -1531,6 +1531,11 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.script.events["!a"] = [initialMsg]
         h.app.selectedRoomID = "!a"
         try await waitUntil { !conversation.items.isEmpty }
+        // Opening it unlocked reads it, and that request goes to the engine on its own task: let it arrive before
+        // counting, or it can land after the count below and look like a read while locked.
+        try await waitUntil {
+            h.server.receivedMethods().filter { $0 == "room.markRead" }.count == conversation.readsSent
+        }
         h.clock.advance(seconds: 5)
 
         // Lock the app with !a still open and key.
