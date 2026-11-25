@@ -75,6 +75,24 @@ spec:
                   wal_receiver_timeout: "600s"
                   wal_keep_size: "1GB"
               enableSuperuserAccess: true
+              # Read-only login for the Postgres MCP server (crystaldba/postgres-mcp,
+              # --access-mode=restricted), reached through the backstage-db-cluster-ro
+              # service. pg_read_all_data grants SELECT on every table and nothing
+              # else: no writes, no DDL. CNPG keeps the role in sync with the
+              # password in SealedSecret backstage-db-mcp-readonly (basic-auth).
+              roles:
+                - name: mcp_readonly
+                  ensure: present
+                  comment: Read-only login for the Postgres MCP server
+                  login: true
+                  superuser: false
+                  createdb: false
+                  createrole: false
+                  inherit: true
+                  inRoles:
+                    - pg_read_all_data
+                  passwordSecret:
+                    name: backstage-db-mcp-readonly
               initdb:
                 database: backstage
                 owner: backstage
