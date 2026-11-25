@@ -320,7 +320,8 @@ struct Ctx {
     scan_args: Vec<Vec<u8>>,
     json: PathBuf,
     scan_err: PathBuf,
-    tree_before: Vec<Vec<u8>>,
+    /// None when the scan does not run in a git work tree.
+    tree_before: Option<Vec<Vec<u8>>>,
     max_attempts: String,
     retry_delay: String,
 }
@@ -367,11 +368,18 @@ fn transient(errf: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// `dirty_snapshot`: (pipeline status, sorted raw path entries).
-fn dirty_snapshot_in(repo: Option<&Path>) -> (i32, Vec<Vec<u8>>) {
+/// `dirty_snapshot`: (status, sorted raw path entries), or (0, None) outside
+/// a git work tree, where there is no checkout to protect.
+fn dirty_snapshot_in(repo: Option<&Path>) -> (i32, Option<Vec<Vec<u8>>>) {
     if quiet_status_in(repo, "git", &[b"rev-parse", b"--is-inside-work-tree"]) != 0 {
-        return (0, Vec::new());
+        return (0, None);
     }
+    let (rc, entries) = status_entries_in(repo);
+    (rc, Some(entries))
+}
+
+/// `git status --porcelain -z`: (status, sorted raw path entries).
+fn status_entries_in(repo: Option<&Path>) -> (i32, Vec<Vec<u8>>) {
     let (rc, o) = capture_in(
         repo,
         "git",
@@ -387,14 +395,32 @@ fn dirty_snapshot_in(repo: Option<&Path>) -> (i32, Vec<Vec<u8>>) {
     (rc, text::parse_porcelain_z_paths(&o))
 }
 
-fn dirty_snapshot() -> (i32, Vec<Vec<u8>>) {
+fn dirty_snapshot() -> (i32, Option<Vec<Vec<u8>>>) {
     dirty_snapshot_in(None)
 }
 
 /// `assert_tree_unchanged`: Some(exit code) when it dies.
 fn assert_tree_unchanged(ctx: &Ctx) -> Option<i32> {
-    let (_, now) = dirty_snapshot();
-    let touched = text::comm_13_entries(&ctx.tree_before, &now);
+    assert_tree_unchanged_in(None, ctx.tree_before.as_deref())
+}
+
+/// Fails closed: once the scan started in a work tree, a `git status` that
+/// cannot read it afterwards (exit status non-zero, even with the repo gone)
+/// is no evidence that the scan left the checkout alone.
+fn assert_tree_unchanged_in(repo: Option<&Path>, tree_before: Option<&[Vec<u8>]>) -> Option<i32> {
+    let tree_before = tree_before?;
+    let (rc, now) = status_entries_in(repo);
+    if rc != 0 {
+        return Some(die(format!(
+            "could not check whether the scan changed the working tree: `git status`
+   exited {} -- refusing to report a verdict. This gate must prove the scan was
+   read-only, and an unreadable checkout proves nothing. Run `git status` here
+   to see why it fails.",
+            rc
+        )
+        .as_bytes()));
+    }
+    let touched = text::comm_13_entries(tree_before, &now);
     if touched.is_empty() {
         return None;
     }
@@ -409,6 +435,56 @@ fn assert_tree_unchanged(ctx: &Ctx) -> Option<i32> {
    ran the toolchain (put a logging shim ahead of `go` on PATH and re-run).",
     ]);
     Some(die(&msg))
+}
+
+/// Refuses a tree whose tracked files include a dependency lockfile the scanner
+/// cannot check (text::UNSCANNABLE): osv-scanner would pass it without looking
+/// at its dependencies. Some(exit code) when it dies. Outside a git work tree
+/// nothing is tracked, so there is nothing to refuse.
+fn refuse_unscannable_in(repo: Option<&Path>) -> Option<i32> {
+    if quiet_status_in(repo, "git", &[b"rev-parse", b"--is-inside-work-tree"]) != 0 {
+        return None;
+    }
+    let (rc, files) = capture_in(
+        repo,
+        "git",
+        &[b"-c", b"core.quotePath=false", b"ls-files", b"-z"],
+        true,
+    );
+    if rc != 0 {
+        return Some(die(format!(
+            "could not list the tracked files (`git ls-files` exited {}), so could not
+   check for dependency lockfiles the scanner cannot read -- refusing to report
+   a verdict.",
+            rc
+        )
+        .as_bytes()));
+    }
+    let mut found: Vec<u8> = Vec::new();
+    for f in files.split(|c| *c == b'\0') {
+        if let Some(why) = text::unscannable_reason(f) {
+            if !found.is_empty() {
+                found.push(b'\n');
+            }
+            found.extend_from_slice(&cat(&[f, b" -- ", why.as_bytes()]));
+        }
+    }
+    if found.is_empty() {
+        return None;
+    }
+    Some(die(&cat(&[
+        b"this tree holds dependency lockfiles osv-scanner cannot check, so their
+   dependencies would pass with no advisory scan at all -- refusing to report
+   a verdict:\n",
+        &text::indent_var(&found),
+        b"\n   Use an ecosystem the scanner reads (for Swift, SwiftPM's Package.resolved;
+   see MANIFESTS in tools/osv-scan/src/text.rs), or cover these another way and
+   change UNSCANNABLE in that file to say how, in a PR of its own.",
+    ])))
+}
+
+fn refuse_unscannable() -> Option<i32> {
+    refuse_unscannable_in(None)
 }
 
 /// `resolve_diff_base`'s stdout, as `$(resolve_diff_base)` sees it.
@@ -1093,6 +1169,9 @@ pub fn run() -> i32 {
             &root,
             b" (recursive; .gitignore excludes bazel-*/node_modules)",
         ]));
+        if let Some(code) = refuse_unscannable() {
+            return code;
+        }
         let (snap_rc, tree_before) = dirty_snapshot();
         if snap_rc != 0 {
             return snap_rc;
@@ -1261,6 +1340,28 @@ mod tests {
         }
     }
 
+    /// Lockfiles outside the original list used to read as "no dependency
+    /// change", so a PR adding a vulnerable one only got a warning.
+    #[test]
+    fn newly_listed_lockfiles_are_changes() {
+        for path in [
+            "app/pubspec.lock",
+            "ios/Package.resolved",
+            "java/pom.xml",
+            "src/App.csproj",
+        ] {
+            let repo = TempRepo::new();
+            repo.write("README", "x\n");
+            let base = repo.commit("base");
+            repo.write(path, "x\n");
+            repo.commit("head");
+            assert!(
+                dep_manifests_changed_in(Some(repo.path()), &base),
+                "expected CHANGED for {path:?}"
+            );
+        }
+    }
+
     #[test]
     fn non_ascii_package_json_version_only_is_unchanged() {
         let repo = TempRepo::new();
@@ -1331,6 +1432,71 @@ mod tests {
         }
     }
 
+    /// The check after each scan must fail closed: a `git status` that cannot
+    /// read the checkout is no evidence the scan left it alone.
+    #[test]
+    fn tree_check_fails_closed_when_git_status_fails() {
+        let repo = TempRepo::new();
+        repo.write("go.mod", "module a\n");
+        repo.commit("base");
+        let (rc, before) = dirty_snapshot_in(Some(repo.path()));
+        assert_eq!(rc, 0);
+        let before = before.expect("a work tree");
+        let check = || assert_tree_unchanged_in(Some(repo.path()), Some(&before));
+        assert_eq!(check(), None);
+
+        repo.write("go.mod", "module b\n");
+        assert_eq!(check(), Some(1), "a modified manifest is a mutation");
+        repo.git(&["checkout", "--", "go.mod"]);
+        assert_eq!(check(), None);
+
+        // A corrupt index makes `git status` exit 128 with no output.
+        std::fs::write(repo.path().join(".git/index"), b"not an index").unwrap();
+        assert_ne!(dirty_snapshot_in(Some(repo.path())).0, 0);
+        assert_eq!(
+            check(),
+            Some(1),
+            "a failed `git status` must not read as an unchanged tree"
+        );
+
+        // Nor may a checkout that stopped being one. (A `.git` file naming a
+        // missing gitdir, not a bare delete, so git cannot find a parent repo.)
+        std::fs::remove_dir_all(repo.path().join(".git")).unwrap();
+        std::fs::write(repo.path().join(".git"), b"gitdir: /nonexistent\n").unwrap();
+        assert_eq!(check(), Some(1), "a vanished repo is not a clean one");
+
+        // Outside a work tree from the start there is nothing to protect.
+        assert_eq!(dirty_snapshot_in(Some(repo.path())), (0, None));
+        assert_eq!(assert_tree_unchanged_in(Some(repo.path()), None), None);
+    }
+
+    /// A lockfile osv-scanner cannot read would otherwise pass unchecked: the
+    /// scan reports nothing for it, so the gate goes green.
+    #[test]
+    fn unscannable_lockfile_fails_the_gate() {
+        let repo = TempRepo::new();
+        repo.write("go.mod", "module a\n");
+        repo.commit("base");
+        assert_eq!(refuse_unscannable_in(Some(repo.path())), None);
+
+        // Untracked: not part of the change, and osv-scanner skips it anyway.
+        repo.write("my app/Podfile.lock", "PODS:\n  - AFNetworking (2.5.0)\n");
+        assert_eq!(refuse_unscannable_in(Some(repo.path())), None);
+
+        // Tracked, in a directory whose name git would quote.
+        repo.commit("add pods");
+        assert_eq!(refuse_unscannable_in(Some(repo.path())), Some(1));
+
+        repo.remove("my app/Podfile.lock");
+        repo.write("deno.lock", "{}\n");
+        repo.commit("pods to deno");
+        assert_eq!(refuse_unscannable_in(Some(repo.path())), Some(1));
+
+        // ls-files failing must not read as "none found".
+        std::fs::write(repo.path().join(".git/index"), b"not an index").unwrap();
+        assert_eq!(refuse_unscannable_in(Some(repo.path())), Some(1));
+    }
+
     #[test]
     fn dirty_snapshot_handles_quoted_and_renamed_paths() {
         let repo = TempRepo::new();
@@ -1348,7 +1514,7 @@ mod tests {
         let (rc, entries) = dirty_snapshot_in(Some(repo.path()));
         assert_eq!(rc, 0);
         assert_eq!(
-            entries,
+            entries.expect("a work tree"),
             vec![
                 b"caf\xc3\xa9/go.mod".to_vec(),
                 b"nl\ndir/go.mod".to_vec(),
