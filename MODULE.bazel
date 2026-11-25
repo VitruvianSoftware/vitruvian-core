@@ -952,7 +952,7 @@ maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 # so Central is repeated here rather than inherited.
 #
 # After changing this list, re-pin the lock file:
-#   bazel run @unpinned_maven//:pin
+#   bazel run @maven//:pin
 maven.install(
     artifacts = [
         # Compose: versions come from the BOM below, so they cannot drift apart

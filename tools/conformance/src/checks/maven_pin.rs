@@ -402,6 +402,23 @@ maven.install(
     }
 
     #[test]
+    fn non_literal_lock_file_fails_closed() {
+        // A variable could hold anything, so the check cannot prove a pin and
+        // reports it, rather than passing a lock file it cannot read.
+        let module = r#"
+MAVEN_LOCK = "//:maven_install.json"
+maven.install(
+    name = "via_variable",
+    lock_file = MAVEN_LOCK,
+)
+"#;
+        assert_eq!(
+            scan_maven_installs(module).1,
+            vec![(3, "via_variable".to_string())]
+        );
+    }
+
+    #[test]
     fn context_check_reports_pass_and_fail() {
         let good_dir = temp_repo(
             "good",
