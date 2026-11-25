@@ -109,6 +109,7 @@ pub const WORKFLOW_NAMES: &[&str] = &[
     "vitruvian-tabs-release",
     "zitadel-apps-mcp-slack-apply",
     "zitadel-apps-relay-apply",
+    "zitadel-mcp-viewer-apply",
 ];
 
 /// Load the `OpenTelemetryCollector` document from `collector.yaml`.

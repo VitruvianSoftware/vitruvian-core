@@ -49,6 +49,7 @@ infrastructure/pulumi/platform/stripe/Pulumi.yaml	vitruvian-stripe
 infrastructure/pulumi/platform/zitadel-apps-mcp-slack/Pulumi.yaml	pulumi_zitadel_apps_mcp_slack
 infrastructure/pulumi/platform/zitadel-apps-relay/Pulumi.yaml	pulumi_zitadel_apps_relay
 infrastructure/pulumi/platform/zitadel-apps/Pulumi.yaml	zitadel-apps
+infrastructure/pulumi/platform/zitadel-mcp-viewer/Pulumi.yaml	pulumi_zitadel_mcp_viewer
 infrastructure/pulumi/platform/sentry/Pulumi.yaml	sentry
 infrastructure/pulumi/platform/sentry-pagerduty/Pulumi.yaml	vitruvian-sentry-pagerduty
 apps/web/oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector

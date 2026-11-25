@@ -25,6 +25,9 @@ Pulumi.*.yaml
 !platform/zitadel-apps-mcp-slack/Pulumi.*.yaml
 # zitadel-apps-relay: same — non-secret Zitadel identifiers only.
 !platform/zitadel-apps-relay/Pulumi.*.yaml
+# zitadel-mcp-viewer: same — org id and PAT expiry date only. The PAT itself is a
+# secret stack output in Pulumi Cloud state.
+!platform/zitadel-mcp-viewer/Pulumi.*.yaml
 # platform/stripe commits its stack config: non-secret Stripe settings (mode,
 # currency, donation amounts, app list). The Stripe key is STRIPE_API_KEY in CI
 # or Pulumi ciphertext locally; a test rejects a plaintext key in the file.
@@ -94,6 +97,7 @@ Pulumi.*.yaml
 platform/zitadel-apps/zitadel-apps
 platform/zitadel-apps-mcp-slack/zitadel-apps-mcp-slack
 platform/zitadel-apps-relay/zitadel-apps-relay
+platform/zitadel-mcp-viewer/zitadel-mcp-viewer
 platform/pagerduty/pagerduty
 platform/sentry/sentry
 platform/sentry-pagerduty/sentry-pagerduty

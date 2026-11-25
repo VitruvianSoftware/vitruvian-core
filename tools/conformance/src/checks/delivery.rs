@@ -50,6 +50,7 @@ const DELIVERY_LEGACY_FLOOR: &[&str] = &[
     ".github/workflows/vitruvian-tabs-release.yaml",
     ".github/workflows/zitadel-apps-mcp-slack-apply.yaml",
     ".github/workflows/zitadel-apps-relay-apply.yaml",
+    ".github/workflows/zitadel-mcp-viewer-apply.yaml",
 ];
 
 /// Regex string for state-mutating invocations (used only in emit text).
