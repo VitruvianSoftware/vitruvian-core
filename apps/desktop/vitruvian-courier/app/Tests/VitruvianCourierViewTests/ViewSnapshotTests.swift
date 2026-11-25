@@ -6823,10 +6823,13 @@ final class ViewSnapshotTests: XCTestCase {
         host.cacheDisplay(in: host.bounds, to: bitmap)
 
         // Sample the top-center avatar region (centered at x = 50% width, y ~ 50pt from top in flipped AppKit coords).
+        // In points, turned into the bitmap's pixels: two per point on a Retina screen, one on CI's Macs.
+        let scale = Int((CGFloat(bitmap.pixelsWide) / host.bounds.width).rounded())
         var foundRed = false
         var foundBlue = false
-        for px in stride(from: bitmap.pixelsWide / 2 - 12, through: bitmap.pixelsWide / 2 + 12, by: 4) {
-            for py in stride(from: 30, through: min(90, bitmap.pixelsHigh - 1), by: 4) {
+        for px in stride(from: bitmap.pixelsWide / 2 - 12 * scale, through: bitmap.pixelsWide / 2 + 12 * scale,
+                         by: 4 * scale) {
+            for py in stride(from: 30 * scale, through: min(90 * scale, bitmap.pixelsHigh - 1), by: 4 * scale) {
                 if let sample = bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) {
                     if sample.redComponent > 0.75 && sample.blueComponent < 0.25 {
                         foundRed = true

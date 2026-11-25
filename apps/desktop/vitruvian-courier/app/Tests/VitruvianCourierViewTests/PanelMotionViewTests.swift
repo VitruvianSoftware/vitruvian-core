@@ -77,12 +77,14 @@ final class PanelMotionViewTests: XCTestCase {
         return (showOffscreen(host, size: size), host)
     }
 
-    /// The alpha (0...1) of the pixel at `point` (top-left origin) of what `view` draws.
+    /// The alpha (0...1) of the pixel at `point` (in points, top-left origin) of what `view` draws.
     private func alpha(of view: NSView, at point: NSPoint) -> CGFloat {
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return -1 }
         view.cacheDisplay(in: view.bounds, to: rep)
+        // The bitmap has the screen's pixels: two per point on a Retina display, one on CI's Macs.
+        let scale = CGFloat(rep.pixelsWide) / max(view.bounds.width, 1)
         // Rows count from the top (`testPixelSamplingCountsRowsFromTheTop` pins that down).
-        return rep.colorAt(x: Int(point.x), y: Int(point.y))?.alphaComponent ?? -1
+        return rep.colorAt(x: Int(point.x * scale), y: Int(point.y * scale))?.alphaComponent ?? -1
     }
 
     func testPixelSamplingCountsRowsFromTheTop() {
