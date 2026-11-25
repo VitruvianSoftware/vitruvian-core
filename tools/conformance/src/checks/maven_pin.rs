@@ -324,11 +324,10 @@ maven.install(
 )
 
 maven.install(
-    name = "rules_android_maven",
-    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
-    lock_file = "//:rules_android_maven_install.json",
+    name = "extra_maven",
+    artifacts = ["junit:junit:4.13.2"],
+    lock_file = "//:extra_maven_install.json",
     repositories = ["https://maven.google.com"],
-    use_starlark_android_rules = True,
 )
 "#;
         let (total, unpinned) = scan_maven_installs(module);
@@ -344,32 +343,31 @@ maven.install(
 )
 
 maven.install(
-    name = "rules_android_maven",
-    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
+    name = "extra_maven",
+    artifacts = ["junit:junit:4.13.2"],
     repositories = [
         "https://maven.google.com",
         "https://repo1.maven.org/maven2",
     ],
-    use_starlark_android_rules = True,
 )
 "#;
         let (total, unpinned) = scan_maven_installs(module);
         assert_eq!(total, 2);
-        assert_eq!(unpinned, vec![(6, "rules_android_maven".to_string())]);
+        assert_eq!(unpinned, vec![(6, "extra_maven".to_string())]);
     }
 
     #[test]
     fn commented_out_lock_file_fails() {
         let module = r#"
 maven.install(
-    name = "rules_android_maven",
-    # lock_file = "//:rules_android_maven_install.json",
-    use_starlark_android_rules = True,
+    name = "extra_maven",
+    # lock_file = "//:extra_maven_install.json",
+    repositories = ["https://maven.google.com"],
 )
 "#;
         assert_eq!(
             scan_maven_installs(module).1,
-            vec![(2, "rules_android_maven".to_string())]
+            vec![(2, "extra_maven".to_string())]
         );
     }
 
@@ -407,7 +405,7 @@ maven.install(
     fn context_check_reports_pass_and_fail() {
         let good_dir = temp_repo(
             "good",
-            "maven.install(\n    name = \"rules_android_maven\",\n    lock_file = \"//:rules_android_maven_install.json\",\n)\n",
+            "maven.install(\n    name = \"extra_maven\",\n    lock_file = \"//:extra_maven_install.json\",\n)\n",
         );
         let good_ctx = Context::for_root(good_dir.to_str().unwrap());
         check_maven_lock_files(&good_ctx);
@@ -418,7 +416,7 @@ maven.install(
 
         let bad_dir = temp_repo(
             "bad",
-            "maven.install(\n    name = \"rules_android_maven\",\n    use_starlark_android_rules = True,\n)\n",
+            "maven.install(\n    name = \"extra_maven\",\n    repositories = [\"https://repo1.maven.org/maven2\"],\n)\n",
         );
         let bad_ctx = Context::for_root(bad_dir.to_str().unwrap());
         check_maven_lock_files(&bad_ctx);
@@ -426,7 +424,7 @@ maven.install(
         assert!(bad_ctx.overall_fail.get());
         let rows = bad_ctx.rows.get(GROUP);
         assert!(rows.contains("MODULE.bazel:1"), "{rows}");
-        assert!(rows.contains("rules_android_maven"), "{rows}");
+        assert!(rows.contains("extra_maven"), "{rows}");
         let _ = fs::remove_dir_all(&bad_dir);
     }
 }

@@ -1093,91 +1093,6 @@ bazel_dep(name = "rules_kotlin", version = "2.3.20")
 # Force a transitive resolution of rules_android to pick up Bazel 9 fixes and upstream maven pins
 bazel_dep(name = "rules_android", version = "0.8.1")
 
-# Even though rules_android 0.8.1 pins `rules_android_maven` upstream, its
-# lock file lists only maven.google.com and repo1.maven.org/maven2, and
-# tools/downloader.cfg does not rewrite repo1.maven.org. Maven Central returned
-# HTTP 429 on `org.robolectric:nativeruntime-dist-compat:1.0.16` and broke CI
-# runs 43812989911, 44374632864, 44882151661, 45276824522, and 45426418210.
-#
-# Keep this minimal root override so Google's Maven Central mirror stays ahead
-# of repo1.maven.org/maven2 in the download order, using rules_android 0.8.1's
-# exact artifacts list and `use_starlark_android_rules`/`aar_import_bzl_label`.
-# Re-pin with `REPIN=1 bazel run @rules_android_maven//:pin`. Drop this override
-# once the mirror ordering is no longer needed.
-maven.install(
-    name = "rules_android_maven",
-    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
-    artifacts = [
-        "androidx.privacysandbox.tools:tools:1.0.0-alpha06",
-        "androidx.privacysandbox.tools:tools-apigenerator:1.0.0-alpha06",
-        "androidx.privacysandbox.tools:tools-apipackager:1.0.0-alpha06",
-        "androidx.test:core:1.6.0-alpha01",
-        "androidx.test.ext:junit:1.2.0-alpha01",
-        "com.android.tools.apkdeployer:apkdeployer:8.11.0-alpha10",
-        "com.android.tools.build:bundletool:1.18.2",
-        "com.android.tools:desugar_jdk_libs_minimal:2.1.5",
-        "com.android.tools:desugar_jdk_libs_configuration_minimal:2.1.5",
-        "com.android.tools:desugar_jdk_libs_nio:2.1.5",
-        "com.android.tools:desugar_jdk_libs_configuration_nio:2.1.5",
-        "com.android.tools:desugar_jdk_libs_configuration:2.1.5",
-        "com.android.tools:r8:9.3.16",
-        "org.bouncycastle:bcprov-jdk18on:1.77",
-        "org.hamcrest:hamcrest-core:2.2",
-        "org.robolectric:robolectric:4.14.1",
-        "com.google.flogger:flogger:0.8",
-        "com.google.flogger:flogger-system-backend:0.8",
-        "com.google.guava:guava:32.1.2-jre",
-        "com.google.guava:failureaccess:1.0.1",
-        "info.picocli:picocli:4.7.4",
-        "jakarta.inject:jakarta.inject-api:2.0.1",
-        "junit:junit:4.13.2",
-        "com.beust:jcommander:1.82",
-        "com.google.code.findbugs:jsr305:3.0.2",
-        "androidx.databinding:databinding-compiler:8.7.0",
-        "org.ow2.asm:asm:9.6",
-        "org.ow2.asm:asm-commons:9.6",
-        "org.ow2.asm:asm-tree:9.6",
-        "org.ow2.asm:asm-util:9.6",
-        "com.android:zipflinger:8.7.0",
-        "com.android.tools.build:gradle:8.7.0",
-        "com.android:signflinger:8.7.0",
-        "com.android.tools.build:aapt2-proto:8.6.1-11315950",
-        "com.android.tools.build:apksig:8.7.0",
-        "com.android.tools.build:apkzlib:8.7.0",
-        "com.google.auto.value:auto-value:1.11.0",
-        "com.google.auto.value:auto-value-annotations:1.11.0",
-        "com.google.auto:auto-common:1.2.2",
-        "com.google.auto.service:auto-service:1.1.1",
-        "com.google.auto.service:auto-service-annotations:1.1.1",
-        "com.google.errorprone:error_prone_annotations:2.33.0",
-        "com.google.errorprone:error_prone_type_annotations:2.33.0",
-        "com.google.errorprone:error_prone_check_api:2.33.0",
-        "com.google.errorprone:error_prone_core:2.33.0",
-        # Test deps
-        "com.google.guava:guava-testlib:33.2.1-jre",
-        "com.google.jimfs:jimfs:1.2",
-        "com.google.testing.compile:compile-testing:0.18",
-        "com.google.testparameterinjector:test-parameter-injector:1.16",
-        "com.google.truth:truth:1.4.0",
-        "com.google.truth.extensions:truth-java8-extension:1.4.0",
-        "com.google.truth.extensions:truth-liteproto-extension:1.4.0",
-        "com.google.truth.extensions:truth-proto-extension:1.4.0",
-        "org.mockito:mockito-core:5.4.0",
-    ],
-    lock_file = "//:rules_android_maven_install.json",
-    repositories = [
-        "https://maven.google.com",
-        "https://maven-central.storage-download.googleapis.com/maven2",
-        "https://repo1.maven.org/maven2",
-    ],
-    use_starlark_android_rules = True,
-)
-use_repo(
-    maven,
-    "rules_android_maven",
-    "unpinned_rules_android_maven",
-)
-
 # Android NDK, so an APK can be built for the ABIs a DEVICE uses rather than
 # the ABI of whichever machine happened to build it.
 #
@@ -1233,8 +1148,8 @@ register_toolchains("@androidsdk//:all")
 
 http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
 
-# Google's mirror of Maven Central first, Maven Central itself second -- the
-# same order as rules_android_maven above. With Maven Central as the only URL,
+# Google's mirror of Maven Central first, Maven Central itself second --
+# matching tools/downloader.cfg. With Maven Central as the only URL,
 # a 403 from it failed tidy-check in the merge queue (runs 43407933341 and
 # 43525890774, 2026-11-13); the integrity pin makes either source safe.
 http_jar(
