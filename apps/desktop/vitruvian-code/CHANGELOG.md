@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.48.0...vitruvian-code-v1.49.0) (2026-11-25)
+
+
+### Features
+
+* **vitruvian-code:** add ACP registry agents from Settings and chat with them ([#5535](https://github.com/VitruvianSoftware/vitruvian-core/issues/5535)) ([f593f0a](https://github.com/VitruvianSoftware/vitruvian-core/commit/f593f0a1b4c4f1fad8d9bae4f9663812c214c657))
+
 ## [1.48.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.47.0...vitruvian-code-v1.48.0) (2026-11-25)
 
 
