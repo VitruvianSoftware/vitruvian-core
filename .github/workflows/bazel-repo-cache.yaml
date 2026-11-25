@@ -33,6 +33,14 @@ on:
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - ".bazelversion"
+      - "go.work"
+      - "go.work.sum"
+      - "go.sum"
+      - "apps/cli/vitruvian-devx/go.sum"
+      - "apps/desktop/vitruvian-courier/engine/go.sum"
+      - "packages/vitruvian-sdk/go/go.sum"
+      - "packages/pulumi/library/go/go.sum"
+      - "packages/pulumi/library/go/pkg/*/go.sum"
       - ".github/actions/setup-bazel/**"
       - ".github/actions/bazel-repo-cache-warm/**"
       - ".github/workflows/bazel-repo-cache.yaml"
@@ -41,6 +49,14 @@ on:
       - "MODULE.bazel"
       - "MODULE.bazel.lock"
       - ".bazelversion"
+      - "go.work"
+      - "go.work.sum"
+      - "go.sum"
+      - "apps/cli/vitruvian-devx/go.sum"
+      - "apps/desktop/vitruvian-courier/engine/go.sum"
+      - "packages/vitruvian-sdk/go/go.sum"
+      - "packages/pulumi/library/go/go.sum"
+      - "packages/pulumi/library/go/pkg/*/go.sum"
       - ".github/actions/setup-bazel/**"
       - ".github/actions/bazel-repo-cache-warm/**"
       - ".github/workflows/bazel-repo-cache.yaml"
@@ -127,8 +143,10 @@ jobs:
           platform-arch: arm64
           bazel-flags: --config=macos-app
           # Target list source: .github/workflows/ci.yaml (macos-build job,
-          # every target pattern passed to bazel build/test/run with --config=macos-app).
-          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
+          # every target pattern passed to bazel build/test/run with --config=macos-app)
+          # plus //apps/desktop/vitruvian-courier/engine/... (#4187: warms and
+          # offline-verifies the macOS courier Go engine modules).
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium //apps/desktop/vitruvian-courier/engine/...
 
   warm-macos-save:
     name: warm-macos-save
@@ -151,6 +169,6 @@ jobs:
           platform-os: darwin
           platform-arch: arm64
           bazel-flags: --config=macos-app
-          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium
+          targets: //apps/desktop/vitruvian-code/... //apps/desktop/vitruvian-code/macos:VitruvianCode //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:app_holds_mermaid_test //apps/desktop/vitruvian-code/macos:app_holds_bot_test //apps/desktop/vitruvian-code/macos:app_holds_node_test //apps/desktop/vitruvian-speaker/... //apps/desktop/vitruvian-speaker:VitruvianSpeaker //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:sync_secrets_test //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test //apps/desktop/vitruvian-speaker:zip_tool_test //tools/desktop-package:package-desktop_test //apps/desktop/vitruvian-speaker:publish_test //apps/desktop/vitruvian-speaker:publish //apps/mobile/vitruvian-remote/macmenu:VitruvianRemote //apps/mobile/vitruvian-remote/macmenu:publish-tool //apps/desktop/vitruvian-atrium:VitruvianAtrium //apps/desktop/vitruvian-courier/engine/...
           cache-limit-gb: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

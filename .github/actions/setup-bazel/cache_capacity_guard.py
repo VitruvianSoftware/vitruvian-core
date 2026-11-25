@@ -3,12 +3,15 @@
 
 """Pre-save Actions cache capacity guard for bazel-repo-cache.yaml.
 
-Reads active Actions cache usage and entries, checks `usage + archive <= limit`
-against `ACTIONS_CACHE_LIMIT_CONFIRMED_GB` (GB = 1,000,000,000 B), and when
-over limit deletes ONLY as many same-platform replaceable entries as needed
-BEFORE saving (legacy partial `-repository-<hex>` first, then superseded
-`-repository-full-<hash>` largest first). If it still does not fit even after
-deleting all replaceable same-platform entries, deletes nothing and skips save.
+Reads active Actions cache usage and entries, checks `usage + needed <= limit`
+against `ACTIONS_CACHE_LIMIT_CONFIRMED_GB` (GB = 1,000,000,000 B), where
+`needed = archive_bytes + gomod_bytes + debs_bytes`, and when over limit deletes
+ONLY as many same-platform replaceable entries as needed BEFORE saving (legacy
+partial `-repository-<hex>` first, then superseded `-repository-full-<hash>`,
+then superseded `bazel-gomod-1-<platform>-<hash>`, then superseded
+`ci-debs-1-<platform>-<hash>`, largest first within each tier). If it still does
+not fit even after deleting all replaceable same-platform entries, deletes
+nothing and skips save.
 """
 
 import argparse
@@ -60,6 +63,38 @@ def is_superseded_full_repo_cache_key(key, platform, current_lock_hash):
     return bool(suffix) and suffix != current_lock_hash
 
 
+def gomod_cache_prefix(platform):
+    """Return the exact `bazel-gomod-1-<platform>-` key prefix."""
+    return f"bazel-gomod-1-{platform}-"
+
+
+def debs_cache_prefix(platform):
+    """Return the exact `ci-debs-1-<platform>-` key prefix."""
+    return f"ci-debs-1-{platform}-"
+
+
+def is_superseded_gomod_cache_key(key, platform, current_gomod_hash):
+    """True for same-platform `bazel-gomod-1-<platform>-<hash>` keys with a different hash."""
+    if not isinstance(key, str) or not platform or not current_gomod_hash:
+        return False
+    prefix = gomod_cache_prefix(platform)
+    if not key.startswith(prefix):
+        return False
+    suffix = key[len(prefix) :]
+    return bool(suffix) and suffix != current_gomod_hash
+
+
+def is_superseded_debs_cache_key(key, platform, current_debs_hash):
+    """True for same-platform `ci-debs-1-<platform>-<hash>` keys with a different hash."""
+    if not isinstance(key, str) or not platform or not current_debs_hash:
+        return False
+    prefix = debs_cache_prefix(platform)
+    if not key.startswith(prefix):
+        return False
+    suffix = key[len(prefix) :]
+    return bool(suffix) and suffix != current_debs_hash
+
+
 def parse_limit_gb_var(raw):
     """Parse `ACTIONS_CACHE_LIMIT_CONFIRMED_GB` into `(limit_gb, error_detail)`."""
     if raw is None or not isinstance(raw, str) or raw.strip() == "":
@@ -92,13 +127,20 @@ def select_pre_save_deletions(
     limit_bytes,
     platform="",
     current_lock_hash="",
+    gomod_bytes=0,
+    debs_bytes=0,
+    current_gomod_hash="",
+    current_debs_hash="",
 ):
     """Plan pre-save deletions: returns `(fits, planned_deletions, real_peak_bytes)`."""
     _require_non_negative_int(total_active_bytes, "total_active_bytes")
     _require_non_negative_int(archive_bytes, "archive_bytes")
+    _require_non_negative_int(gomod_bytes, "gomod_bytes")
+    _require_non_negative_int(debs_bytes, "debs_bytes")
     _require_non_negative_int(limit_bytes, "limit_bytes")
 
-    direct_peak = total_active_bytes + archive_bytes
+    needed_bytes = archive_bytes + gomod_bytes + debs_bytes
+    direct_peak = total_active_bytes + needed_bytes
     if direct_peak <= limit_bytes:
         return True, [], direct_peak
 
@@ -111,6 +153,10 @@ def select_pre_save_deletions(
             priority = 0
         elif is_superseded_full_repo_cache_key(key, platform, current_lock_hash):
             priority = 1
+        elif is_superseded_gomod_cache_key(key, platform, current_gomod_hash):
+            priority = 2
+        elif is_superseded_debs_cache_key(key, platform, current_debs_hash):
+            priority = 3
         else:
             continue
         size = _require_non_negative_int(
@@ -123,7 +169,7 @@ def select_pre_save_deletions(
 
     candidates.sort()
     total_replaced = sum(item[4] for item in candidates)
-    if total_active_bytes - total_replaced + archive_bytes > limit_bytes:
+    if total_active_bytes - total_replaced + needed_bytes > limit_bytes:
         return False, [], direct_peak
 
     planned = []
@@ -131,10 +177,10 @@ def select_pre_save_deletions(
     for _prio, _neg_size, cid, key, size in candidates:
         planned.append({"id": cid, "key": key, "size_in_bytes": size})
         deleted_bytes += size
-        if total_active_bytes - deleted_bytes + archive_bytes <= limit_bytes:
+        if total_active_bytes - deleted_bytes + needed_bytes <= limit_bytes:
             break
 
-    return True, planned, max(0, total_active_bytes - deleted_bytes) + archive_bytes
+    return True, planned, max(0, total_active_bytes - deleted_bytes) + needed_bytes
 
 
 def prepare_capacity_for_save(
@@ -144,18 +190,29 @@ def prepare_capacity_for_save(
     limit_gb_raw,
     platform="",
     current_lock_hash="",
+    gomod_bytes=0,
+    debs_bytes=0,
+    current_gomod_hash="",
+    current_debs_hash="",
     delete_fn=None,
 ):
     """Evaluate pre-save capacity and delete only the minimum needed replaceable entries."""
     plat_label = platform or "unknown"
+    _require_non_negative_int(archive_bytes, "archive_bytes")
+    _require_non_negative_int(gomod_bytes, "gomod_bytes")
+    _require_non_negative_int(debs_bytes, "debs_bytes")
+    needed_bytes = archive_bytes + gomod_bytes + debs_bytes
     limit_gb, limit_error = parse_limit_gb_var(limit_gb_raw)
     report = {
         "usage_before_bytes": total_active_bytes,
         "archive_bytes": archive_bytes,
+        "gomod_bytes": gomod_bytes,
+        "debs_bytes": debs_bytes,
+        "needed_bytes": needed_bytes,
         "limit_bytes": None,
         "deleted_bytes": 0,
         "delete_errors": [],
-        "real_peak_bytes": total_active_bytes + archive_bytes,
+        "real_peak_bytes": total_active_bytes + needed_bytes,
         "message": "",
     }
 
@@ -175,12 +232,17 @@ def prepare_capacity_for_save(
         limit_bytes=limit_bytes,
         platform=platform,
         current_lock_hash=current_lock_hash,
+        gomod_bytes=gomod_bytes,
+        debs_bytes=debs_bytes,
+        current_gomod_hash=current_gomod_hash,
+        current_debs_hash=current_debs_hash,
     )
     if not fits:
         report["message"] = (
-            f"Cache save skipped ({plat_label}): usage {total_active_bytes} B + archive "
-            f"{archive_bytes} B exceeds limit {limit_bytes} B ({limit_gb} GB) even after "
-            f"all replaceable {plat_label} entries; deleting nothing."
+            f"Cache save skipped ({plat_label}): usage {total_active_bytes} B + needed "
+            f"{needed_bytes} B (archive={archive_bytes}, gomod={gomod_bytes}, debs={debs_bytes}) "
+            f"exceeds limit {limit_bytes} B ({limit_gb} GB) even after all replaceable "
+            f"{plat_label} entries; deleting nothing."
         )
         return False, report
 
@@ -200,7 +262,7 @@ def prepare_capacity_for_save(
                 f"Failed to delete cache id={item['id']} key={item['key']!r}: {exc}"
             )
 
-    real_peak_bytes = max(0, total_active_bytes - deleted_bytes) + archive_bytes
+    real_peak_bytes = max(0, total_active_bytes - deleted_bytes) + needed_bytes
     report["deleted_bytes"] = deleted_bytes
     report["delete_errors"] = delete_errors
     report["real_peak_bytes"] = real_peak_bytes
@@ -347,12 +409,23 @@ def _parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     add_common_args(p, default_platform_fallback="unknown")
     p.add_argument("--archive-bytes", default=os.environ.get("ARCHIVE_BYTES", ""))
+    p.add_argument("--gomod-bytes", default=os.environ.get("GOMOD_SAVE_BYTES", "0"))
+    p.add_argument("--gomod-hash", default=os.environ.get("GOMOD_HASH", ""))
+    p.add_argument("--debs-bytes", default=os.environ.get("DEBS_SAVE_BYTES", "0"))
+    p.add_argument("--debs-hash", default=os.environ.get("DEBS_SHA_KEY", ""))
     p.add_argument(
         "--limit-gb",
         default=os.environ.get("ACTIONS_CACHE_LIMIT_CONFIRMED_GB", ""),
     )
     p.add_argument("--output-file", default=os.environ.get("GITHUB_OUTPUT", ""))
     return p.parse_args(argv)
+
+
+def _parse_non_negative_bytes(raw, label):
+    val = int(raw)
+    if val < 0:
+        raise ValueError(f"{label} is negative")
+    return val
 
 
 def main(argv=None, sleep_fn=time.sleep):
@@ -393,12 +466,22 @@ def main(argv=None, sleep_fn=time.sleep):
             "GH_TOKEN/--token is empty; cannot read Actions cache usage; save is aborted."
         )
     try:
-        archive_bytes = int(args.archive_bytes)
-        if archive_bytes < 0:
-            raise ValueError("negative")
+        archive_bytes = _parse_non_negative_bytes(args.archive_bytes, "ARCHIVE_BYTES")
     except (TypeError, ValueError):
         return fail_early(
             f"ARCHIVE_BYTES/--archive-bytes is missing or invalid ({args.archive_bytes!r}); save is aborted."
+        )
+    try:
+        gomod_bytes = _parse_non_negative_bytes(args.gomod_bytes, "GOMOD_SAVE_BYTES")
+    except (TypeError, ValueError):
+        return fail_early(
+            f"GOMOD_SAVE_BYTES/--gomod-bytes is invalid ({args.gomod_bytes!r}); save is aborted."
+        )
+    try:
+        debs_bytes = _parse_non_negative_bytes(args.debs_bytes, "DEBS_SAVE_BYTES")
+    except (TypeError, ValueError):
+        return fail_early(
+            f"DEBS_SAVE_BYTES/--debs-bytes is invalid ({args.debs_bytes!r}); save is aborted."
         )
 
     api = GitHubCacheApi(args.api_url, args.repo, args.token)
@@ -425,6 +508,10 @@ def main(argv=None, sleep_fn=time.sleep):
         limit_gb_raw=args.limit_gb,
         platform=args.platform,
         current_lock_hash=args.lock_hash,
+        gomod_bytes=gomod_bytes,
+        debs_bytes=debs_bytes,
+        current_gomod_hash=args.gomod_hash,
+        current_debs_hash=args.debs_hash,
         delete_fn=api.delete_cache,
     )
     for err in report["delete_errors"]:
@@ -433,8 +520,9 @@ def main(argv=None, sleep_fn=time.sleep):
     print(
         f"Actions cache capacity check ({args.platform}): {'ALLOWED' if ok else 'SKIPPED'} "
         f"| usage={report['usage_before_bytes']} deleted={report['deleted_bytes']} "
-        f"archive={report['archive_bytes']} real_peak={report['real_peak_bytes']} "
-        f"limit={report['limit_bytes']}",
+        f"archive={report['archive_bytes']} gomod={report['gomod_bytes']} "
+        f"debs={report['debs_bytes']} needed={report['needed_bytes']} "
+        f"real_peak={report['real_peak_bytes']} limit={report['limit_bytes']}",
         flush=True,
     )
 

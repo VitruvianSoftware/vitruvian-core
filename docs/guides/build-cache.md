@@ -65,3 +65,25 @@ common --config=remote
 
 The recommended pattern is **CI writes, developers read**: your green CI runs become everyone's
 cache hits, and a developer's local environment can't pollute the shared cache.
+
+## CI download caches (`bazel-repo-cache.yaml`)
+
+GitHub-hosted CI jobs restore three pre-warmed download caches via
+[`.github/actions/setup-bazel`](../../.github/actions/setup-bazel/action.yml) (strictly
+restore-only; self-hosted queue runners mount the persistent `vitruvian-queue-cache` PVC
+instead):
+
+- **Bazel repository archives** (`setup-bazel-1-<os>-<arch>-repository-full-<hash>` at
+  `$HOME/.cache/bazel-repo`): external archives from Bazel's downloader.
+- **Go modules** (`bazel-gomod-1-<os>-<arch>-<hash>` at `$HOME/.cache/bazel-gomod`):
+  `cache/download` zips used by gazelle's `go_repository` via
+  `GO_REPOSITORY_USE_HOST_MODCACHE=1` and `GOMODCACHE`, because `go_repository` invokes
+  `go mod download` rather than Bazel's downloader.
+- **LLVM linker `.debs`** (`ci-debs-1-linux-x64-<sha256s>` at `$HOME/.cache/ci-debs`):
+  checksum-verified Ubuntu 24.04 `libicu74` and `libxml2` packages needed by `ld.lld` on
+  Ubuntu 26.04+.
+
+Only [`.github/workflows/bazel-repo-cache.yaml`](../../.github/workflows/bazel-repo-cache.yaml)
+(via [`.github/actions/bazel-repo-cache-warm`](../../.github/actions/bazel-repo-cache-warm/action.yml))
+proves offline completeness (`--repository_disable_download` + `--repo_env=GOPROXY=off`)
+and saves these entries on `main`.

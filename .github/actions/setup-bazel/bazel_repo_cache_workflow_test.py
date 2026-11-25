@@ -407,8 +407,14 @@ def test_warm_composite_save_steps_gated_on_save_mode_and_cache_miss():
         assert not _has_top_level_or(norm), (
             f"save step '{save['name']}' (line {save['start_line']}) if: must not have a top-level || escape hatch: {if_expr!r}"
         )
-        assert "steps.cache-lookup.outputs.cache-hit != 'true'" in norm, (
-            f"save step '{save['name']}' (line {save['start_line']}) if: must guard on cache-lookup miss, got {if_expr!r}"
+        if save["id"].startswith("gomod-"):
+            expected_lookup = "steps.gomod-cache-lookup.outputs.cache-hit != 'true'"
+        elif save["id"].startswith("debs-"):
+            expected_lookup = "steps.debs-cache-lookup.outputs.cache-hit != 'true'"
+        else:
+            expected_lookup = "steps.cache-lookup.outputs.cache-hit != 'true'"
+        assert expected_lookup in norm, (
+            f"save step '{save['name']}' (line {save['start_line']}) if: must guard on {expected_lookup}, got {if_expr!r}"
         )
 
 

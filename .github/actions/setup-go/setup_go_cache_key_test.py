@@ -167,6 +167,9 @@ def test_composite_action_wiring():
     gomod_idx = text.index("steps.cache-key.outputs.gomodcache")
     gocache_idx = text.index("steps.cache-key.outputs.gocache")
     assert gomod_idx < gocache_idx
+    assert "GOPROXY=https://proxy.golang.org|direct" in text
+    assert "GITHUB_ENV" in text
+    assert "${GOPROXY:-}" in text
 
 
 def _run_main_with_go_version(
