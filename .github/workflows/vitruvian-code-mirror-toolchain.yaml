@@ -56,22 +56,6 @@ name: Vitruvian Code Mirror Toolchain
 # one changes without the other.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/desktop/vitruvian-code/macos/Package.swift'
-      - 'apps/desktop/vitruvian-code/macos/Sources/**'
-      - 'apps/desktop/vitruvian-code/macos/Tests/**'
-      - 'apps/desktop/vitruvian-code/macos/Resources/**'
-      - 'apps/desktop/vitruvian-code/macos/claude-helper/bundle/**'
-      - 'apps/desktop/vitruvian-code/macos/claude-helper/node.lock'
-      - 'apps/desktop/vitruvian-code/macos/scripts/**'
-      - 'apps/desktop/vitruvian-code/scripts/**'
-      - 'apps/desktop/vitruvian-code/src/**'
-      - 'apps/desktop/vitruvian-code/testdata/**'
-      - 'apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md'
-      - 'apps/desktop/vitruvian-code/.github/workflows/release.yml'
-      - '.github/workflows/vitruvian-code-mirror-toolchain.yaml'
   pull_request:
     paths:
       - 'apps/desktop/vitruvian-code/macos/Package.swift'
@@ -90,10 +74,10 @@ on:
   # Run it by hand after changing the mirror's runner image.
   workflow_dispatch:
 
-# Per-commit keying on non-PR events so pushes to main do not evict each other.
+# A newer push to the same pull request replaces the older run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: vitruvian-code-mirror-toolchain-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 # Least privilege: checkout and build.
 permissions:
