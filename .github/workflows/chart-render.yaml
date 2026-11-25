@@ -65,6 +65,8 @@ on:
       - '.github/actions/cache-pip-wheel/**'
       # install-pinned-tool checks promtool against its pin here.
       - 'tools/tools.lock.json'
+      # cache-pip-wheel checks PyYAML against its pin here.
+      - 'requirements/all.txt'
       - '.github/workflows/chart-render.yaml'
   push:
     branches: [main]
@@ -140,11 +142,11 @@ jobs:
       # PyYAML; if it were merely present-by-default on the runner image, an
       # image change would make this gate find zero pairs. The script also
       # refuses to run without it, so the two cannot disagree silently.
+      # PyYAML follows requirements/all.txt (hash-pinned under the one-version rule).
       - name: Install PyYAML (cached)
         uses: ./.github/actions/cache-pip-wheel
         with:
           package: pyyaml
-          version: 6.0.4
 
       - name: Build //tools/ci:gitops_values_render (no Bazel on this job)
         id: values-render-bin
@@ -201,11 +203,11 @@ jobs:
           mode: tar
           member-path: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64/promtool
 
+      # PyYAML follows requirements/all.txt (hash-pinned under the one-version rule).
       - name: Install PyYAML (cached)
         uses: ./.github/actions/cache-pip-wheel
         with:
           package: pyyaml
-          version: 6.0.4
 
       - name: Run rule unit tests
         run: |

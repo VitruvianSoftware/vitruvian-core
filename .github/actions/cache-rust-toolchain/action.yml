@@ -21,7 +21,9 @@
 # A cache hit is used only after the toolchain compiles a one-line program and
 # runs cargo; otherwise it is reinstalled for that job. GitHub never overwrites
 # an existing key, so a bad entry keeps being restored (and reinstalled over)
-# until the v1 segment of the key below is bumped.
+# until the v1 segment of the key below is bumped. Only jobs on main running
+# this repo's own code can write the cache entry, so a checksum manifest stored
+# inside the same entry would add no authenticity.
 
 name: Cache Rust toolchain
 description: Restore and (on main only) save a minimal rustup toolchain, verifying cached binaries before use.

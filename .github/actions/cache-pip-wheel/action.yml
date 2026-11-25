@@ -19,15 +19,16 @@
 # SOFTWARE.
 
 name: Cache pip wheel
-description: Restore and (on main only) save pip wheels for a pinned package, retrying with a fresh download if a cached install fails.
+description: Restore and (on main only) save hash-verified pip wheels for a locked package, retrying with a fresh download if a cached install fails.
 
 inputs:
   package:
-    description: PyPI package name (e.g. pyyaml).
+    description: PyPI package name to extract from requirements-file (e.g. pyyaml).
     required: true
-  version:
-    description: Exact pinned package version (e.g. 6.0.4).
-    required: true
+  requirements-file:
+    description: Relative path to the hash-pinned requirements lock file.
+    required: false
+    default: requirements/all.txt
 
 outputs:
   cache-hit:
@@ -47,25 +48,95 @@ runs:
         RUNNER_OS: ${{ runner.os }}
         RUNNER_ARCH: ${{ runner.arch }}
         PIP_PACKAGE: ${{ inputs.package }}
-        PIP_VERSION: ${{ inputs.version }}
+        PIP_REQUIREMENTS_FILE: ${{ inputs.requirements-file }}
       run: |
         set -euo pipefail
-        if [[ ! "${PIP_PACKAGE}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        if [[ ! "${PIP_PACKAGE}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
           echo "::error::Invalid package name '${PIP_PACKAGE}'" >&2
           exit 1
         fi
-        if [[ ! "${PIP_VERSION}" =~ ^[A-Za-z0-9._+-]+$ ]]; then
-          echo "::error::Invalid package version '${PIP_VERSION}'" >&2
+        if [[ -z "${PIP_REQUIREMENTS_FILE}" ]] || [[ ! "${PIP_REQUIREMENTS_FILE}" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ "${PIP_REQUIREMENTS_FILE}" == /* ]] || [[ "${PIP_REQUIREMENTS_FILE}" == -* ]] || [[ "${PIP_REQUIREMENTS_FILE}" == *".."* ]]; then
+          echo "::error::Invalid requirements-file path '${PIP_REQUIREMENTS_FILE}'" >&2
           exit 1
         fi
-        py_ver="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-        echo "path=${RUNNER_TEMP}/pip-wheels/${PIP_PACKAGE}-${PIP_VERSION}" >> "$GITHUB_OUTPUT"
+        if [[ ! -f "${PIP_REQUIREMENTS_FILE}" ]]; then
+          echo "::error::Requirements file not found: '${PIP_REQUIREMENTS_FILE}'" >&2
+          exit 1
+        fi
+
         # Bump the v1 segment to drop a bad cache entry.
-        echo "key=pip-wheel-v1-${RUNNER_OS}-${RUNNER_ARCH}-py${py_ver}-${PIP_PACKAGE}-${PIP_VERSION}" >> "$GITHUB_OUTPUT"
+        python3 - <<'PY'
+        import hashlib
+        import os
+        import re
+        import sys
+
+
+        def normalize_pep503(name: str) -> str:
+            return re.sub(r"[-_.]+", "-", name).lower()
+
+
+        pkg_input = os.environ["PIP_PACKAGE"]
+        req_path = os.environ["PIP_REQUIREMENTS_FILE"]
+        runner_os = os.environ["RUNNER_OS"]
+        runner_arch = os.environ["RUNNER_ARCH"]
+        runner_temp = os.environ["RUNNER_TEMP"]
+        github_output = os.environ["GITHUB_OUTPUT"]
+
+        target_norm = normalize_pep503(pkg_input)
+        entry_re = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^;\s\\]+)")
+
+        with open(req_path, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+
+        collected = []
+        collecting = False
+        for line in lines:
+            if not collecting:
+                m = entry_re.match(line)
+                if m and normalize_pep503(m.group(1)) == target_norm:
+                    collected.append(line)
+                    collecting = line.rstrip().endswith("\\")
+                    if not collecting:
+                        break
+            else:
+                collected.append(line)
+                if not line.rstrip().endswith("\\"):
+                    break
+
+        if not collected:
+            print(f"::error::Package '{pkg_input}' not found in '{req_path}'", file=sys.stderr)
+            sys.exit(1)
+
+        if not any("--hash=" in ln for ln in collected):
+            print(f"::error::Package '{pkg_input}' in '{req_path}' has no --hash= lines", file=sys.stderr)
+            sys.exit(1)
+
+        block_text = "\n".join(collected) + "\n"
+        block_sha = hashlib.sha256(block_text.encode("utf-8")).hexdigest()
+        py_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+        key = f"pip-wheel-v1-{runner_os}-{runner_arch}-py{py_ver}-{target_norm}-{block_sha}"
+        wheel_dir = os.path.join(runner_temp, "pip-wheels", key)
+        req_out = os.path.join(runner_temp, f"pip-req-{key}.txt")
+
+        for val in (wheel_dir, key, req_out):
+            if "\n" in val or "\r" in val:
+                print("::error::Unexpected newline in computed cache metadata", file=sys.stderr)
+                sys.exit(1)
+
+        os.makedirs(runner_temp, exist_ok=True)
+        with open(req_out, "w", encoding="utf-8") as f:
+            f.write(block_text)
+
+        with open(github_output, "a", encoding="utf-8") as out:
+            out.write(f"path={wheel_dir}\n")
+            out.write(f"key={key}\n")
+            out.write(f"req-file={req_out}\n")
+        PY
 
     - name: Restore pip wheel cache (read-only)
       id: cache-restore
-      if: github.ref != 'refs/heads/main'
+      if: github.ref != 'refs/heads/main' && steps.cache-key.outputs.key != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.cache-key.outputs.path }}
@@ -73,7 +144,7 @@ runs:
 
     - name: Restore and save pip wheel cache (main only)
       id: cache-save
-      if: github.ref == 'refs/heads/main'
+      if: github.ref == 'refs/heads/main' && steps.cache-key.outputs.key != ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.cache-key.outputs.path }}
@@ -84,23 +155,28 @@ runs:
       env:
         CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
         WHEEL_DIR: ${{ steps.cache-key.outputs.path }}
-        PIP_PACKAGE: ${{ inputs.package }}
-        PIP_VERSION: ${{ inputs.version }}
+        REQ_FILE: ${{ steps.cache-key.outputs.req-file }}
       run: |
         set -euo pipefail
-        pkg_spec="${PIP_PACKAGE}==${PIP_VERSION}"
-        mkdir -p "${WHEEL_DIR}"
-        if [ "${CACHE_HIT}" = "true" ] && [ -n "$(find "${WHEEL_DIR}" -maxdepth 1 -type f \( -name '*.whl' -o -name '*.tar.gz' \))" ]; then
-          if ! python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "${pkg_spec}"; then
-            echo "::warning::Cached wheels for ${pkg_spec} failed to install; clearing and re-downloading"
-            rm -rf "${WHEEL_DIR}"
-            mkdir -p "${WHEEL_DIR}"
-            python3 -m pip download --disable-pip-version-check -d "${WHEEL_DIR}" "${pkg_spec}"
-            python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "${pkg_spec}"
-          fi
-        else
+        # No positional arguments are passed to pip (all requirements come from
+        # -r "${REQ_FILE}"), so no `--` option terminator is needed.
+        download_wheels() {
           rm -rf "${WHEEL_DIR}"
           mkdir -p "${WHEEL_DIR}"
-          python3 -m pip download --disable-pip-version-check -d "${WHEEL_DIR}" "${pkg_spec}"
-          python3 -m pip install --disable-pip-version-check --quiet --no-index --find-links "${WHEEL_DIR}" "${pkg_spec}"
+          if ! python3 -m pip download --disable-pip-version-check --only-binary=:all: --require-hashes -r "${REQ_FILE}" -d "${WHEEL_DIR}"; then
+            echo "::error::Failed to download hash-verified binary wheel from ${REQ_FILE}; lock file may lack a wheel for this runner's Python/platform" >&2
+            exit 1
+          fi
+        }
+
+        mkdir -p "${WHEEL_DIR}"
+        if [ "${CACHE_HIT}" = "true" ] && [ -n "$(find "${WHEEL_DIR}" -maxdepth 1 -type f -name '*.whl')" ]; then
+          if ! python3 -m pip install --disable-pip-version-check --no-index --find-links "${WHEEL_DIR}" --require-hashes -r "${REQ_FILE}"; then
+            echo "::warning::Cached wheel failed hash verification or install; clearing and re-downloading"
+            download_wheels
+            python3 -m pip install --disable-pip-version-check --no-index --find-links "${WHEEL_DIR}" --require-hashes -r "${REQ_FILE}"
+          fi
+        else
+          download_wheels
+          python3 -m pip install --disable-pip-version-check --no-index --find-links "${WHEEL_DIR}" --require-hashes -r "${REQ_FILE}"
         fi
