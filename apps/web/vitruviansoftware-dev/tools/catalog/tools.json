@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-24T17:45:54Z",
+  "generated": "2026-11-25T02:30:44Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -274,14 +274,14 @@
         "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
         "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
       },
-      "version": "1.44.1",
+      "version": "1.47.0",
       "protocol": "2",
       "minimumAppVersion": "3.72.1",
       "source": "https://github.com/VitruvianSoftware/vitruvian-code",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.44.1/vitruvian-code-tool-1.44.1.zip",
-        "sha256": "443e1d97737123be94612a59e80b6a9a2a56691c085434b814eb1001e5acd72c",
-        "size": 83006081
+        "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.47.0/vitruvian-code-tool-1.47.0.zip",
+        "sha256": "8760e5f24f490f3f2eae68c119c8dd485abf69bfb1f45844afbe67b6c83f2fdf",
+        "size": 83712355
       },
       "uses": ["notify", "storage"],
       "commands": [
