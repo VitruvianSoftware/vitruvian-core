@@ -722,8 +722,12 @@ public final class ConversationModel: ObservableObject {
     // Which answers still count.
     private var generation = 0
     private var pageEpoch = 0
-    private var fetchSerial = 0
-    private var appliedSerial = 0
+    /// Each read of the newest page is numbered when it starts, and the number of the newest one applied is kept, so a
+    /// slower, older read never replaces a newer one. Tests read them too: a page whose number is above the one
+    /// before a change was read after it (`pagesApplied` alone also counts a read already under way, which may
+    /// bring the page from before the change).
+    private(set) var fetchSerial = 0
+    private(set) var appliedSerial = 0
     private var refetching = false
     private var refetchAgain = false
     /// A resync (or a new engine) asked for the older pages to be dropped, and no answer has done it yet. Whichever

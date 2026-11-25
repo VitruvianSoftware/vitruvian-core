@@ -1943,13 +1943,17 @@ extension ConversationModelTests {
     // MARK: - Incognito
 
     /// A change in the chat, and its newest page read and applied: what the model did about it is done.
+    ///
+    /// The page must come from a read that started after the change. A read already under way (the one an earlier
+    /// change started) can still be answered with the page from before it, and once counted that let this return
+    /// before the model had seen the change: a reply's read then came too late for the check after it (#5493).
     private func change(_ h: ConversationHarness, _ room: String = "!a", adding event: [String: Any]? = nil,
                         replacing replaced: [String: Any]? = nil) async throws {
         if let event { h.script.add(room, event) }
         if let replaced { h.script.replace(room, replaced) }
-        let applied = h.conversation.pagesApplied
+        let startedBefore = h.conversation.fetchSerial
         h.server.notify(["kind": "event", "room_id": room, "event_id": "$change"])
-        try await waitUntil { h.conversation.pagesApplied > applied }
+        try await waitUntil { h.conversation.appliedSerial > startedBefore }
     }
 
     /// Review Focus 4. While Incognito is on, opening a chat and reading it marks nothing read. It becomes read
