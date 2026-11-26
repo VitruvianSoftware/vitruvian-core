@@ -65,11 +65,13 @@ final class ACPRegistryLiveTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["ACP_REGISTRY_LIVE_PROMPT"] != nil else { return }
         for mode in VitruvianCodeApprovalMode.allCases {
             let chat = ACPConnection(launchSpec: launch, policy: .none, modeProvider: { (mode, false) },
+                                     hooks: ACPConnection.Hooks(modeSync: .agentPlanMode),
                                      stateFolderURL: state, sessionSetupTimeout: 120)
             var text = ""
             let reader = Task { for await event in chat.events { switch event { case .text(let chunk): text += chunk; case .finished(let status, _, let error, _, _): text += " [finished \(status) \(error ?? "")]"; default: break } } }
             do {
                 _ = try await chat.start(AgentSessionRequest(workingDirectory: work.path))
+                try await chat.syncMode(approvalMode: mode, planSwitch: false)
                 let stop = try await chat.prompt([.text("Reply with exactly: hello")])
                 print("ACPRegistryLive prompt mode=\(mode.rawValue): stop=\(stop.rawValue) text=\(text.prefix(80))")
             } catch {

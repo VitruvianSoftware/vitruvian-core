@@ -27,7 +27,8 @@ import Foundation
 /// As T3 Code's registry adapter (`packages/provider-acp-registry/src/server/adapter.ts`)
 /// does for an agent with no quirks of its own, the client offers none of its
 /// optional features (`ACPClientPolicy.none`) and passes no MCP servers: the
-/// agent uses its own MCP settings. Agents with quirks (Claude's adapter, in
+/// agent uses its own MCP settings. Plan switches to the agent's own plan mode
+/// (`ACPConnection.ModeSync.agentPlanMode`). Agents with quirks (Claude's adapter, in
 /// step 5f) get their own hooks.
 ///
 /// A chat never installs. The engine checks for the installed copy first
@@ -59,7 +60,7 @@ public enum ACPRegistryConnection {
             launchSpec: launch,
             policy: .none,
             modeProvider: modeProvider,
-            hooks: ACPConnection.Hooks(authenticateMethodID: spec.signInMethodID, syncsApprovalMode: false),
+            hooks: ACPConnection.Hooks(authenticateMethodID: spec.signInMethodID, modeSync: .agentPlanMode),
             stateFolderURL: URL(fileURLWithPath: environment.stateDirectory, isDirectory: true),
             stateDirectoryOverride: environment.stateDirectoryOverride,
             processFactory: processFactory

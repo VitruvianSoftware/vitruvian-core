@@ -295,8 +295,8 @@ final class ACPRegistryAgentsTests: XCTestCase {
 
     /// OpenCode's modes are "build" and "plan". The chat sent its approval mode as the session's
     /// "default" mode before every turn, OpenCode has none by that name, and no prompt was ever
-    /// sent (wire log from the test copy, 2026-11-25). A registry agent's connection, as made for a
-    /// chat, sends no mode at all, as T3 Code does.
+    /// sent (wire log from the test copy, 2026-11-25). With plan off, a registry agent's chat
+    /// sends no mode, whatever the approval mode, as T3 Code's ACP adapter does.
     func testARegistryAgentsChatSendsNoModeChange() async throws {
         let agent = ScriptedACPAgent()
         let provider = registryProvider()
@@ -327,16 +327,107 @@ final class ACPRegistryAgentsTests: XCTestCase {
             ])
         }
         _ = try await withACPTestTimeout(seconds: 3) { try await connection.start(AgentSessionRequest(workingDirectory: "/w")) }
-        for mode in VitruvianCodeApprovalMode.allCases {
+        for mode in VitruvianCodeApprovalMode.allCases where mode != .plan {
             try await connection.syncMode(approvalMode: mode, planSwitch: false)
         }
-        try await connection.syncMode(approvalMode: .yolo, planSwitch: true)
         let stop = try await withACPTestTimeout(seconds: 3) { try await connection.prompt([.text("hello")]) }
         try await withACPTestTimeout(seconds: 3) { try await driver.value }
         XCTAssertEqual(stop, .endTurn)
         let methods = await agent.allClientMessages().compactMap { $0.objectValue?["method"]?.stringValue }
         XCTAssertEqual(methods, ["initialize", "session/new", "session/prompt"])
         await connection.stop()
+    }
+
+    private func registryConnection(_ agent: ScriptedACPAgent) -> ACPConnection {
+        let provider = registryProvider()
+        let spec = AgentConnectionSpec(
+            provider: provider,
+            configuration: VitruvianCodeConfiguration(approvalMode: .yolo, model: "", effort: .high, activeProvider: provider),
+            agentPath: nil, workingDirectory: "/w", ollamaDefaultModel: "",
+            turnModes: AgentTurnModes(plan: false, worktree: false, attachments: [], fork: false),
+            environment: [:])
+        return ACPRegistryConnection.make(spec: spec, environment: .live(stateDirectoryOverride: state),
+                                          processFactory: agent.makeProcessFactory())
+    }
+
+    /// Plan on a registry agent uses the agent's own plan mode and plan off puts its own mode back,
+    /// as T3 Code's ACP adapter does (`configureSession`). OpenCode offers its modes as a session
+    /// option with values "build" and "plan".
+    func testPlanSwitchesARegistryAgentToItsOwnPlanModeAndBack() async throws {
+        let agent = ScriptedACPAgent()
+        let connection = registryConnection(agent)
+        let mode: ACPJSONValue = .object([
+            "id": .string("mode"), "name": .string("Mode"), "category": .string("mode"), "type": .string("select"),
+            "currentValue": .string("build"),
+            "options": .array([.object(["value": .string("build"), "name": .string("Build")]),
+                               .object(["value": .string("plan"), "name": .string("Plan")])]),
+        ])
+        let driver = Task {
+            try await agent.playSteps([
+                .expectClientRequest(method: "initialize"),
+                .agentSend(Self.ok(["protocolVersion": .int(1)])),
+                .expectClientRequest(method: "session/new"),
+                .agentSend(Self.ok(["sessionId": .string("ses_1"), "configOptions": .array([mode])])),
+                .expectClientRequest(method: "session/set_config_option"),
+                .agentSend(Self.ok([:])),
+                .expectClientRequest(method: "session/set_config_option"),
+                .agentSend(Self.ok([:])),
+            ])
+        }
+        _ = try await withACPTestTimeout(seconds: 3) { try await connection.start(AgentSessionRequest(workingDirectory: "/w")) }
+        try await connection.syncMode(approvalMode: .yolo, planSwitch: true)
+        try await connection.syncMode(approvalMode: .yolo, planSwitch: true)
+        try await connection.syncMode(approvalMode: .yolo, planSwitch: false)
+        try await connection.syncMode(approvalMode: .standard, planSwitch: false)
+        try await withACPTestTimeout(seconds: 3) { try await driver.value }
+        let sets = await agent.allClientMessages()
+            .filter { $0.objectValue?["method"]?.stringValue == "session/set_config_option" }
+            .compactMap { $0.objectValue?["params"]?.objectValue }
+        XCTAssertEqual(sets.map { $0["configId"]?.stringValue }, ["mode", "mode"])
+        XCTAssertEqual(sets.map { $0["value"]?.stringValue }, ["plan", "build"], "plan, then the agent's own mode back")
+        await connection.stop()
+    }
+
+    /// An agent that offers its modes the older way (`modes`, set with `session/set_mode`) gets the
+    /// same: its plan mode with plan on, its own mode back with plan off.
+    func testPlanUsesSetModeForAnAgentWithOnlyModes() async throws {
+        let agent = ScriptedACPAgent()
+        let connection = registryConnection(agent)
+        let modes: ACPJSONValue = .object([
+            "currentModeId": .string("code"),
+            "availableModes": .array([.object(["id": .string("code"), "name": .string("Code")]),
+                                      .object(["id": .string("architect"), "name": .string("Architect")])]),
+        ])
+        let driver = Task {
+            try await agent.playSteps([
+                .expectClientRequest(method: "initialize"),
+                .agentSend(Self.ok(["protocolVersion": .int(1)])),
+                .expectClientRequest(method: "session/new"),
+                .agentSend(Self.ok(["sessionId": .string("ses_1"), "modes": modes])),
+                .expectClientRequest(method: "session/set_mode"),
+                .agentSend(Self.ok([:])),
+                .expectClientRequest(method: "session/set_mode"),
+                .agentSend(Self.ok([:])),
+            ])
+        }
+        _ = try await withACPTestTimeout(seconds: 3) { try await connection.start(AgentSessionRequest(workingDirectory: "/w")) }
+        try await connection.syncMode(approvalMode: .plan, planSwitch: false)
+        try await connection.syncMode(approvalMode: .acceptEdits, planSwitch: false)
+        try await withACPTestTimeout(seconds: 3) { try await driver.value }
+        let sets = await agent.allClientMessages()
+            .filter { $0.objectValue?["method"]?.stringValue == "session/set_mode" }
+            .compactMap { $0.objectValue?["params"]?.objectValue?["modeId"]?.stringValue }
+        XCTAssertEqual(sets, ["architect", "code"])
+        await connection.stop()
+    }
+
+    func testPlanModeIDsAreRecognised() {
+        for id in ["plan", "architect", "https://agentclientprotocol.com/protocol/session-modes#plan"] {
+            XCTAssertTrue(ACPConnection.isPlanModeID(id), id)
+        }
+        for id in ["build", "default", "code", "planner", "#build"] {
+            XCTAssertFalse(ACPConnection.isPlanModeID(id), id)
+        }
     }
 
     /// Retry resumed a session the agent no longer had, and the chat again said only the generic
