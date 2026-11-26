@@ -2007,7 +2007,15 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                 let desc = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 reason = desc.isEmpty ? strings.agentFailed : desc
             } else {
-                reason = strings.agentFailed
+                // When the agent itself refused the turn and said why (an ACP error reply,
+                // such as OpenCode's "Model is unavailable."), show its words: the generic
+                // sentence alone leaves the user nothing to act on.
+                if case .rpcError(let rpc)? = error as? ACPTransportError,
+                   !rpc.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    reason = "\(strings.agentFailed) \(rpc.message)"
+                } else {
+                    reason = strings.agentFailed
+                }
                 replace(reply: reason, isError: true)
             }
             lastFailedPrompt = messages.last(where: { $0.role == .user })?.text

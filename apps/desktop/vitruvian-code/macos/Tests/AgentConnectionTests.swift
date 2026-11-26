@@ -902,6 +902,19 @@ final class AgentConnectionTests: XCTestCase {
         XCTAssertFalse(thrown.running)
     }
 
+    /// An agent that refuses the turn with an ACP error says why, and the chat shows it. OpenCode's
+    /// "Model is unavailable." was hidden behind the generic sentence (test copy, 2026-11-25).
+    func testAnAgentsOwnErrorReplyIsShown() async throws {
+        let refusal = ACPTransportError.rpcError(ACPRPCError(
+            code: ACPRPCError.internalError,
+            message: "Internal error: Upstream request failed: Model is unavailable."))
+        let thrown = await fakeTurn(events: [], throwing: refusal)
+        XCTAssertEqual(thrown.lastIsError, true)
+        XCTAssertEqual(thrown.failed, true)
+        XCTAssertEqual(thrown.lastText,
+                       VitruvianCodeHostStrings().agentFailed + " Internal error: Upstream request failed: Model is unavailable.")
+    }
+
     // A custom command on the plain-protocol path ends as its own kind of turn.
     private func customTurn(viaFake events: [AgentEvent]?, reason: AgentStopReason = .endTurn,
                             stdout: String = "", stderr: String = "", exit status: Int32 = 0) async -> Observed {

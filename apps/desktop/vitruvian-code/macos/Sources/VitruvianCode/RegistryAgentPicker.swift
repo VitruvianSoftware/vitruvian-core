@@ -72,7 +72,7 @@ struct RegistryAgentPicker: View {
             }
         }
         .padding(16)
-        .frame(width: 560, height: 520)
+        .frame(width: 460, height: 500)
         .task { await list.load() }
     }
 
@@ -111,7 +111,7 @@ struct RegistryAgentPicker: View {
         case .available:
             Button("Add") {
                 Task {
-                    if let provider = await list.add(agent) {
+                    if let provider = await list.add(agent, existing: savedProviders) {
                         configManager.providers.append(CLIProvider(provider))
                     }
                 }

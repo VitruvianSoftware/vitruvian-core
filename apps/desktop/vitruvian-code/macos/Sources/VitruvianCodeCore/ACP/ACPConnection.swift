@@ -142,6 +142,8 @@ public final class ACPConnection: PersistentAgentConnection {
         /// `initialize`, before the session opens, as T3 Code does
         /// (`packages/provider-acp-registry/src/server/auth.ts`).
         public var authenticateMethodID: String?
+        /// How the chat's approval mode and plan switch reach the agent's session mode.
+        public var modeSync: ModeSync
 
         public init(
             initializeMeta: [String: ACPJSONValue]? = nil,
@@ -164,8 +166,10 @@ public final class ACPConnection: PersistentAgentConnection {
             onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil,
             onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)? = nil,
             signInMethods: (@MainActor @Sendable (_ advertised: [ACPAuthMethod]) -> [AgentSignInMethod])? = nil,
-            authenticateMethodID: String? = nil
+            authenticateMethodID: String? = nil,
+            modeSync: ModeSync = .approvalModes
         ) {
+            self.modeSync = modeSync
             self.signInMethods = signInMethods
             self.authenticateMethodID = authenticateMethodID
             self.postInitializeRequests = postInitializeRequests
@@ -997,9 +1001,70 @@ public final class ACPConnection: PersistentAgentConnection {
         lastKnownModeID = modeID
     }
 
+    /// How the chat's approval mode and plan switch reach the agent's session mode.
+    public enum ModeSync: Sendable {
+        /// agy's modes: "plan" with the plan switch or Plan approval, "default" otherwise.
+        case approvalModes
+        /// Any other agent, as T3 Code's shared ACP adapter treats it
+        /// (`packages/provider-acp/src/server/adapter.ts`, `configureSession`): plan on switches
+        /// to the agent's own plan mode (an id named "plan" or "architect") after remembering
+        /// the mode it was in; plan off puts that mode back. Nothing else is sent: the approval
+        /// mode only decides how permission requests are answered. Sending agy's "default" to
+        /// OpenCode (whose modes are "build" and "plan") failed every turn before its prompt.
+        case agentPlanMode
+    }
+
+    /// The agent's own mode and mode-like options from before plan was turned on (`agentPlanMode`).
+    private var nativeBuildConfiguration: (modeID: String?, options: [(id: String, value: ACPConfigOptionValue)])?
+
+    /// True for a mode id that names a plan mode. Copilot's are URLs ending in `#plan`.
+    static func isPlanModeID(_ id: String) -> Bool {
+        let name = id.split(separator: "#").last.map(String.init) ?? id
+        return name == "plan" || name == "architect"
+    }
+
     public func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        if case .agentPlanMode = hooks.modeSync {
+            try await syncAgentPlanMode(planSwitch || approvalMode == .plan)
+            return
+        }
         let target = (planSwitch || approvalMode == .plan) ? "plan" : "default"
         try await setSessionMode(target)
+    }
+
+    private func syncAgentPlanMode(_ planOn: Bool) async throws {
+        let planSensitive = configState.configOptions.filter {
+            $0.type == "select" && ($0.category == "mode" || $0.category == "collaboration_mode")
+        }
+        if planOn {
+            if nativeBuildConfiguration == nil {
+                nativeBuildConfiguration = (configState.modeState?.currentModeId,
+                                            planSensitive.map { (id: $0.id, value: $0.currentValue) })
+            }
+            if let modes = configState.modeState,
+               let plan = modes.availableModes.first(where: { Self.isPlanModeID($0.id) }),
+               modes.currentModeId != plan.id {
+                try await setSessionMode(plan.id)
+            }
+            for option in configState.configOptions where planSensitive.contains(where: { $0.id == option.id }) {
+                guard let requested = option.flattenedSelectOptions.map(\.value).first(where: Self.isPlanModeID),
+                      option.currentValue != .string(requested) else { continue }
+                _ = try await setConfigOption(option.id, .string(requested))
+            }
+        } else if let native = nativeBuildConfiguration {
+            nativeBuildConfiguration = nil
+            if let modeID = native.modeID, let modes = configState.modeState,
+               modes.currentModeId != modeID, modes.availableModes.contains(where: { $0.id == modeID }) {
+                try await setSessionMode(modeID)
+            }
+            for saved in native.options {
+                guard case .string(let value) = saved.value,
+                      let option = configState.configOptions.first(where: { $0.type == "select" && $0.id == saved.id }),
+                      option.currentValue != saved.value,
+                      option.flattenedSelectOptions.contains(where: { $0.value == value }) else { continue }
+                _ = try await setConfigOption(option.id, .string(value))
+            }
+        }
     }
 
     public func syncPlanMode(_ planSwitch: Bool) async throws {

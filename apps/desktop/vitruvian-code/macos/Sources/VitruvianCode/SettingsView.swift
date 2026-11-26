@@ -28,6 +28,19 @@ struct SettingsView: View {
     @ObservedObject var botManager: BotManager
     @ObservedObject var host: StandaloneHost
     @ObservedObject var updateChecker: UpdateChecker
+    /// The ACP registry list, made with the view so the sheet always has it.
+    /// It was made on first tap before, and the sheet, built with the
+    /// value from before that tap, showed an empty box.
+    @StateObject private var registryList: ACPRegistryAgentList
+
+    init(configManager: ConfigManager, botManager: BotManager, host: StandaloneHost, updateChecker: UpdateChecker) {
+        self.configManager = configManager
+        self.botManager = botManager
+        self.host = host
+        self.updateChecker = updateChecker
+        // Making the list reads nothing and installs nothing: the sheet loads the registry when it opens.
+        _registryList = StateObject(wrappedValue: ACPRegistryAgentList(installer: configManager.makeRegistryInstaller()))
+    }
     private let chatStrings = VitruvianCodeChatStrings()
     @State private var showSaveConfirmation = false
     /// What the last Save returned; decides which message the confirmation shows.
@@ -43,16 +56,7 @@ struct SettingsView: View {
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
-    @State private var registryList: ACPRegistryAgentList?
     @State private var showRegistryPicker = false
-
-    /// The one list of registry agents Settings uses, made on first need.
-    private func registryAgents() -> ACPRegistryAgentList {
-        if let registryList { return registryList }
-        let list = ACPRegistryAgentList(installer: configManager.makeRegistryInstaller())
-        registryList = list
-        return list
-    }
     // Antigravity tab state, loaded off the main thread on appear.
     @State private var agyPath: String? = nil
     @State private var agyVersion: String? = nil
@@ -261,14 +265,16 @@ struct SettingsView: View {
                             showsConnectionSetting: host.showsConnectionSetting,
                             strings: chatStrings,
                             onDelete: provider.isBuiltIn ? nil : {
+                                // Read the row before removing it: `provider` reads the list by
+                                // position, so after the removal it is past the end for the last row.
                                 let removed = provider.shared
-                                configManager.providers.removeAll { $0.id == provider.id }
-                                if configManager.activeProviderId == provider.id {
+                                configManager.providers.removeAll { $0.id == removed.id }
+                                if configManager.activeProviderId == removed.id {
                                     configManager.activeProviderId = CLIProvider.antigravity.id
                                 }
                                 if removed.registryAgent != nil {
                                     // Its installed copy goes once no provider runs it.
-                                    let list = registryAgents()
+                                    let list = registryList
                                     let remaining = configManager.providers.map(\.shared)
                                     Task { await list.removed(removed, remaining: remaining) }
                                 }
@@ -331,7 +337,6 @@ struct SettingsView: View {
                             showAddProviderForm = true
                         }
                         Button("+ Add from ACP Registry") {
-                            _ = registryAgents()
                             showRegistryPicker = true
                         }
                     }
@@ -339,10 +344,8 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.blue)
                     .sheet(isPresented: $showRegistryPicker) {
-                        if let registryList {
-                            RegistryAgentPicker(list: registryList, configManager: configManager) {
-                                showRegistryPicker = false
-                            }
+                        RegistryAgentPicker(list: registryList, configManager: configManager) {
+                            showRegistryPicker = false
                         }
                     }
                 }

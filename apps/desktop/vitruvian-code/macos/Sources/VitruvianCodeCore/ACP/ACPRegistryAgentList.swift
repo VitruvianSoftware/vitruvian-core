@@ -84,11 +84,16 @@ public final class ACPRegistryAgentList: ObservableObject {
     }
 
     /// Installs `agent` and gives back the provider that runs it, for
-    /// Settings to save; nil when the install failed (see `errors`).
-    public func add(_ agent: ACPRegistry.Agent) async -> VitruvianCodeCLIProvider? {
+    /// Settings to save; nil when the install failed (see `errors`). Its
+    /// name is the agent's, with " (ACP)" after it when one of `existing`
+    /// already has that name (the built-in OpenCode does), so the two can
+    /// be told apart in the provider menu.
+    public func add(_ agent: ACPRegistry.Agent, existing: [VitruvianCodeCLIProvider] = []) async -> VitruvianCodeCLIProvider? {
         guard await install(agent) else { return nil }
+        let taken = Set(existing.map { $0.name.lowercased() })
+        let name = taken.contains(agent.name.lowercased()) ? "\(agent.name) (ACP)" : agent.name
         return VitruvianCodeCLIProvider(
-            id: UUID(), name: agent.name, commandTemplate: "", isBuiltIn: false, connection: .acp,
+            id: UUID(), name: name, commandTemplate: "", isBuiltIn: false, connection: .acp,
             registryAgent: VitruvianCodeRegistryAgent(agentID: agent.id, version: agent.version))
     }
 
