@@ -109,7 +109,9 @@ To drop a damaged cache entry:
 
 1. Bump the `v1` segment in the affected cache key (for example, `v1` → `v2`) and update any
    mirrored copy in sync.
-2. Merge the change to `main` so `main` warms a fresh cache entry under the new key.
+2. Merge the change to `main`. In this repository, the next `main` run warms a fresh
+   entry under the new key. The standalone Vitruvian Code mirror has its own separate
+   cache, so its entry is rebuilt only by its next release run.
 
 This covers:
 
