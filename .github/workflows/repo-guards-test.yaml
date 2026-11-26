@@ -68,6 +68,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR supersedes the older run. Push runs on main key on
+# the commit SHA, so every main commit still gets its own verdict (GitHub also
+# cancels a *pending* run in a shared group, so keying main on the ref would
+# drop commits in a merge burst even with cancel-in-progress off).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-26.04
