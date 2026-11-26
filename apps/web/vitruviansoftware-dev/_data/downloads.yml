@@ -28,7 +28,7 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.48.0"
+        version: "1.50.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -38,20 +38,20 @@ categories:
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.48.0/VitruvianCode-1.48.0-macos.dmg
-            size: 95.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-macos.dmg
+            size: 96.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.48.0/VitruvianCode-1.48.0-arm64.dmg
-            size: 49.3 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-arm64.dmg
+            size: 49.4 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.48.0/VitruvianCode-1.48.0-x86_64.dmg
-            size: 51.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-x86_64.dmg
+            size: 51.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.48.0/VitruvianCode-1.48.0-macos.zip
-            size: 84.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-macos.zip
+            size: 85.1 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
