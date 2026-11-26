@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.49.0...vitruvian-code-v1.49.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** make ACP registry agents addable, chattable and removable ([#5553](https://github.com/VitruvianSoftware/vitruvian-core/issues/5553)) ([8111bf1](https://github.com/VitruvianSoftware/vitruvian-core/commit/8111bf167878b2e9d58d65a1bb9a17039ce1eb8e))
+
 ## [1.49.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.48.0...vitruvian-code-v1.49.0) (2026-11-25)
 
 
