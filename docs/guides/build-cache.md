@@ -96,3 +96,28 @@ that adds repos, in the merge queue. setup-bazel puts a small `bazel` wrapper fi
 `PATH` there ([`bazel_race_retry.sh`](../../.github/actions/setup-bazel/bazel_race_retry.sh)).
 It reruns a command that failed with exactly that error, up to 3 times, and leaves every
 other result alone. A retry shows as a "Bazel repo contents cache race" warning on the run.
+
+## Rust toolchain and bundled Node caches (write-once recovery)
+
+GitHub Actions cache keys are **write-once**: GitHub never overwrites an existing cache
+entry under the same key. If a cached Rust toolchain or bundled Node tarball entry is
+damaged, the verification step (`verify_toolchain` or `shasum -a 256`) rejects and deletes
+the local copy so the job reinstalls or re-downloads it for that run, and it will repeat
+that fallback on every run until the damaged cache entry is dropped.
+
+To drop a damaged cache entry:
+
+1. Bump the `v1` segment in the affected cache key (for example, `v1` → `v2`) and update any
+   mirrored copy in sync.
+2. Merge the change to `main` so `main` warms a fresh cache entry under the new key.
+
+This covers:
+
+- [`.github/actions/rust-cache-dir/action.yml`](../../.github/actions/rust-cache-dir/action.yml) (`rustup-toolchain-v1-...`)
+- [`.github/workflows/vitruvian-code-mirror-toolchain.yaml`](../../.github/workflows/vitruvian-code-mirror-toolchain.yaml) (`rustup-toolchain-v1-...`, `vitruvian-code-node-v1-...`)
+- [`apps/desktop/vitruvian-code/.github/workflows/release.yml`](../../apps/desktop/vitruvian-code/.github/workflows/release.yml) (`rustup-toolchain-v1-...`, `vitruvian-code-node-v1-...`)
+
+Because the standalone Vitruvian Code mirror runs its release workflow infrequently, GitHub
+Actions may evict its cache entries between releases. The first release after an eviction
+falls back to the checksummed Node download (`node.lock`) and pinned
+`rustup toolchain install 1.98.1`, then saves fresh cache entries on `refs/heads/main`.

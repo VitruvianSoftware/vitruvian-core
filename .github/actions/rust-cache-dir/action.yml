@@ -38,6 +38,10 @@ inputs:
   version:
     description: Exact Rust release whose toolchain directory to cache (e.g. 1.98.1).
     required: true
+  target:
+    description: Optional Rust target triple to probe and include in the cache key (defaults to the runner's host triple).
+    required: false
+    default: ""
 
 outputs:
   usable:
@@ -57,6 +61,7 @@ runs:
         RUNNER_OS: ${{ runner.os }}
         RUNNER_ARCH: ${{ runner.arch }}
         RUST_VERSION: ${{ inputs.version }}
+        INPUT_TARGET: ${{ inputs.target }}
       run: |
         set -euo pipefail
         if [[ ! "${RUST_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -74,9 +79,21 @@ runs:
             *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
           esac
         fi
-        echo "path=${rustup_home}/toolchains/${RUST_VERSION}-${host_triple}" >> "$GITHUB_OUTPUT"
-        # Bump the v1 segment to drop a bad cache entry.
-        echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-${RUST_VERSION}-minimal" >> "$GITHUB_OUTPUT"
+        rust_target="${INPUT_TARGET:-$host_triple}"
+        if [[ ! "${rust_target}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::inputs.target must be a Rust target triple, got '${rust_target}'" >&2
+          exit 1
+        fi
+        {
+          echo "rust-target=${rust_target}"
+          echo "path=${rustup_home}/toolchains/${RUST_VERSION}-${host_triple}"
+          # Bump the v1 segment to drop a bad cache entry.
+          if [ "${rust_target}" = "${host_triple}" ]; then
+            echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-${RUST_VERSION}-minimal"
+          else
+            echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-${RUST_VERSION}-minimal-${rust_target}"
+          fi
+        } >> "$GITHUB_OUTPUT"
 
     - name: Restore Rust toolchain cache (read-only)
       id: cache-restore
@@ -100,21 +117,28 @@ runs:
       env:
         CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
         TOOLCHAIN_DIR: ${{ steps.cache-key.outputs.path }}
+        RUST_TARGET: ${{ steps.cache-key.outputs.rust-target }}
       run: |
         set -euo pipefail
         verify_toolchain() {
-          if [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/cargo" ]; then
+          if [ -z "${RUST_TARGET}" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/cargo" ]; then
             return 1
           fi
           local probe_dir rc=0
-          probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/rust-probe.XXXXXX")"
-          printf 'fn main(){}\n' > "${probe_dir}/probe.rs"
-          if ! "${TOOLCHAIN_DIR}/bin/rustc" "${probe_dir}/probe.rs" -o "${probe_dir}/probe" >/dev/null 2>&1; then
+          probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/rust-probe.XXXXXX")" || return 1
+          if [ -z "${probe_dir}" ] || [ ! -d "${probe_dir}" ]; then
+            return 1
+          fi
+          if ! printf 'fn main(){}\n' > "${probe_dir}/probe.rs"; then
+            rm -rf "${probe_dir}" || true
+            return 1
+          fi
+          if ! "${TOOLCHAIN_DIR}/bin/rustc" --edition 2021 --target "${RUST_TARGET}" "${probe_dir}/probe.rs" -o "${probe_dir}/probe" >/dev/null 2>&1; then
             rc=1
           elif ! "${TOOLCHAIN_DIR}/bin/cargo" --version >/dev/null 2>&1; then
             rc=1
           fi
-          rm -rf "${probe_dir}"
+          rm -rf "${probe_dir}" || return 1
           return "${rc}"
         }
 

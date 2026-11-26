@@ -54,7 +54,7 @@ both run between `swift build` and the ZIP: the build command, what is\n\
 uploaded and where it is downloaded to, the `lipo` step, every bundle.sh call,\n\
 the DMGs and the ZIP. It reads the files as text; nothing is built.\n\
 \n\
-Usage: vitruvian_code_release_rehearsal_test <release.yml> <rehearsal.yaml>\n";
+Usage: vitruvian_code_release_rehearsal_test <release.yml> <rehearsal.yaml> <rust-cache-dir/action.yml>\n";
 
 /// Release job -> the rehearsal job that stands in for it.
 const JOBS: &[(&str, &str)] = &[("build-macos", "build"), ("package", "package")];
@@ -76,7 +76,6 @@ const REHEARSAL_ONLY: &[&str] = &[
     "Check the app inside the ZIP",
     // The rehearsal judges the tool's folder as the Vitruvian app would; a
     // release attaches its zip and judges nothing.
-    "Restore the Rust 1.98.1 toolchain cache",
     "Check the tool's folder",
 ];
 
@@ -134,6 +133,11 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
             "Restore and save bundled Node cache (main only)",
             "Fetch and verify bundled Node",
             "Create universal binary",
+            "Compute Rust 1.98.1 cache key and path",
+            "Restore Rust 1.98.1 toolchain cache (read-only)",
+            "Restore and save Rust 1.98.1 toolchain cache (main only)",
+            "Check the restored Rust 1.98.1 toolchain",
+            "Install Rust 1.98.1 toolchain",
             "Assemble .app bundles",
             "Sign and notarize apps and tool",
             "Check the apps",
@@ -599,6 +603,17 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
         "three bundle-app calls: universal, arm64 and x86_64",
         calls == 3,
     );
+    for step_name in ["Assemble .app bundles", "Check the apps"] {
+        let step_body = body(step_name);
+        let has_pinned_rustc = step_body.iter().any(|l| l.starts_with("rustc +1.98.1 "));
+        let has_unpinned_rustc = step_body
+            .iter()
+            .any(|l| l.starts_with("rustc ") && !l.starts_with("rustc +1.98.1 "));
+        expect(
+            &format!("pinned `rustc +1.98.1` invocations in `{}`", step_name),
+            has_pinned_rustc && !has_unpinned_rustc,
+        );
+    }
     let sign_apps = body("Sign and notarize apps and tool");
     expect(
         "explicit --entitlements-app, --macho and --node-macho paths on `Sign and notarize apps and tool`",
@@ -841,6 +856,356 @@ pub fn workflow_hardened(release_text: &str, rehearsal_text: &str) -> Vec<String
                 ));
             }
         }
+        problems.extend(no_expressions_in_run_blocks(label, text));
+    }
+
+    problems
+}
+
+/// Ensures no `run:` block in `text` contains a `${{ ... }}` expression (use `env:` instead).
+pub fn no_expressions_in_run_blocks(label: &str, text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut in_run_indent: Option<usize> = None;
+
+    for (lineno, raw_line) in text.lines().enumerate() {
+        let trimmed = raw_line.trim();
+        let indent = raw_line.len() - raw_line.trim_start().len();
+
+        if let Some(r_indent) = in_run_indent {
+            if trimmed.is_empty() {
+                continue;
+            }
+            if indent > r_indent {
+                if raw_line.contains("${{") {
+                    problems.push(format!(
+                        "{}:{} contains `${{{{` inside a `run:` block (`{}`); pass via `env:` instead",
+                        label,
+                        lineno + 1,
+                        trimmed
+                    ));
+                }
+                continue;
+            }
+            in_run_indent = None;
+        }
+
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let after_dash = trimmed.strip_prefix("- ").unwrap_or(trimmed).trim_start();
+        if let Some(after_run) = after_dash.strip_prefix("run:") {
+            let spec = after_run.trim();
+            if spec.starts_with('|') || spec.starts_with('>') {
+                in_run_indent = Some(indent);
+            } else if !spec.is_empty() && spec.contains("${{") {
+                problems.push(format!(
+                    "{}:{} contains `${{{{` inside a `run:` block (`{}`); pass via `env:` instead",
+                    label,
+                    lineno + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    problems
+}
+
+/// Extracts every `verify_toolchain() { ... }` function block verbatim, stripping
+/// only the opening line's leading indentation from each line.
+pub fn extract_verify_toolchain_blocks(text: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut active: Option<(String, Vec<String>)> = None;
+
+    for raw_line in text.lines() {
+        let trimmed = raw_line.trim();
+        let indent = raw_line.len() - raw_line.trim_start().len();
+
+        if let Some((ref prefix, ref mut lines)) = active {
+            let stripped = raw_line.strip_prefix(prefix.as_str()).unwrap_or(raw_line);
+            lines.push(stripped.to_string());
+            if trimmed == "}" && indent == prefix.len() {
+                blocks.push(lines.join("\n"));
+                active = None;
+            }
+            continue;
+        }
+
+        if trimmed == "verify_toolchain() {" {
+            let prefix = raw_line[..indent].to_string();
+            active = Some((prefix, vec!["verify_toolchain() {".to_string()]));
+        }
+    }
+
+    blocks
+}
+
+/// Ensures `verify_toolchain` is identical byte-for-byte across
+/// `.github/actions/rust-cache-dir/action.yml`, `release.yml`, and the rehearsal,
+/// and probes with `--edition 2021 --target "${RUST_TARGET}"`.
+pub fn verify_toolchain_in_sync(
+    action_text: &str,
+    release_text: &str,
+    rehearsal_text: &str,
+) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    let action_blocks = extract_verify_toolchain_blocks(action_text);
+    if action_blocks.len() != 1 {
+        problems.push(format!(
+            ".github/actions/rust-cache-dir/action.yml: expected 1 verify_toolchain block, found {}",
+            action_blocks.len()
+        ));
+        return problems;
+    }
+    let canonical = &action_blocks[0];
+    if !canonical.contains("--edition 2021 --target \"${RUST_TARGET}\"") {
+        problems.push(
+            ".github/actions/rust-cache-dir/action.yml: verify_toolchain must probe with `--edition 2021 --target \"${RUST_TARGET}\"`"
+                .to_string(),
+        );
+    }
+
+    for (label, text, want_count) in [
+        ("release.yml", release_text, 2usize),
+        ("the rehearsal", rehearsal_text, 2usize),
+    ] {
+        let blocks = extract_verify_toolchain_blocks(text);
+        if blocks.len() != want_count {
+            problems.push(format!(
+                "{}: expected {} verify_toolchain blocks, found {}",
+                label,
+                want_count,
+                blocks.len()
+            ));
+            continue;
+        }
+        for (idx, block) in blocks.iter().enumerate() {
+            if block != canonical {
+                let want_lines: Vec<String> = canonical.lines().map(str::to_string).collect();
+                let got_lines: Vec<String> = block.lines().map(str::to_string).collect();
+                let diff = unified_diff(
+                    &want_lines,
+                    &got_lines,
+                    "rust-cache-dir/action.yml",
+                    &format!("{}#{}", label, idx + 1),
+                );
+                problems.push(format!(
+                    "{} verify_toolchain #{} differs from .github/actions/rust-cache-dir/action.yml:\n{}",
+                    label,
+                    idx + 1,
+                    diff
+                ));
+            }
+        }
+    }
+
+    problems
+}
+
+/// Runs the extracted `verify_toolchain` bash function under `if verify_toolchain`
+/// (where `set -e` is disabled) to prove it fails closed on `mktemp`, `printf`,
+/// `rustc`, and `cargo` errors, and succeeds on a valid toolchain probe.
+pub fn test_verify_toolchain_bash(verify_fn: &str) -> Vec<String> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    let mut problems = Vec::new();
+    let base = std::env::var_os("TEST_TMPDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let root = base.join("verify-toolchain-bash");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("create verify-toolchain-bash tmpdir");
+
+    let write_exe = |path: &Path, body: &str| {
+        fs::write(path, body).expect("write exe");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod exe");
+    };
+
+    let has_probe_leftover = |dir: &Path| -> bool {
+        fs::read_dir(dir).ok().is_some_and(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.file_name().to_string_lossy().starts_with("rust-probe."))
+        })
+    };
+
+    let run_case = |case_dir: &Path,
+                    path_env: &str,
+                    extra_setup: &str,
+                    toolchain_dir: &Path,
+                    runner_temp: &Path| {
+        let script = format!(
+            "{verify_fn}\n{extra_setup}\nrc=0\nif verify_toolchain; then\n  rc=0\nelse\n  rc=$?\nfi\nexit \"$rc\"\n"
+        );
+        Command::new("/bin/bash")
+            .arg("-euo")
+            .arg("pipefail")
+            .arg("-c")
+            .arg(&script)
+            .current_dir(case_dir)
+            .env("PATH", path_env)
+            .env("TOOLCHAIN_DIR", toolchain_dir)
+            .env("RUNNER_TEMP", runner_temp)
+            .env("RUST_TARGET", "x86_64-apple-darwin")
+            .output()
+            .expect("run /bin/bash")
+    };
+
+    // Case 1: failing mktemp must return 1 immediately and never attempt probe.rs redirection or rustc.
+    {
+        let cdir = root.join("case-mktemp-fail");
+        let fake_bin = cdir.join("fake-bin");
+        let tc_bin = cdir.join("toolchain/bin");
+        let rtmp = cdir.join("runner-temp");
+        fs::create_dir_all(&fake_bin).unwrap();
+        fs::create_dir_all(&tc_bin).unwrap();
+        fs::create_dir_all(&rtmp).unwrap();
+        let rustc_marker = cdir.join("rustc-was-called");
+        write_exe(&fake_bin.join("mktemp"), "#!/bin/sh\nexit 1\n");
+        write_exe(
+            &tc_bin.join("rustc"),
+            &format!("#!/bin/sh\n: > \"{}\"\nexit 0\n", rustc_marker.display()),
+        );
+        write_exe(&tc_bin.join("cargo"), "#!/bin/sh\nexit 0\n");
+        let out = run_case(
+            &cdir,
+            &format!("{}:/usr/bin:/bin", fake_bin.display()),
+            "",
+            &cdir.join("toolchain"),
+            &rtmp,
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if out.status.code() != Some(1) {
+            problems.push(format!(
+                "verify_toolchain bash test (failing mktemp): expected exit 1, got {:?} (stderr: {})",
+                out.status.code(),
+                stderr
+            ));
+        }
+        if stderr.contains("probe.rs") {
+            problems.push(format!(
+                "verify_toolchain bash test (failing mktemp): fell through to probe.rs after mktemp failed (stderr: {})",
+                stderr.trim()
+            ));
+        }
+        if rustc_marker.exists() {
+            problems.push(
+                "verify_toolchain bash test (failing mktemp): rustc ran after mktemp failed"
+                    .to_string(),
+            );
+        }
+    }
+
+    // Case 2: failing printf must return 1 and clean up probe_dir.
+    {
+        let cdir = root.join("case-printf-fail");
+        let tc_bin = cdir.join("toolchain/bin");
+        let rtmp = cdir.join("runner-temp");
+        fs::create_dir_all(&tc_bin).unwrap();
+        fs::create_dir_all(&rtmp).unwrap();
+        write_exe(&tc_bin.join("rustc"), "#!/bin/sh\nexit 0\n");
+        write_exe(&tc_bin.join("cargo"), "#!/bin/sh\nexit 0\n");
+        let out = run_case(
+            &cdir,
+            "/usr/bin:/bin",
+            "printf() { return 1; }",
+            &cdir.join("toolchain"),
+            &rtmp,
+        );
+        if out.status.code() != Some(1) {
+            problems.push(format!(
+                "verify_toolchain bash test (failing printf): expected exit 1, got {:?}",
+                out.status.code()
+            ));
+        }
+        if has_probe_leftover(&rtmp) {
+            problems.push(
+                "verify_toolchain bash test (failing printf): left rust-probe directory behind"
+                    .to_string(),
+            );
+        }
+    }
+
+    // Case 3: happy path validates rustc flags and cleans up probe_dir.
+    {
+        let cdir = root.join("case-happy");
+        let tc_bin = cdir.join("toolchain/bin");
+        let rtmp = cdir.join("runner-temp");
+        fs::create_dir_all(&tc_bin).unwrap();
+        fs::create_dir_all(&rtmp).unwrap();
+        write_exe(
+            &tc_bin.join("rustc"),
+            "#!/bin/sh\nset -eu\n[ \"$1\" = \"--edition\" ] && [ \"$2\" = \"2021\" ] && [ \"$3\" = \"--target\" ] && [ \"$4\" = \"x86_64-apple-darwin\" ] && [ -r \"$5\" ] && [ \"$6\" = \"-o\" ]\n: > \"$7\"\n",
+        );
+        write_exe(
+            &tc_bin.join("cargo"),
+            "#!/bin/sh\n[ \"$1\" = \"--version\" ]\n",
+        );
+        let out = run_case(&cdir, "/usr/bin:/bin", "", &cdir.join("toolchain"), &rtmp);
+        if out.status.code() != Some(0) {
+            problems.push(format!(
+                "verify_toolchain bash test (happy path): expected exit 0, got {:?} (stderr: {})",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        if has_probe_leftover(&rtmp) {
+            problems.push(
+                "verify_toolchain bash test (happy path): left rust-probe directory behind"
+                    .to_string(),
+            );
+        }
+    }
+
+    // Case 4: failing rustc returns 1 and cleans up probe_dir.
+    {
+        let cdir = root.join("case-rustc-fail");
+        let tc_bin = cdir.join("toolchain/bin");
+        let rtmp = cdir.join("runner-temp");
+        fs::create_dir_all(&tc_bin).unwrap();
+        fs::create_dir_all(&rtmp).unwrap();
+        write_exe(&tc_bin.join("rustc"), "#!/bin/sh\nexit 1\n");
+        write_exe(&tc_bin.join("cargo"), "#!/bin/sh\nexit 0\n");
+        let out = run_case(&cdir, "/usr/bin:/bin", "", &cdir.join("toolchain"), &rtmp);
+        if out.status.code() != Some(1) {
+            problems.push(format!(
+                "verify_toolchain bash test (failing rustc): expected exit 1, got {:?}",
+                out.status.code()
+            ));
+        }
+        if has_probe_leftover(&rtmp) {
+            problems.push(
+                "verify_toolchain bash test (failing rustc): left rust-probe directory behind"
+                    .to_string(),
+            );
+        }
+    }
+
+    // Case 5: failing cargo returns 1 and cleans up probe_dir.
+    {
+        let cdir = root.join("case-cargo-fail");
+        let tc_bin = cdir.join("toolchain/bin");
+        let rtmp = cdir.join("runner-temp");
+        fs::create_dir_all(&tc_bin).unwrap();
+        fs::create_dir_all(&rtmp).unwrap();
+        write_exe(&tc_bin.join("rustc"), "#!/bin/sh\nexit 0\n");
+        write_exe(&tc_bin.join("cargo"), "#!/bin/sh\nexit 1\n");
+        let out = run_case(&cdir, "/usr/bin:/bin", "", &cdir.join("toolchain"), &rtmp);
+        if out.status.code() != Some(1) {
+            problems.push(format!(
+                "verify_toolchain bash test (failing cargo): expected exit 1, got {:?}",
+                out.status.code()
+            ));
+        }
+        if has_probe_leftover(&rtmp) {
+            problems.push(
+                "verify_toolchain bash test (failing cargo): left rust-probe directory behind"
+                    .to_string(),
+            );
+        }
     }
 
     problems
@@ -970,18 +1335,45 @@ jobs:
 ";
     let hard_errs = workflow_hardened(unhardened_wf, "");
     assert_eq!(hard_errs.len(), 3, "got: {:?}", hard_errs);
+
+    // 5. no_expressions_in_run_blocks rejects ${{ ... }} inside run: blocks and allows env:
+    let expr_bad = "\
+jobs:
+  p:
+    steps:
+      - name: Bad
+        run: |
+          V=\"${{ needs.detect.outputs.version }}\"
+      - name: Good
+        env:
+          V: ${{ needs.detect.outputs.version }}
+        run: |
+          echo \"$V\"
+";
+    assert_eq!(no_expressions_in_run_blocks("test", expr_bad).len(), 1);
+
+    // 6. verify_toolchain_in_sync catches a one-character diff
+    let canonical_fn = "        verify_toolchain() {\n          \"${TOOLCHAIN_DIR}/bin/rustc\" --edition 2021 --target \"${RUST_TARGET}\"\n        }\n";
+    let two_copies = format!("{canonical_fn}\n{canonical_fn}");
+    assert!(verify_toolchain_in_sync(canonical_fn, &two_copies, &two_copies).is_empty());
+    let tweaked = two_copies.replacen("--edition 2021", "--edition 2024", 1);
+    assert_eq!(
+        verify_toolchain_in_sync(canonical_fn, &tweaked, &two_copies).len(),
+        1
+    );
 }
 
 fn main() -> ExitCode {
     run_self_tests();
 
     let argv: Vec<String> = std::env::args().collect();
-    if argv.len() != 3 {
+    if argv.len() != 4 {
         print!("{}", DOC);
         return ExitCode::from(2);
     }
     let release_text = fs::read_to_string(&argv[1]).expect("read release workflow");
     let rehearsal_text = fs::read_to_string(&argv[2]).expect("read rehearsal workflow");
+    let action_text = fs::read_to_string(&argv[3]).expect("read rust-cache-dir action");
 
     let release_jobs: Vec<&str> = JOBS.iter().map(|&(rel, _)| rel).collect();
     let rehearsal_jobs: Vec<&str> = JOBS.iter().map(|&(_, reh)| reh).collect();
@@ -1001,6 +1393,14 @@ fn main() -> ExitCode {
         "the rehearsal",
         &rehearsal_jobs,
     ));
+    problems.extend(verify_toolchain_in_sync(
+        &action_text,
+        &release_text,
+        &rehearsal_text,
+    ));
+    if let Some(verify_fn) = extract_verify_toolchain_blocks(&action_text).first() {
+        problems.extend(test_verify_toolchain_bash(verify_fn));
+    }
 
     if !problems.is_empty() {
         println!(
