@@ -66,7 +66,14 @@ def _write_pkg_xml(
 
 
 def _make_fake_sdk(
-    tmp_path: Path, *, list_output: str | None = None, emu_rc: int = 0
+    tmp_path: Path,
+    *,
+    list_output: str | None = None,
+    list_rc: int = 0,
+    list_stderr: str = "",
+    emu_rc: int = 0,
+    adb_rc: int = 0,
+    adb_stderr: str = "",
 ) -> Path:
     sdk = tmp_path / "android-sdk"
     api = "35"
@@ -112,9 +119,13 @@ def _make_fake_sdk(
             "  platforms;android-35                            | 2       | Plat        | platforms/android-35\n"
             "  system-images;android-35;google_atd;x86_64      | 9       | SysImg      | system-images/android-35/google_atd/x86_64\n"
         )
+    list_stderr_block = ""
+    if list_stderr:
+        err_text = list_stderr if list_stderr.endswith("\n") else f"{list_stderr}\n"
+        list_stderr_block = f"cat <<'EOF' >&2\n{err_text}EOF\n"
     sdkmgr = cmdline_bin / "sdkmanager"
     sdkmgr.write_text(
-        f"#!/usr/bin/env bash\ncat <<'EOF'\n{list_output}EOF\n",
+        f"#!/usr/bin/env bash\ncat <<'EOF'\n{list_output}EOF\n{list_stderr_block}exit {list_rc}\n",
         encoding="utf-8",
     )
     sdkmgr.chmod(0o755)
@@ -128,9 +139,16 @@ def _make_fake_sdk(
     )
     emu.chmod(0o755)
 
+    adb_stdout_block = (
+        "echo 'Android Debug Bridge version 1.0.41'\n" if adb_rc == 0 else ""
+    )
+    adb_stderr_block = ""
+    if adb_stderr:
+        err_text = adb_stderr if adb_stderr.endswith("\n") else f"{adb_stderr}\n"
+        adb_stderr_block = f"cat <<'EOF' >&2\n{err_text}EOF\n"
     adb = sdk / "platform-tools" / "adb"
     adb.write_text(
-        "#!/usr/bin/env bash\necho 'Android Debug Bridge version 1.0.41'\nexit 0\n",
+        f"#!/usr/bin/env bash\n{adb_stdout_block}{adb_stderr_block}exit {adb_rc}\n",
         encoding="utf-8",
     )
     adb.chmod(0o755)
@@ -311,8 +329,9 @@ def test_verify_succeeds_and_catches_corruption(tmp_path):
     assert (sdk / "cmdline-tools/latest/KEEP_ME").is_file()
 
 
-def test_verify_fails_when_emulator_or_list_installed_broken(tmp_path):
-    sdk_emu = _make_fake_sdk(tmp_path / "emu_fail", emu_rc=1)
+def test_verify_fails_when_emulator_or_list_installed_broken(tmp_path, capsys):
+    sdk_emu = _make_fake_sdk(tmp_path / "emu_nonexec")
+    (sdk_emu / "emulator" / "emulator").chmod(0o644)
     rc_emu = sdk_cache.main(
         [
             "verify",
@@ -329,6 +348,7 @@ def test_verify_fails_when_emulator_or_list_installed_broken(tmp_path):
         ]
     )
     assert rc_emu == 1
+    assert "missing executable emulator binary" in capsys.readouterr().err
 
     sdk_list = _make_fake_sdk(
         tmp_path / "list_fail",
@@ -355,6 +375,162 @@ def test_verify_fails_when_emulator_or_list_installed_broken(tmp_path):
         ]
     )
     assert rc_list == 1
+    capsys.readouterr()
+
+    sdk_list_err = _make_fake_sdk(
+        tmp_path / "list_nonzero",
+        list_rc=2,
+        list_stderr="PREFIX-" + ("x" * 520) + "-TAIL",
+    )
+    rc_list_err = sdk_cache.main(
+        [
+            "verify",
+            "--sdk-root",
+            str(sdk_list_err),
+            "--runner-os",
+            "Linux",
+            "--runner-arch",
+            "X64",
+            "--api-level",
+            "35",
+            "--system-image",
+            "system-images;android-35;google_atd;x86_64",
+        ]
+    )
+    assert rc_list_err == 1
+    list_err_out = capsys.readouterr().err
+    assert "sdkmanager --list_installed exited 2:" in list_err_out
+    assert "-TAIL" in list_err_out
+    assert "PREFIX-" not in list_err_out
+
+
+def test_verify_fresh_install_adb_failure_includes_exit_code_and_stderr(
+    tmp_path, capsys
+):
+    sdk = _make_fake_sdk(
+        tmp_path / "adb_fail_fresh",
+        adb_rc=127,
+        adb_stderr="error while loading shared libraries: libfoo.so.1\n",
+    )
+    out_file = tmp_path / "out_fresh.txt"
+    rc = sdk_cache.main(
+        [
+            "verify",
+            "--sdk-root",
+            str(sdk),
+            "--runner-os",
+            "Linux",
+            "--runner-arch",
+            "X64",
+            "--api-level",
+            "35",
+            "--system-image",
+            "system-images;android-35;google_atd;x86_64",
+            "--github-output",
+            str(out_file),
+        ]
+    )
+    assert rc == 1
+    assert "usable=false" in out_file.read_text(encoding="utf-8")
+    err_text = capsys.readouterr().err
+    assert "127" in err_text
+    assert "error while loading shared libraries: libfoo.so.1" in err_text
+
+    sdk_long = _make_fake_sdk(
+        tmp_path / "adb_fail_long",
+        adb_rc=127,
+        adb_stderr="HEAD-" + ("y" * 520) + "-END",
+    )
+    rc_long = sdk_cache.main(
+        [
+            "verify",
+            "--sdk-root",
+            str(sdk_long),
+            "--runner-os",
+            "Linux",
+            "--runner-arch",
+            "X64",
+            "--api-level",
+            "35",
+            "--system-image",
+            "system-images;android-35;google_atd;x86_64",
+        ]
+    )
+    assert rc_long == 1
+    long_err = capsys.readouterr().err
+    assert "adb version exited 127:" in long_err
+    assert "-END" in long_err
+    assert "HEAD-" not in long_err
+
+
+def test_verify_restore_adb_failure_deletes_restored_dirs(tmp_path, capsys):
+    sdk = _make_fake_sdk(
+        tmp_path / "adb_fail_restore",
+        adb_rc=127,
+        adb_stderr="error while loading shared libraries: libfoo.so.1\n",
+    )
+    out_file = tmp_path / "out_restore.txt"
+    rc = sdk_cache.main(
+        [
+            "verify",
+            "--sdk-root",
+            str(sdk),
+            "--runner-os",
+            "Linux",
+            "--runner-arch",
+            "X64",
+            "--api-level",
+            "35",
+            "--system-image",
+            "system-images;android-35;google_atd;x86_64",
+            "--cache-hit",
+            "true",
+            "--delete-on-failure",
+            "--github-output",
+            str(out_file),
+        ]
+    )
+    assert rc == 0
+    assert "usable=false" in out_file.read_text(encoding="utf-8")
+    out_text = capsys.readouterr().out
+    assert "::warning::" in out_text
+    assert "127" in out_text
+    assert "error while loading shared libraries: libfoo.so.1" in out_text
+    assert not (sdk / "platform-tools").exists()
+    assert not (sdk / "emulator").exists()
+    assert not (sdk / "platforms/android-35").exists()
+    assert not (sdk / "system-images/android-35/google_atd/x86_64").exists()
+    assert (sdk / "cmdline-tools/latest/KEEP_ME").is_file()
+
+
+def test_verify_does_not_invoke_emulator_version(tmp_path):
+    sdk = _make_fake_sdk(tmp_path / "emu_no_version", emu_rc=127)
+    out_file = tmp_path / "out_emu.txt"
+    expected = (
+        "android-emulator-sdk-v1-Linux-X64-api35-"
+        "system-images_android-35_google_atd_x86_64-rev-pt37.0.1-emu37.1.11-plat2-img9"
+    )
+    rc = sdk_cache.main(
+        [
+            "verify",
+            "--sdk-root",
+            str(sdk),
+            "--runner-os",
+            "Linux",
+            "--runner-arch",
+            "X64",
+            "--api-level",
+            "35",
+            "--system-image",
+            "system-images;android-35;google_atd;x86_64",
+            "--github-output",
+            str(out_file),
+        ]
+    )
+    assert rc == 0
+    out_text = out_file.read_text(encoding="utf-8")
+    assert "usable=true" in out_text
+    assert f"resolved-key={expected}" in out_text
 
 
 def test_measure_outputs_sizes(tmp_path):

@@ -30,7 +30,7 @@
 # (`boot == 'false'`) resolve the upstream target key from `sdkmanager --list`
 # metadata and do a lookup-only check before downloading anything, while
 # presubmit/boot runs restore read-only by prefix, verify
-# `sdkmanager --list_installed`, `package.xml` revisions, and `emulator -version`,
+# `sdkmanager --list_installed`, `package.xml` revisions, `adb version`, and executable `emulator` binary,
 # and delete + reinstall on any failure; only `refs/heads/main` saves, keyed by
 # the resolved installed package revisions.
 name: Android emulator

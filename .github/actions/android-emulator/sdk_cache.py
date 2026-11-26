@@ -324,6 +324,21 @@ def clean_sdk_packages(sdk_root: Path, api_level: str, system_image: str) -> Non
         _rmtree_force(target)
 
 
+_MAX_STDERR_CHARS = 500
+
+
+def _format_subprocess_error(
+    cmd_label: str, returncode: int, stderr: str | None
+) -> str:
+    """Format a subprocess failure with exit code and trimmed trailing stderr."""
+    trimmed = (stderr or "").strip()
+    if len(trimmed) > _MAX_STDERR_CHARS:
+        trimmed = trimmed[-_MAX_STDERR_CHARS:]
+    if trimmed:
+        return f"{cmd_label} exited {returncode}: {trimmed}"
+    return f"{cmd_label} exited {returncode}"
+
+
 def verify_sdk(
     sdk_root: Path,
     runner_os: str,
@@ -378,7 +393,9 @@ def verify_sdk(
             )
             if proc.returncode != 0:
                 errors.append(
-                    f"sdkmanager --list_installed exited {proc.returncode}: {proc.stderr.strip()}"
+                    _format_subprocess_error(
+                        "sdkmanager --list_installed", proc.returncode, proc.stderr
+                    )
                 )
             else:
                 listed = parse_sdkmanager_list_installed(proc.stdout)
@@ -401,22 +418,6 @@ def verify_sdk(
     emulator_bin = sdk_root / "emulator" / "emulator"
     if not emulator_bin.is_file() or not os.access(emulator_bin, os.X_OK):
         errors.append(f"missing executable emulator binary at {emulator_bin}")
-    else:
-        try:
-            proc = subprocess.run(
-                [str(emulator_bin), "-version"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-            combined = f"{proc.stdout}\n{proc.stderr}"
-            if proc.returncode != 0:
-                errors.append(f"emulator -version exited {proc.returncode}")
-            elif "Android emulator version" not in combined:
-                errors.append("emulator -version output missing version banner")
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            errors.append(f"failed running emulator -version: {exc}")
 
     adb_bin = sdk_root / "platform-tools" / "adb"
     if not adb_bin.is_file() or not os.access(adb_bin, os.X_OK):
@@ -431,7 +432,11 @@ def verify_sdk(
                 check=False,
             )
             if proc.returncode != 0:
-                errors.append(f"adb version exited {proc.returncode}")
+                errors.append(
+                    _format_subprocess_error(
+                        "adb version", proc.returncode, proc.stderr
+                    )
+                )
         except (OSError, subprocess.TimeoutExpired) as exc:
             errors.append(f"failed running adb version: {exc}")
 
