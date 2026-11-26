@@ -112,3 +112,21 @@ py_test(
         "WARM_COMPOSITE_ACTION_PATH": "$(rootpath //:.github/actions/bazel-repo-cache-warm/action.yml)",
     },
 )
+
+sh_test(
+    name = "bazel_race_retry_test",
+    size = "small",
+    srcs = ["bazel_race_retry_test.sh"],
+    data = ["bazel_race_retry.sh"],
+    env = {"BAZEL_RACE_RETRY_SCRIPT": "$(rootpath bazel_race_retry.sh)"},
+)
+
+py_test(
+    name = "bazel_race_retry_wiring_test",
+    size = "small",
+    srcs = ["bazel_race_retry_wiring_test.py"],
+    args = ["$(rootpath bazel_race_retry_wiring_test.py)"],
+    data = ["action.yml"],
+    env = {"SETUP_BAZEL_ACTION_PATH": "$(rootpath action.yml)"},
+    deps = ["@pip//pyyaml"],
+)

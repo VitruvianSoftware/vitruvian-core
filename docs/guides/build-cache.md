@@ -87,3 +87,12 @@ Only [`.github/workflows/bazel-repo-cache.yaml`](../../.github/workflows/bazel-r
 (via [`.github/actions/bazel-repo-cache-warm`](../../.github/actions/bazel-repo-cache-warm/action.yml))
 proves offline completeness (`--repository_disable_download` + `--repo_env=GOPROXY=off`)
 and saves these entries on `main`.
+
+On the self-hosted queue runners, every pod shares one repo contents cache
+(`~/.cache/bazel-repo/contents`, the unpacked repos). When two pods unpack the same
+brand-new repo at the same moment, Bazel can fail one of them with `error moving repo
+@@X into the repo contents cache: … (File exists)`. That happens after a dependency bump
+that adds repos, in the merge queue. setup-bazel puts a small `bazel` wrapper first on
+`PATH` there ([`bazel_race_retry.sh`](../../.github/actions/setup-bazel/bazel_race_retry.sh)).
+It reruns a command that failed with exactly that error, up to 3 times, and leaves every
+other result alone. A retry shows as a "Bazel repo contents cache race" warning on the run.

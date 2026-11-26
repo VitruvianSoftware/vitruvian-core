@@ -323,3 +323,22 @@ runs:
       run: |
         mkdir -p "${{ steps.repo-cache.outputs.gomod_path }}"
         printf '\ncommon --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1\ncommon --repo_env=GOMODCACHE=%s\n' "${{ steps.repo-cache.outputs.gomod_path }}" >> "${HOME}/.bazelrc"
+    # Self-hosted runners share Bazel's repo contents cache on one NFS volume
+    # (above). When two pods fetch a repo the cache has never seen at the same
+    # moment, Bazel 9.3.2 can fail the loser with "error moving repo @@X into
+    # the repo contents cache: .../contents/<hash> (File exists)": it creates
+    # contents/<hash> with stat, mkdir, then lstat, and on NFS that last lstat
+    # can miss the directory the other pod just made. A dependency bump that
+    # adds repos hits this in the merge queue, where a dozen pool jobs start
+    # together (#5536, queue run 45708649713: build-test and license-check).
+    #
+    # This puts a `bazel` wrapper first on PATH for the rest of the job. It
+    # runs a command again only when it failed with exactly that error (up to
+    # 3 times; the retry finds the entry already there), and never re-runs a
+    # `bazel run` program that had started. Everything else passes straight
+    # through. Hosted runners have a private contents cache and skip it.
+    # bazel_race_retry_test (BUILD here) holds the rules.
+    - name: Retry Bazel on the shared repo contents cache race
+      if: runner.environment == 'self-hosted' && runner.os == 'Linux'
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/bazel_race_retry.sh" install "${RUNNER_TEMP}/vitruvian-bazel-race-retry"
