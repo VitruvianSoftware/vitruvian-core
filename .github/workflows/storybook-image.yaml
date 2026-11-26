@@ -36,6 +36,7 @@ on:
       - '!packages/design-system/web/mkdocs.yml'
       - '!packages/design-system/web/tools/**'
       - '!packages/design-system/web/**/*.md'
+      - '.github/actions/node-toolcache/action.yml'
       - '.github/workflows/storybook-image.yaml'
   pull_request:
     paths:
@@ -47,6 +48,7 @@ on:
       - '!packages/design-system/web/mkdocs.yml'
       - '!packages/design-system/web/tools/**'
       - '!packages/design-system/web/**/*.md'
+      - '.github/actions/node-toolcache/action.yml'
       - '.github/workflows/storybook-image.yaml'
 
 permissions:
@@ -72,10 +74,25 @@ jobs:
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
+      - name: Restore Node 22.21.1 toolcache
+        uses: ./.github/actions/node-toolcache
+        with:
+          version: '22.21.1'
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: '.nvmrc'
           package-manager-cache: false
+
+      - name: Verify Node version matches .nvmrc
+        run: |
+          set -euo pipefail
+          want="v$(tr -d '[:space:]' < .nvmrc)"
+          got="$(node --version)"
+          if [ "${got}" != "${want}" ]; then
+            echo "::error::Expected Node ${want} from .nvmrc, got ${got}"
+            exit 1
+          fi
 
       - name: Resolve pnpm store path
         id: pnpm-store

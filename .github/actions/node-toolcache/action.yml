@@ -1,0 +1,136 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Restores and (on main only) saves the actions/setup-node toolcache directory
+# for an exact Node release not preinstalled on ubuntu-26.04 runners (today
+# 22.21.1, while ubuntu-26.04 preinstalls 22.23.5 and 24.22.3).
+#
+# Toolcache layout verified from actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+# (src/distributions/base-distribution.ts & official_builds/official_builds.ts)
+# and @actions/tool-cache (find / _createToolPath / _completeToolPath):
+#   dir:    ${RUNNER_TOOL_CACHE}/node/<version>/<arch>   (arch: x64 or arm64)
+#   marker: ${RUNNER_TOOL_CACHE}/node/<version>/<arch>.complete (sibling file)
+#
+# Both the directory and the sibling .complete marker are cached together. If a
+# restored copy fails `bin/node --version == v<version>`, it is deleted so
+# actions/setup-node downloads a clean copy.
+
+name: Node toolcache directory
+description: Restore and (on main only) save the actions/setup-node toolcache entry for an exact Node release, verifying the restored binary before setup-node runs.
+
+inputs:
+  version:
+    description: Exact Node release whose toolcache directory to cache (e.g. 22.21.1).
+    required: true
+
+outputs:
+  usable:
+    description: "'true' when a restored Node binary passed verification; otherwise actions/setup-node will download it."
+    value: ${{ steps.verify.outputs.usable }}
+  tool-dir:
+    description: Path to the cached Node toolcache directory.
+    value: ${{ steps.cache-key.outputs.tool-dir }}
+  cache-key:
+    description: Computed Actions cache key for the Node toolcache entry.
+    value: ${{ steps.cache-key.outputs.key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute Node toolcache key and path
+      id: cache-key
+      shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+        NODE_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [[ ! "${NODE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::inputs.version must be an exact Node release like 22.21.1, got '${NODE_VERSION}'" >&2
+          exit 1
+        fi
+        if [ -z "${RUNNER_TOOL_CACHE:-}" ]; then
+          echo "::error::RUNNER_TOOL_CACHE is unset" >&2
+          exit 1
+        fi
+        case "${RUNNER_ARCH}" in
+          X64) node_arch="x64" ;;
+          ARM64) node_arch="arm64" ;;
+          *)
+            echo "::error::Unsupported runner architecture ${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+        tool_dir="${RUNNER_TOOL_CACHE}/node/${NODE_VERSION}/${node_arch}"
+        marker="${tool_dir}.complete"
+        # Bump the v1 segment to drop a bad cache entry.
+        key="node-toolcache-v1-${RUNNER_OS}-${node_arch}-${NODE_VERSION}"
+        {
+          echo "tool-dir=${tool_dir}"
+          echo "marker=${marker}"
+          echo "arch=${node_arch}"
+          echo "key=${key}"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Restore Node toolcache (read-only)
+      id: cache-restore
+      if: github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ${{ steps.cache-key.outputs.tool-dir }}
+          ${{ steps.cache-key.outputs.marker }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Restore and save Node toolcache (main only)
+      id: cache-save
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: |
+          ${{ steps.cache-key.outputs.tool-dir }}
+          ${{ steps.cache-key.outputs.marker }}
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Verify restored Node toolcache
+      id: verify
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit == 'true' || steps.cache-save.outputs.cache-hit == 'true' }}
+        TOOL_DIR: ${{ steps.cache-key.outputs.tool-dir }}
+        MARKER: ${{ steps.cache-key.outputs.marker }}
+        NODE_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        usable=false
+        if [ "${CACHE_HIT}" = "true" ]; then
+          got=""
+          if [ -f "${MARKER}" ] && [ -x "${TOOL_DIR}/bin/node" ]; then
+            got="$("${TOOL_DIR}/bin/node" --version 2>/dev/null || true)"
+          fi
+          if [ "${got}" = "v${NODE_VERSION}" ]; then
+            usable=true
+          else
+            echo "::warning::Cached Node at ${TOOL_DIR} failed verification (got '${got}', expected 'v${NODE_VERSION}'); deleting so actions/setup-node downloads a fresh copy"
+            rm -rf "${TOOL_DIR}" "${MARKER}"
+          fi
+        fi
+        echo "usable=${usable}" >> "$GITHUB_OUTPUT"

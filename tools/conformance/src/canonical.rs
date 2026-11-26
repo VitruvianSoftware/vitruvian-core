@@ -79,6 +79,45 @@ pub fn canonical_node(root: &str) -> Result<String, String> {
     Ok(major.to_string())
 }
 
+/// Read the exact `X.Y.Z` Node version from `.nvmrc`.
+///
+/// Strips leading whitespace / `'v'` and trailing whitespace / `'\r'` from the
+/// first non-empty line and verifies the value has three numeric components.
+pub fn canonical_node_exact(root: &str) -> Result<String, String> {
+    let path = Path::new(root).join(".nvmrc");
+    let content =
+        fs::read_to_string(&path).map_err(|_| "canonical source missing: .nvmrc".to_string())?;
+
+    let first_line = content
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .ok_or_else(|| ".nvmrc is empty".to_string())?;
+
+    let trimmed = first_line
+        .trim_start_matches(|c: char| c == ' ' || c == '\t' || c == 'v')
+        .trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\r');
+
+    let mut parts = trimmed.split('.');
+    let valid = matches!(
+        (parts.next(), parts.next(), parts.next(), parts.next()),
+        (Some(a), Some(b), Some(c), None)
+            if !a.is_empty()
+                && !b.is_empty()
+                && !c.is_empty()
+                && a.chars().all(|ch| ch.is_ascii_digit())
+                && b.chars().all(|ch| ch.is_ascii_digit())
+                && c.chars().all(|ch| ch.is_ascii_digit())
+    );
+    if !valid {
+        return Err(format!(
+            ".nvmrc must contain an exact X.Y.Z Node version, got '{trimmed}'"
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
 /// Read the canonical Rust version from `MODULE.bazel`: the first entry of
 /// `versions = [...]` in the `<ext>.toolchain(...)` call, where `<ext>` is
 /// whatever variable `use_extension("@rules_rust//rust:extensions.bzl",
