@@ -695,3 +695,186 @@ def test_gomod_and_debs_key_matchers_capacity_and_priority():
     )
     assert ok_ov is False
     assert deleted_overflow == []
+
+
+def test_extra_prefixed_cache_guard_cli(tmp_path, capsys):
+    prefix = "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_atd_x86_64-"
+    keep_key = f"{prefix}pt37.0.1-emu37.1.11-plat2-img9"
+    superseded_key = f"{prefix}pt36.0.0-emu36.1.0-plat1-img8"
+    pr_key = f"{prefix}pt35.0.0-emu35.1.0-plat1-img7"
+    unrelated_key = "setup-bazel-1-linux-x64-repository-full-" + CURRENT_HASH
+
+    # 1. Fits directly without deletions.
+    deleted_fit = []
+
+    def handle_fit(method, path, _headers):
+        if method == "GET" and path.endswith("/actions/cache/usage"):
+            return 200, {}, {"active_caches_size_in_bytes": 16_100_000_000}
+        if method == "GET" and "/actions/caches" in path:
+            return 200, {}, {"actions_caches": []}
+        if method == "DELETE":
+            deleted_fit.append(int(path.rsplit("/", 1)[-1]))
+            return 204, {}, None
+        raise AssertionError(f"unexpected {method} {path}")
+
+    summary1 = tmp_path / "sum1.md"
+    output1 = tmp_path / "out1.txt"
+    with _MockGitHubServer(handle_fit) as api_url:
+        rc = guard.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "android-emulator-Linux-X64",
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--archive-bytes",
+                "0",
+                "--extra-bytes",
+                "1300000000",
+                "--extra-prefix",
+                prefix,
+                "--extra-keep-key",
+                keep_key,
+                "--limit-gb",
+                "20",
+                "--summary-file",
+                str(summary1),
+                "--output-file",
+                str(output1),
+            ],
+            sleep_fn=lambda _s: None,
+        )
+    assert rc == 0
+    assert deleted_fit == []
+    assert "allow_save=true" in output1.read_text(encoding="utf-8")
+    assert "extra=1300000000" in capsys.readouterr().out
+
+    # 2. Over limit: deletes only superseded refs/heads/main entry matching extra-prefix,
+    #    never PR ref, never keep-key, never unrelated cache.
+    deleted_prune = []
+    caches = [
+        {
+            "id": 101,
+            "ref": "refs/heads/main",
+            "key": keep_key,
+            "size_in_bytes": 1_300_000_000,
+        },
+        {
+            "id": 102,
+            "ref": "refs/heads/main",
+            "key": superseded_key,
+            "size_in_bytes": 1_300_000_000,
+        },
+        {
+            "id": 103,
+            "ref": "refs/pull/999/merge",
+            "key": pr_key,
+            "size_in_bytes": 1_300_000_000,
+        },
+        {
+            "id": 104,
+            "ref": "refs/heads/main",
+            "key": unrelated_key,
+            "size_in_bytes": 6_000_000_000,
+        },
+    ]
+
+    def handle_over(method, path, _headers):
+        if method == "GET" and path.endswith("/actions/cache/usage"):
+            return 200, {}, {"active_caches_size_in_bytes": 19_200_000_000}
+        if method == "GET" and "/actions/caches" in path:
+            return 200, {}, {"actions_caches": caches}
+        if method == "DELETE":
+            deleted_prune.append(int(path.rsplit("/", 1)[-1]))
+            return 204, {}, None
+        raise AssertionError(f"unexpected {method} {path}")
+
+    summary2 = tmp_path / "sum2.md"
+    output2 = tmp_path / "out2.txt"
+    with _MockGitHubServer(handle_over) as api_url:
+        rc2 = guard.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "android-emulator-Linux-X64",
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--archive-bytes",
+                "0",
+                "--extra-bytes",
+                "1300000000",
+                "--extra-prefix",
+                prefix,
+                "--extra-keep-key",
+                keep_key,
+                "--limit-gb",
+                "20",
+                "--summary-file",
+                str(summary2),
+                "--output-file",
+                str(output2),
+            ],
+            sleep_fn=lambda _s: None,
+        )
+    assert rc2 == 0
+    assert deleted_prune == [102]
+    assert "allow_save=true" in output2.read_text(encoding="utf-8")
+
+    # 3. Still over limit even after considering superseded entries -> delete nothing, allow_save=false.
+    deleted_overflow = []
+
+    def handle_overflow(method, path, _headers):
+        if method == "GET" and path.endswith("/actions/cache/usage"):
+            return 200, {}, {"active_caches_size_in_bytes": 20_500_000_000}
+        if method == "GET" and "/actions/caches" in path:
+            return 200, {}, {"actions_caches": caches}
+        if method == "DELETE":
+            deleted_overflow.append(int(path.rsplit("/", 1)[-1]))
+            return 204, {}, None
+        raise AssertionError(f"unexpected {method} {path}")
+
+    summary3 = tmp_path / "sum3.md"
+    output3 = tmp_path / "out3.txt"
+    with _MockGitHubServer(handle_overflow) as api_url:
+        rc3 = guard.main(
+            [
+                "--repo",
+                "o/r",
+                "--platform",
+                "android-emulator-Linux-X64",
+                "--ref",
+                "refs/heads/main",
+                "--api-url",
+                api_url,
+                "--token",
+                "tok",
+                "--archive-bytes",
+                "0",
+                "--extra-bytes",
+                "1300000000",
+                "--extra-prefix",
+                prefix,
+                "--extra-keep-key",
+                keep_key,
+                "--limit-gb",
+                "20",
+                "--summary-file",
+                str(summary3),
+                "--output-file",
+                str(output3),
+            ],
+            sleep_fn=lambda _s: None,
+        )
+    assert rc3 == 0
+    assert deleted_overflow == []
+    assert "allow_save=false" in output3.read_text(encoding="utf-8")

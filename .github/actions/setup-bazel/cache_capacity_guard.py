@@ -95,6 +95,18 @@ def is_superseded_debs_cache_key(key, platform, current_debs_hash):
     return bool(suffix) and suffix != current_debs_hash
 
 
+def is_superseded_prefixed_cache_key(entry, prefix, keep_key):
+    """True for `refs/heads/main` entries matching `prefix` with `key != keep_key`."""
+    if not isinstance(entry, dict) or not prefix or not keep_key:
+        return False
+    if entry.get("ref") != "refs/heads/main":
+        return False
+    key = entry.get("key")
+    if not isinstance(key, str) or not key.startswith(prefix):
+        return False
+    return key != keep_key
+
+
 def parse_limit_gb_var(raw):
     """Parse `ACTIONS_CACHE_LIMIT_CONFIRMED_GB` into `(limit_gb, error_detail)`."""
     if raw is None or not isinstance(raw, str) or raw.strip() == "":
@@ -131,15 +143,19 @@ def select_pre_save_deletions(
     debs_bytes=0,
     current_gomod_hash="",
     current_debs_hash="",
+    extra_bytes=0,
+    extra_prefix="",
+    extra_keep_key="",
 ):
     """Plan pre-save deletions: returns `(fits, planned_deletions, real_peak_bytes)`."""
     _require_non_negative_int(total_active_bytes, "total_active_bytes")
     _require_non_negative_int(archive_bytes, "archive_bytes")
     _require_non_negative_int(gomod_bytes, "gomod_bytes")
     _require_non_negative_int(debs_bytes, "debs_bytes")
+    _require_non_negative_int(extra_bytes, "extra_bytes")
     _require_non_negative_int(limit_bytes, "limit_bytes")
 
-    needed_bytes = archive_bytes + gomod_bytes + debs_bytes
+    needed_bytes = archive_bytes + gomod_bytes + debs_bytes + extra_bytes
     direct_peak = total_active_bytes + needed_bytes
     if direct_peak <= limit_bytes:
         return True, [], direct_peak
@@ -157,6 +173,8 @@ def select_pre_save_deletions(
             priority = 2
         elif is_superseded_debs_cache_key(key, platform, current_debs_hash):
             priority = 3
+        elif is_superseded_prefixed_cache_key(entry, extra_prefix, extra_keep_key):
+            priority = 4
         else:
             continue
         size = _require_non_negative_int(
@@ -194,6 +212,9 @@ def prepare_capacity_for_save(
     debs_bytes=0,
     current_gomod_hash="",
     current_debs_hash="",
+    extra_bytes=0,
+    extra_prefix="",
+    extra_keep_key="",
     delete_fn=None,
 ):
     """Evaluate pre-save capacity and delete only the minimum needed replaceable entries."""
@@ -201,13 +222,15 @@ def prepare_capacity_for_save(
     _require_non_negative_int(archive_bytes, "archive_bytes")
     _require_non_negative_int(gomod_bytes, "gomod_bytes")
     _require_non_negative_int(debs_bytes, "debs_bytes")
-    needed_bytes = archive_bytes + gomod_bytes + debs_bytes
+    _require_non_negative_int(extra_bytes, "extra_bytes")
+    needed_bytes = archive_bytes + gomod_bytes + debs_bytes + extra_bytes
     limit_gb, limit_error = parse_limit_gb_var(limit_gb_raw)
     report = {
         "usage_before_bytes": total_active_bytes,
         "archive_bytes": archive_bytes,
         "gomod_bytes": gomod_bytes,
         "debs_bytes": debs_bytes,
+        "extra_bytes": extra_bytes,
         "needed_bytes": needed_bytes,
         "limit_bytes": None,
         "deleted_bytes": 0,
@@ -236,11 +259,15 @@ def prepare_capacity_for_save(
         debs_bytes=debs_bytes,
         current_gomod_hash=current_gomod_hash,
         current_debs_hash=current_debs_hash,
+        extra_bytes=extra_bytes,
+        extra_prefix=extra_prefix,
+        extra_keep_key=extra_keep_key,
     )
     if not fits:
+        extra_note = f", extra={extra_bytes}" if extra_bytes > 0 else ""
         report["message"] = (
             f"Cache save skipped ({plat_label}): usage {total_active_bytes} B + needed "
-            f"{needed_bytes} B (archive={archive_bytes}, gomod={gomod_bytes}, debs={debs_bytes}) "
+            f"{needed_bytes} B (archive={archive_bytes}, gomod={gomod_bytes}, debs={debs_bytes}{extra_note}) "
             f"exceeds limit {limit_bytes} B ({limit_gb} GB) even after all replaceable "
             f"{plat_label} entries; deleting nothing."
         )
@@ -413,6 +440,9 @@ def _parse_args(argv):
     p.add_argument("--gomod-hash", default=os.environ.get("GOMOD_HASH", ""))
     p.add_argument("--debs-bytes", default=os.environ.get("DEBS_SAVE_BYTES", "0"))
     p.add_argument("--debs-hash", default=os.environ.get("DEBS_SHA_KEY", ""))
+    p.add_argument("--extra-bytes", default=os.environ.get("EXTRA_SAVE_BYTES", "0"))
+    p.add_argument("--extra-prefix", default=os.environ.get("EXTRA_CACHE_PREFIX", ""))
+    p.add_argument("--extra-keep-key", default=os.environ.get("EXTRA_KEEP_KEY", ""))
     p.add_argument(
         "--limit-gb",
         default=os.environ.get("ACTIONS_CACHE_LIMIT_CONFIRMED_GB", ""),
@@ -483,6 +513,12 @@ def main(argv=None, sleep_fn=time.sleep):
         return fail_early(
             f"DEBS_SAVE_BYTES/--debs-bytes is invalid ({args.debs_bytes!r}); save is aborted."
         )
+    try:
+        extra_bytes = _parse_non_negative_bytes(args.extra_bytes, "EXTRA_SAVE_BYTES")
+    except (TypeError, ValueError):
+        return fail_early(
+            f"EXTRA_SAVE_BYTES/--extra-bytes is invalid ({args.extra_bytes!r}); save is aborted."
+        )
 
     api = GitHubCacheApi(args.api_url, args.repo, args.token)
     try:
@@ -512,16 +548,20 @@ def main(argv=None, sleep_fn=time.sleep):
         debs_bytes=debs_bytes,
         current_gomod_hash=args.gomod_hash,
         current_debs_hash=args.debs_hash,
+        extra_bytes=extra_bytes,
+        extra_prefix=args.extra_prefix,
+        extra_keep_key=args.extra_keep_key,
         delete_fn=api.delete_cache,
     )
     for err in report["delete_errors"]:
         print(f"::warning::{err}", flush=True)
 
+    extra_part = f" extra={report['extra_bytes']}" if report["extra_bytes"] > 0 else ""
     print(
         f"Actions cache capacity check ({args.platform}): {'ALLOWED' if ok else 'SKIPPED'} "
         f"| usage={report['usage_before_bytes']} deleted={report['deleted_bytes']} "
         f"archive={report['archive_bytes']} gomod={report['gomod_bytes']} "
-        f"debs={report['debs_bytes']} needed={report['needed_bytes']} "
+        f"debs={report['debs_bytes']}{extra_part} needed={report['needed_bytes']} "
         f"real_peak={report['real_peak_bytes']} limit={report['limit_bytes']}",
         flush=True,
     )

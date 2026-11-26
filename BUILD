@@ -113,6 +113,12 @@ exports_files(
     visibility = ["//.github/actions/setup-bazel:__pkg__"],
 )
 
+# Exported so android-emulator's tests verify android-emulator-cache.yaml parity.
+exports_files(
+    [".github/workflows/android-emulator-cache.yaml"],
+    visibility = ["//.github/actions/android-emulator:__pkg__"],
+)
+
 # Exported so setup-go's tests verify go-cache.yaml and go.mod.
 exports_files(
     [
