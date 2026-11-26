@@ -119,6 +119,33 @@ public final class ACPRegistryAgentList: ObservableObject {
         try? await installer.uninstall(agentID: agent.agentID, version: agent.version)
     }
 
+    // MARK: Claude ACP adapter
+
+    @Published public private(set) var isInstallingClaudeAdapter = false
+    @Published public private(set) var claudeAdapterError: String?
+
+    /// Installs the Claude ACP adapter (`claude-acp`) at the version the registry lists, for the
+    /// Claude provider's "Claude ACP" connection: choosing that connection is the user's add.
+    /// Gives back what to record on the provider; nil when the install failed (see
+    /// `claudeAdapterError`).
+    public func installClaudeAdapter() async -> VitruvianCodeRegistryAgent? {
+        isInstallingClaudeAdapter = true
+        claudeAdapterError = nil
+        defer { isInstallingClaudeAdapter = false }
+        do {
+            let index = try await installer.loadIndex()
+            guard let agent = index.agents.first(where: { $0.id == ClaudeACPAdapter.registryAgentID }) else {
+                claudeAdapterError = "The ACP registry no longer lists the Claude ACP adapter."
+                return nil
+            }
+            let install = try await installer.install(agent)
+            return VitruvianCodeRegistryAgent(agentID: install.agentID, version: install.version)
+        } catch {
+            claudeAdapterError = (error as? ACPRegistryError)?.detail ?? error.localizedDescription
+            return nil
+        }
+    }
+
     private func install(_ agent: ACPRegistry.Agent) async -> Bool {
         installing.insert(agent.id)
         errors[agent.id] = nil

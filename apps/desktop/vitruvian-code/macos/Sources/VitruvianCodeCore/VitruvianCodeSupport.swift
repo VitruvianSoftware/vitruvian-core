@@ -205,6 +205,8 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
                 provider.commandTemplate = copy.commandTemplate
                 provider.connection = copy.connection
                 provider.claudeConfigDirectory = copy.claudeConfigDirectory
+                // Claude Code's installed Claude ACP adapter (`ClaudeACPAdapter`).
+                provider.registryAgent = copy.registryAgent
             }
             return provider
         }

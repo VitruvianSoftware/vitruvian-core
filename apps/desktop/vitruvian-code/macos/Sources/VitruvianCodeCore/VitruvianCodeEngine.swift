@@ -96,6 +96,9 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     if spec.provider.route == .registry {
                         return ACPRegistryConnection.make(spec: spec, environment: current)
                     }
+                    if spec.provider.route == .claude && spec.provider.connection == .claudeACP {
+                        return ACPRegistryConnection.makeClaude(spec: spec, environment: current)
+                    }
                     if spec.provider.runsOnClaudeSDK {
                         return ClaudeSDKConnection(spec: spec, environment: current)
                     }
@@ -697,6 +700,10 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                                                  environment: environment.processEnvironment,
                                                  home: environment.home,
                                                  isExecutable: environment.isExecutable)
+        case .claude where provider.connection == .claudeACP:
+            // The Claude ACP adapter installed from Settings, or nothing: a turn never installs.
+            return ACPRegistryConnection.claudeAdapterInstall(stateDirectory: environment.stateDirectory,
+                                                              recorded: provider.registryAgent)?.executablePath
         case .claude, .ollama, .opencode:
             return VitruvianCodeSupport.locateChatProgram(named: provider.executableName,
                                                        environment: environment.processEnvironment,

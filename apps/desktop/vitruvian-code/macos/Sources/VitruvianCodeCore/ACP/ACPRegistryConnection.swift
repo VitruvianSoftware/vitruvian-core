@@ -66,4 +66,70 @@ public enum ACPRegistryConnection {
             processFactory: processFactory
         )
     }
+
+    // MARK: Claude ACP
+
+    /// The installed Claude ACP adapter: the version the Claude provider recorded when it was
+    /// installed, else the newest installed. Never installs.
+    public static func claudeAdapterInstall(stateDirectory: String,
+                                            recorded: VitruvianCodeRegistryAgent?) -> ACPRegistryInstall? {
+        let agentID = ClaudeACPAdapter.registryAgentID
+        if let recorded, recorded.agentID == agentID,
+           let install = ACPRegistryInstaller.installedReceipt(stateDirectory: stateDirectory, agentID: agentID,
+                                                               version: recorded.version) {
+            return install
+        }
+        let folder = ((stateDirectory as NSString).appendingPathComponent("agents") as NSString).appendingPathComponent(agentID)
+        let versions = ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? [])
+            .compactMap { $0.removingPercentEncoding }
+            .sorted { $0.compare($1, options: .numeric) == .orderedDescending }
+        for version in versions {
+            if let install = ACPRegistryInstaller.installedReceipt(stateDirectory: stateDirectory, agentID: agentID, version: version) {
+                return install
+            }
+        }
+        return nil
+    }
+
+    /// The launch for the Claude provider's "Claude ACP" connection, or nil when the adapter is
+    /// not installed.
+    public static func claudeLaunchSpec(spec: AgentConnectionSpec, stateDirectory: String, home: String) -> AgentProcessLaunchSpec? {
+        guard let install = claudeAdapterInstall(stateDirectory: stateDirectory, recorded: spec.provider.registryAgent) else {
+            return nil
+        }
+        let base = ClaudeACPAdapter.environment(
+            base: VitruvianCodeSupport.childEnvironment(base: spec.environment, home: home),
+            configDirectory: spec.provider.claudeConfigDirectory)
+        return ACPRegistryInstaller.launchSpec(for: install, workingDirectory: spec.workingDirectory, baseEnvironment: base)
+    }
+
+    /// A chat on the Claude ACP adapter: the registry agent's connection with T3 Code's Claude
+    /// options (`ClaudeACPAdapter`): subagents from Agent and Task calls, plan through Claude's
+    /// own plan mode.
+    @MainActor
+    public static func makeClaude(spec: AgentConnectionSpec, environment: VitruvianCodeEngine.Environment,
+                                  processFactory: @escaping ACPConnection.ProcessFactory = ACPLaunchedProcess.live) -> ACPConnection {
+        let launch = claudeLaunchSpec(spec: spec, stateDirectory: environment.stateDirectory, home: environment.home)
+            ?? AgentProcessLaunchSpec(executable: (environment.stateDirectory as NSString)
+                                        .appendingPathComponent("agents/\(ClaudeACPAdapter.registryAgentID)/not-installed"),
+                                      environment: spec.environment, workingDirectory: spec.workingDirectory)
+        let fallbackMode = spec.configuration.approvalMode
+        let fallbackPlan = spec.turnModes.plan
+        let modeProvider = spec.liveModeProvider ?? { (fallbackMode, fallbackPlan) }
+        let tracker = ClaudeSubagentTracker()
+        let transform: @MainActor @Sendable (ACPSessionNotification) -> (notification: ACPSessionNotification?, extraEvents: [AgentEvent]) = { notification in
+            (notification: notification, extraEvents: tracker.event(for: notification).map { [$0] } ?? [])
+        }
+        return ACPConnection(
+            launchSpec: launch,
+            policy: .none,
+            modeProvider: modeProvider,
+            hooks: ACPConnection.Hooks(transformSessionUpdate: transform,
+                                       authenticateMethodID: spec.signInMethodID,
+                                       modeSync: .agentPlanMode),
+            stateFolderURL: URL(fileURLWithPath: environment.stateDirectory, isDirectory: true),
+            stateDirectoryOverride: environment.stateDirectoryOverride,
+            processFactory: processFactory
+        )
+    }
 }

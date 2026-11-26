@@ -108,6 +108,8 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var missingAgent: String
     /// Follows a registry agent's name when its installed copy is gone.
     public var registryAgentNotInstalledSuffix: String
+    /// The Claude provider is set to "Claude ACP" and its adapter is not installed.
+    public var claudeAdapterNotInstalled: String
     /// The agent's CLI could not start, or stopped with an error and no reply.
     public var agentFailed: String
     /// The user stopped a reply before any of it arrived.
@@ -174,6 +176,7 @@ public struct VitruvianCodeHostStrings: Sendable {
     public init(untitledSession: String = "Untitled",
                  missingAgent: String = "The Antigravity CLI (agy) was not found.",
                  registryAgentNotInstalledSuffix: String = " is not installed. Add it again in Settings, under Providers.",
+                 claudeAdapterNotInstalled: String = "The Claude ACP adapter is not installed. Choose Claude ACP for Claude Code in Settings, under Providers, to install it.",
                  agentFailed: String = "The agent stopped with an error.",
                  replyStopped: String = "Reply stopped.",
                  emptyReply: String = "The agent returned no reply.",
@@ -212,6 +215,7 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.untitledSession = untitledSession
         self.missingAgent = missingAgent
         self.registryAgentNotInstalledSuffix = registryAgentNotInstalledSuffix
+        self.claudeAdapterNotInstalled = claudeAdapterNotInstalled
         self.agentFailed = agentFailed
         self.replyStopped = replyStopped
         self.emptyReply = emptyReply
@@ -269,6 +273,8 @@ public struct VitruvianCodeHostStrings: Sendable {
         switch provider.route {
         case .antigravity:
             return missingAgent
+        case .claude where provider.connection == .claudeACP:
+            return claudeAdapterNotInstalled
         case .claude, .ollama, .opencode:
             return commandNotFound(provider.executableName)
         case .custom:
