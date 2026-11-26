@@ -64,7 +64,7 @@
     "junit:junit": -744267592,
     "org.checkerframework:checker-qual": -819031361,
     "org.codehaus.mojo:animal-sniffer-annotations": -1634689353,
-    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable": -2082323425,
+    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable": 534272127,
     "org.jetbrains.kotlinx:kotlinx-coroutines-android": -1538706767,
     "repositories": 1670674627
   },
@@ -226,7 +226,7 @@
     "org.checkerframework:checker-qual": 1860567376,
     "org.codehaus.mojo:animal-sniffer-annotations": -1201443841,
     "org.hamcrest:hamcrest-core": 649657847,
-    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable": -1145921977,
+    "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable": 273684121,
     "org.jetbrains.kotlin:kotlin-stdlib": 1581256640,
     "org.jetbrains.kotlin:kotlin-stdlib-common": 2031482529,
     "org.jetbrains.kotlinx:atomicfu": 866033543,
@@ -1173,9 +1173,9 @@
     },
     "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable": {
       "shasums": {
-        "jar": "e1024c542f1d021e170cd040e4e1730f2fd76ce8ed76fc9e3496988ca643a2e0"
+        "jar": "634f5c17bed5854548208f2901071f2ead5993ffad25b34fea1668ee9e314b53"
       },
-      "version": "2.3.20"
+      "version": "2.4.21"
     },
     "org.jetbrains.kotlin:kotlin-stdlib": {
       "shasums": {
@@ -3059,7 +3059,6 @@
       "androidx.compose.compiler.plugins.kotlin",
       "androidx.compose.compiler.plugins.kotlin.analysis",
       "androidx.compose.compiler.plugins.kotlin.inference",
-      "androidx.compose.compiler.plugins.kotlin.k1",
       "androidx.compose.compiler.plugins.kotlin.k2",
       "androidx.compose.compiler.plugins.kotlin.lower",
       "androidx.compose.compiler.plugins.kotlin.lower.hiddenfromobjc"
