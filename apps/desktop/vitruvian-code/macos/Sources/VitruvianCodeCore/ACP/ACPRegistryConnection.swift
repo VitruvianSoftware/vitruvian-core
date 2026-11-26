@@ -59,7 +59,7 @@ public enum ACPRegistryConnection {
             launchSpec: launch,
             policy: .none,
             modeProvider: modeProvider,
-            hooks: ACPConnection.Hooks(authenticateMethodID: spec.signInMethodID),
+            hooks: ACPConnection.Hooks(authenticateMethodID: spec.signInMethodID, syncsApprovalMode: false),
             stateFolderURL: URL(fileURLWithPath: environment.stateDirectory, isDirectory: true),
             stateDirectoryOverride: environment.stateDirectoryOverride,
             processFactory: processFactory

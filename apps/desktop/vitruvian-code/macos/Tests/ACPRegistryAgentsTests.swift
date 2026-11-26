@@ -186,6 +186,21 @@ final class ACPRegistryAgentsTests: XCTestCase {
         XCTAssertNotNil(ACPRegistryInstaller.installedReceipt(stateDirectory: state, agentID: "opencode", version: "2.4.1"))
     }
 
+    /// The built-in OpenCode and OpenCode from the registry were both called "OpenCode" in the
+    /// provider list and its menu (seen in the test copy on 2026-11-25).
+    func testAddedAgentIsNamedApartFromAProviderWithItsName() async throws {
+        let list = ACPRegistryAgentList(installer: installer(host(downloads: Downloads())))
+        let added = try await XCTUnwrapAsync(await list.add(agent(), existing: [.antigravity, .claude, .opencode]))
+        XCTAssertEqual(added.name, "OpenCode (ACP)")
+        try await registryInstallerReset()
+        let alone = try await XCTUnwrapAsync(await list.add(agent(), existing: [.antigravity, .claude]))
+        XCTAssertEqual(alone.name, "OpenCode")
+    }
+
+    private func registryInstallerReset() async throws {
+        try? FileManager.default.removeItem(atPath: state + "/agents")
+    }
+
     func testFailedAddSavesNothingAndSaysWhy() async {
         let list = ACPRegistryAgentList(installer: installer(host(downloads: Downloads(), failDownload: true)))
         let provider = await list.add(agent())
@@ -228,6 +243,169 @@ final class ACPRegistryAgentsTests: XCTestCase {
         }
         XCTAssertEqual(downloads.count, 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: state + "/agents"))
+    }
+
+    // MARK: What a failed turn says
+
+    /// A chat with a registry agent, over the real ACP client, talking to a scripted agent.
+    private func chatWithScriptedAgent(_ agent: ScriptedACPAgent) -> VitruvianCodeQuickPromptSession {
+        let rig = ComposerRig()
+        var environment = rig.environment
+        environment.makeConnection = { _ in
+            ACPConnection(launchSpec: AgentProcessLaunchSpec(executable: "/fake/opencode", arguments: ["acp"]),
+                          policy: .none, processFactory: agent.makeProcessFactory())
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: environment, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+        return session
+    }
+
+    private static func ok(_ fields: [String: ACPJSONValue]) -> ACPJSONValue {
+        .object(["jsonrpc": .string("2.0"), "id": .string("$id"), "result": .object(fields)])
+    }
+
+    private static func refused(_ code: Int, _ message: String) -> ACPJSONValue {
+        .object(["jsonrpc": .string("2.0"), "id": .string("$id"),
+                 "error": .object(["code": .int(code), "message": .string(message)])])
+    }
+
+    /// OpenCode refused a turn with "Model is unavailable." and the chat said only "The agent
+    /// stopped with an error." (test copy, 2026-11-25). The agent's own words must reach the chat.
+    func testAnAgentRefusingTheTurnIsShownInItsOwnWords() async throws {
+        let agent = ScriptedACPAgent()
+        let session = chatWithScriptedAgent(agent)
+        let driver = Task {
+            try await agent.playSteps([
+                .expectClientRequest(method: "initialize"),
+                .agentSend(Self.ok(["protocolVersion": .int(1)])),
+                .expectClientRequest(method: "session/new"),
+                .agentSend(Self.ok(["sessionId": .string("ses_1")])),
+                .expectClientRequest(method: "session/prompt"),
+                .agentSend(Self.refused(-32603, "Internal error: Upstream request failed: Model is unavailable.")),
+            ])
+        }
+        let provider = registryProvider()
+        session.send("hello", configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: provider),
+                     agentPath: "/fake/opencode")
+        try await withACPTestTimeout(seconds: 5) { try await driver.value }
+        for _ in 0..<2000 where session.isRunning { await Task.yield() }
+        let shown = (session.messages.filter(\.isError).map(\.text) + [session.lastLiveFailure?.message ?? ""])
+        XCTAssertTrue(shown.contains { $0.contains("Model is unavailable.") }, "\(shown)")
+    }
+
+    /// OpenCode's modes are "build" and "plan". The chat sent its approval mode as the session's
+    /// "default" mode before every turn, OpenCode has none by that name, and no prompt was ever
+    /// sent (wire log from the test copy, 2026-11-25). A registry agent's connection, as made for a
+    /// chat, sends no mode at all, as T3 Code does.
+    func testARegistryAgentsChatSendsNoModeChange() async throws {
+        let agent = ScriptedACPAgent()
+        let provider = registryProvider()
+        let spec = AgentConnectionSpec(
+            provider: provider,
+            configuration: VitruvianCodeConfiguration(approvalMode: .yolo, model: "", effort: .high, activeProvider: provider),
+            agentPath: nil, workingDirectory: "/w", ollamaDefaultModel: "",
+            turnModes: AgentTurnModes(plan: false, worktree: false, attachments: [], fork: false),
+            environment: [:])
+        let connection = ACPRegistryConnection.make(spec: spec, environment: .live(stateDirectoryOverride: state),
+                                                    processFactory: agent.makeProcessFactory())
+        func select(_ id: String, _ category: String, _ current: String, _ values: [String]) -> ACPJSONValue {
+            .object(["id": .string(id), "name": .string(id), "category": .string(category), "type": .string("select"),
+                     "currentValue": .string(current),
+                     "options": .array(values.map { .object(["value": .string($0), "name": .string($0)]) })])
+        }
+        let driver = Task {
+            try await agent.playSteps([
+                .expectClientRequest(method: "initialize"),
+                .agentSend(Self.ok(["protocolVersion": .int(1)])),
+                .expectClientRequest(method: "session/new"),
+                .agentSend(Self.ok(["sessionId": .string("ses_1"), "configOptions": .array([
+                    select("model", "model", "opencode/free", ["opencode/free"]),
+                    select("mode", "mode", "build", ["build", "plan"]),
+                ])])),
+                .expectClientRequest(method: "session/prompt"),
+                .agentSend(Self.ok(["stopReason": .string("end_turn")])),
+            ])
+        }
+        _ = try await withACPTestTimeout(seconds: 3) { try await connection.start(AgentSessionRequest(workingDirectory: "/w")) }
+        for mode in VitruvianCodeApprovalMode.allCases {
+            try await connection.syncMode(approvalMode: mode, planSwitch: false)
+        }
+        try await connection.syncMode(approvalMode: .yolo, planSwitch: true)
+        let stop = try await withACPTestTimeout(seconds: 3) { try await connection.prompt([.text("hello")]) }
+        try await withACPTestTimeout(seconds: 3) { try await driver.value }
+        XCTAssertEqual(stop, .endTurn)
+        let methods = await agent.allClientMessages().compactMap { $0.objectValue?["method"]?.stringValue }
+        XCTAssertEqual(methods, ["initialize", "session/new", "session/prompt"])
+        await connection.stop()
+    }
+
+    /// Retry resumed a session the agent no longer had, and the chat again said only the generic
+    /// sentence. The agent's reason must reach the chat here too.
+    func testAFailedResumeIsShownInTheAgentsOwnWords() async throws {
+        let agent = ScriptedACPAgent()
+        let session = chatWithScriptedAgent(agent)
+        session.resume(VitruvianCodeSessionSummary(id: "ses_gone", title: "Old", steps: 1, modified: nil),
+                       configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: registryProvider()))
+        let driver = Task {
+            try await agent.playSteps([
+                .expectClientRequest(method: "initialize"),
+                .agentSend(Self.ok(["protocolVersion": .int(1),
+                                    "agentCapabilities": .object(["sessionCapabilities": .object(["resume": .object([:])])])])),
+                .expectClientRequest(method: "session/resume"),
+                .agentSend(Self.refused(-32602, "Invalid params: session not found: ses_gone")),
+            ])
+        }
+        let provider = registryProvider()
+        session.send("hello", configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: provider),
+                     agentPath: "/fake/opencode")
+        try await withACPTestTimeout(seconds: 5) { try await driver.value }
+        for _ in 0..<2000 where session.isRunning { await Task.yield() }
+        let shown = (session.messages.filter(\.isError).map(\.text) + [session.lastLiveFailure?.message ?? ""])
+        XCTAssertTrue(shown.contains { $0.contains("session not found") }, "\(shown)")
+    }
+
+    /// The registry sheet in Settings once opened as an empty box: its list was made in the same
+    /// tap that opened it, and the sheet, built with the value from before the tap, drew nothing.
+    /// The app cannot be linked into a test (it has `@main`), so its source is read: the list must
+    /// exist with the view, and the sheet must show the picker with no condition on the list.
+    func testRegistrySheetNeverWaitsOnAListMadeByTheTap() throws {
+        let settings = try XCTUnwrap(appSource("SettingsView.swift"), "could not find SettingsView.swift")
+        XCTAssertTrue(settings.contains("@StateObject private var registryList: ACPRegistryAgentList"),
+                      "the list is made with the view")
+        let sheet = try XCTUnwrap(settings.range(of: ".sheet(isPresented: $showRegistryPicker) {"), "the sheet is there")
+        let body = String(settings[sheet.upperBound...].prefix(200))
+        let picker = try XCTUnwrap(body.range(of: "RegistryAgentPicker(list: registryList"), body)
+        XCTAssertFalse(body[..<picker.lowerBound].contains("if "), "nothing gates the picker: \(body)")
+        XCTAssertFalse(settings.contains(" registryList = "), "the list is never made later, in a tap")
+    }
+
+    /// Deleting the last provider in Settings crashed the app (seen in the test copy on
+    /// 2026-11-25): the delete read the row's provider after removing it, past the list's end.
+    /// After the removal, the delete must use only what it read before.
+    func testDeletingAProviderReadsTheRowOnlyBeforeRemovingIt() throws {
+        let settings = try XCTUnwrap(appSource("SettingsView.swift"), "could not find SettingsView.swift")
+        let start = try XCTUnwrap(settings.range(of: "onDelete: provider.isBuiltIn ? nil : {"), "the delete is there")
+        let body = String(settings[start.upperBound...].prefix(900))
+        let removal = try XCTUnwrap(body.range(of: "configManager.providers.removeAll"), body)
+        let afterRemoval = body[removal.lowerBound...]
+        let end = afterRemoval.range(of: "\n                            }\n")?.lowerBound ?? afterRemoval.endIndex
+        let rest = afterRemoval[..<end]
+        XCTAssertFalse(rest.contains("provider."), "nothing reads the removed row after the removal: \(rest)")
+    }
+
+    private func appSource(_ name: String) -> String? {
+        let relative = "apps/desktop/vitruvian-code/macos/Sources/VitruvianCode/\(name)"
+        var candidates: [String] = []
+        let environment = ProcessInfo.processInfo.environment
+        if let runfiles = environment["TEST_SRCDIR"] {
+            for workspace in [environment["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
+                candidates.append("\(runfiles)/\(workspace)/\(relative)")
+            }
+        }
+        let here = (#filePath as NSString).deletingLastPathComponent
+        candidates.append((here as NSString).deletingLastPathComponent + "/Sources/VitruvianCode/\(name)")
+        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) else { return nil }
+        return try? String(contentsOfFile: path, encoding: .utf8)
     }
 
     private func XCTUnwrapAsync<T>(_ value: T?, file: StaticString = #filePath, line: UInt = #line) async throws -> T {

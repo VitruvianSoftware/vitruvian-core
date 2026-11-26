@@ -142,6 +142,10 @@ public final class ACPConnection: PersistentAgentConnection {
         /// `initialize`, before the session opens, as T3 Code does
         /// (`packages/provider-acp-registry/src/server/auth.ts`).
         public var authenticateMethodID: String?
+        /// False for an agent whose modes are its own (a registry agent: OpenCode's are
+        /// "build" and "plan"): the chat's approval mode is then not sent as a session mode.
+        /// T3 Code sets a mode only from its Antigravity driver, never for registry agents.
+        public var syncsApprovalMode: Bool
 
         public init(
             initializeMeta: [String: ACPJSONValue]? = nil,
@@ -164,8 +168,10 @@ public final class ACPConnection: PersistentAgentConnection {
             onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil,
             onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)? = nil,
             signInMethods: (@MainActor @Sendable (_ advertised: [ACPAuthMethod]) -> [AgentSignInMethod])? = nil,
-            authenticateMethodID: String? = nil
+            authenticateMethodID: String? = nil,
+            syncsApprovalMode: Bool = true
         ) {
+            self.syncsApprovalMode = syncsApprovalMode
             self.signInMethods = signInMethods
             self.authenticateMethodID = authenticateMethodID
             self.postInitializeRequests = postInitializeRequests
@@ -998,6 +1004,8 @@ public final class ACPConnection: PersistentAgentConnection {
     }
 
     public func syncMode(approvalMode: VitruvianCodeApprovalMode, planSwitch: Bool) async throws {
+        // Asking OpenCode for "default" failed every turn before its prompt was sent.
+        guard hooks.syncsApprovalMode else { return }
         let target = (planSwitch || approvalMode == .plan) ? "plan" : "default"
         try await setSessionMode(target)
     }
