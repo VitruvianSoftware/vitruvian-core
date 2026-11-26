@@ -57,6 +57,20 @@ struct SettingsView: View {
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
     @State private var showRegistryPicker = false
+
+    /// The Claude provider's connection: choosing "Claude ACP" installs its adapter.
+    private var claudeConnection: AgentConnectionKind? {
+        configManager.providers.first { $0.id == CLIProvider.claude.id }?.connection
+    }
+
+    private func installClaudeAdapter() {
+        let list = registryList
+        Task {
+            guard let adapter = await list.installClaudeAdapter(),
+                  let index = configManager.providers.firstIndex(where: { $0.id == CLIProvider.claude.id }) else { return }
+            configManager.providers[index].registryAgent = adapter
+        }
+    }
     // Antigravity tab state, loaded off the main thread on appear.
     @State private var agyPath: String? = nil
     @State private var agyVersion: String? = nil
@@ -283,6 +297,20 @@ struct SettingsView: View {
                     }
                 }
 
+                if claudeConnection == .claudeACP {
+                    if registryList.isInstallingClaudeAdapter {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Installing the Claude ACP adapter…").font(.caption).foregroundStyle(.secondary)
+                        }
+                    } else if let error = registryList.claudeAdapterError {
+                        HStack(spacing: 6) {
+                            Text(error).font(.caption).foregroundStyle(.red).lineLimit(3)
+                            Button("Try again") { installClaudeAdapter() }.controlSize(.small)
+                        }
+                    }
+                }
+
                 // Add custom provider
                 if showAddProviderForm {
                     VStack(alignment: .leading, spacing: 8) {
@@ -353,6 +381,11 @@ struct SettingsView: View {
                 }
                 .formStyle(.grouped)
                 .tabItem { Label("Providers", systemImage: "network") }
+                .onChange(of: claudeConnection) { _, connection in
+                    // Choosing "Claude ACP" is the user's add: install its adapter (an install
+                    // already in place is reused). Nothing else installs it.
+                    if connection == .claudeACP { installClaudeAdapter() }
+                }
 
                 // Tab 4: About
                 AboutTabView(updateChecker: updateChecker, autoCheckUpdates: $configManager.autoCheckUpdates)

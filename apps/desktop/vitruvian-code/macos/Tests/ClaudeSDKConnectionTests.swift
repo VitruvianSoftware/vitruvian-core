@@ -1016,7 +1016,8 @@ final class ClaudeSDKConnectionTests: XCTestCase {
                       "Ollama (claude) runs on the helper too, pointed at Ollama (OllamaClaudeTests)")
         var claudeACP = VitruvianCodeCLIProvider.claude
         claudeACP.connection = .claudeACP
-        XCTAssertTrue(live.makeConnection(AgentConnectionSpec(provider: claudeACP, workingDirectory: work.path)) is CommandLineConnection,
-                      "the ACP adapter is a later step")
+        let adapterConnection = live.makeConnection(AgentConnectionSpec(provider: claudeACP, workingDirectory: work.path))
+        XCTAssertTrue(adapterConnection is ACPConnection && !(adapterConnection is ClaudeSDKConnection),
+                      "Claude ACP runs the registry's Claude ACP adapter (ClaudeACPAdapterTests)")
     }
 }
