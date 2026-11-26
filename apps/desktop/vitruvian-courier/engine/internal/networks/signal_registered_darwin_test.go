@@ -91,19 +91,19 @@ func platformActionRows() (map[string]actionRow, map[string]handlerRow) {
 		Reply: true, Formatting: noKind, MaxTextLength: imessage.MaxOutboundTextLength,
 	}
 	return map[string]actionRow{
-			"signal dm":            {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
-			"signal group":         {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
-			"signal note to self":  {client, noteToSelf, self},
-			"gchat dm":             {gcClient, portalOf(database.RoomTypeDM, gchat.MakeDMPortalID("111"), &gchat.PortalMetadata{TopicThreaded: false}), gcDM},
-			"gchat space":          {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("222"), &gchat.PortalMetadata{TopicThreaded: false}), gcSpace},
-			"gchat threaded space": {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("333"), &gchat.PortalMetadata{TopicThreaded: true}), gcThreadedSpace},
-			"imessage dm":          {imClient, portalOf(database.RoomTypeDM, "iMessage;-;+15551234567", &imessage.PortalMetadata{}), im},
-			"imessage group":       {imClient, portalOf(database.RoomTypeDefault, "iMessage;+;chat123", &imessage.PortalMetadata{}), im},
-		}, map[string]handlerRow{
-			"signal":   {client, []string{"edit", "remove", "poll", "timer"}},
-			"gchat":    {gcClient, []string{"edit", "remove"}},
-			"imessage": {imClient, []string{}},
-		}
+		"signal dm":            {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
+		"signal group":         {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
+		"signal note to self":  {client, noteToSelf, self},
+		"gchat dm":             {gcClient, portalOf(database.RoomTypeDM, gchat.MakeDMPortalID("111"), &gchat.PortalMetadata{TopicThreaded: false}), gcDM},
+		"gchat space":          {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("222"), &gchat.PortalMetadata{TopicThreaded: false}), gcSpace},
+		"gchat threaded space": {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("333"), &gchat.PortalMetadata{TopicThreaded: true}), gcThreadedSpace},
+		"imessage dm":          {imClient, portalOf(database.RoomTypeDM, "iMessage;-;+15551234567", &imessage.PortalMetadata{}), im},
+		"imessage group":       {imClient, portalOf(database.RoomTypeDefault, "iMessage;+;chat123", &imessage.PortalMetadata{}), im},
+	}, map[string]handlerRow{
+		"signal":   {client, []string{"edit", "remove", "poll", "timer"}},
+		"gchat":    {gcClient, []string{"edit", "remove"}},
+		"imessage": {imClient, []string{}},
+	}
 }
 
 // platformPollChecks adds Signal to TestPollsArriveAsPolls.

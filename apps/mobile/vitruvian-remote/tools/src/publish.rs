@@ -24,6 +24,85 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const REMOTE_ANDROID_PLATFORMS: &str =
+    "--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64";
+const REMOTE_APK_LABEL: &str = "//apps/mobile/vitruvian-remote:app.apk";
+const REMOTE_APK_SUFFIX: &str = "/apps/mobile/vitruvian-remote/app.apk";
+
+pub fn select_single_artifact_path(stdout: &str, suffix: &str) -> Result<PathBuf, String> {
+    let matches: Vec<&str> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.ends_with(suffix))
+        .collect();
+    if matches.len() != 1 {
+        return Err(format!(
+            "expected exactly one output ending with {suffix}, got {}:\n{}",
+            matches.len(),
+            if matches.is_empty() {
+                "<none>".to_string()
+            } else {
+                matches.join("\n")
+            }
+        ));
+    }
+    Ok(PathBuf::from(matches[0]))
+}
+
+pub fn absolute_artifact_path(workspace: &Path, rel: &Path) -> PathBuf {
+    if rel.is_absolute() {
+        rel.to_path_buf()
+    } else {
+        workspace.join(rel)
+    }
+}
+
+fn locate_apk() -> Result<PathBuf, String> {
+    let ws_output = Command::new("bazel")
+        .args(["info", "workspace"])
+        .output()
+        .map_err(|e| format!("failed to run bazel info workspace: {}", e))?;
+    if !ws_output.status.success() {
+        return Err(format!(
+            "bazel info workspace failed:\n{}",
+            String::from_utf8_lossy(&ws_output.stderr)
+        ));
+    }
+    let ws_str = String::from_utf8_lossy(&ws_output.stdout);
+    let ws_trimmed = ws_str.trim();
+    if ws_trimmed.is_empty() {
+        return Err("bazel info workspace returned an empty path".to_string());
+    }
+    let workspace = PathBuf::from(ws_trimmed);
+
+    let output = Command::new("bazel")
+        .args([
+            "cquery",
+            REMOTE_ANDROID_PLATFORMS,
+            "--output=files",
+            REMOTE_APK_LABEL,
+        ])
+        .output()
+        .map_err(|e| format!("failed to run bazel cquery: {}", e))?;
+    if !output.status.success() {
+        return Err(format!(
+            "bazel cquery {} failed:\n{}",
+            REMOTE_APK_LABEL,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let rel = select_single_artifact_path(&stdout, REMOTE_APK_SUFFIX)?;
+    let path = absolute_artifact_path(&workspace, &rel);
+    if !path.is_file() {
+        return Err(format!(
+            "Expected APK output at {} not found",
+            path.display()
+        ));
+    }
+    Ok(path)
+}
+
 pub fn strip_version_prefix(tag: &str) -> &str {
     let s = tag.strip_prefix("vitruvian-remote-v").unwrap_or(tag);
     s.strip_prefix('v').unwrap_or(s)
@@ -364,7 +443,7 @@ pub fn run(args: &[String]) -> i32 {
     let build_status = Command::new("bazel")
         .args([
             "build",
-            "--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64",
+            REMOTE_ANDROID_PLATFORMS,
             "//apps/mobile/vitruvian-remote:app",
         ])
         .status();
@@ -384,22 +463,13 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let bazel_bin = match Command::new("bazel").args(["info", "bazel-bin"]).output() {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
-        _ => {
-            eprintln!("Error: failed to get bazel-bin path");
+    let bin_apk = match locate_apk() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error: {}", e);
             return 1;
         }
     };
-
-    let bin_apk = PathBuf::from(&bazel_bin).join("apps/mobile/vitruvian-remote/app.apk");
-    if !bin_apk.is_file() {
-        eprintln!(
-            "Error: Expected APK output at {} not found",
-            bin_apk.display()
-        );
-        return 1;
-    }
 
     let dist_dir = app_dir.join("dist");
     let _ = fs::remove_dir_all(&dist_dir);
@@ -751,6 +821,50 @@ mod tests {
             sha256: "s",
             notes: &[],
         }
+    }
+
+    #[test]
+    fn select_single_artifact_path_picks_transitioned_apk_and_rejects_bad_counts() {
+        let out = "\
+bazel-out/k8-fastbuild-ST-abc/bin/apps/mobile/vitruvian-remote/app_unsigned.apk
+bazel-out/k8-fastbuild-ST-abc/bin/apps/mobile/vitruvian-remote/app.apk
+";
+        assert_eq!(
+            select_single_artifact_path(out, REMOTE_APK_SUFFIX).unwrap(),
+            PathBuf::from("bazel-out/k8-fastbuild-ST-abc/bin/apps/mobile/vitruvian-remote/app.apk")
+        );
+
+        let unsigned_only =
+            "bazel-out/k8-fastbuild-ST-abc/bin/apps/mobile/vitruvian-remote/app_unsigned.apk\n";
+        let err = select_single_artifact_path(unsigned_only, REMOTE_APK_SUFFIX).unwrap_err();
+        assert!(err.contains("got 0"), "{err}");
+
+        let dupes = "\
+bazel-out/k8-fastbuild-ST-aaa/bin/apps/mobile/vitruvian-remote/app.apk
+bazel-out/k8-fastbuild-ST-bbb/bin/apps/mobile/vitruvian-remote/app.apk
+";
+        let err = select_single_artifact_path(dupes, REMOTE_APK_SUFFIX).unwrap_err();
+        assert!(
+            err.contains("got 2") && err.contains("-ST-aaa") && err.contains("-ST-bbb"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn absolute_artifact_path_joins_relative_onto_workspace_and_preserves_absolute() {
+        let workspace = Path::new("/repo/vitruvian-core");
+        let rel = Path::new(
+            "bazel-out/darwin_arm64-fastbuild-ST-abc/bin/apps/mobile/vitruvian-remote/app.apk",
+        );
+        assert_eq!(
+            absolute_artifact_path(workspace, rel),
+            PathBuf::from(
+                "/repo/vitruvian-core/bazel-out/darwin_arm64-fastbuild-ST-abc/bin/apps/mobile/vitruvian-remote/app.apk"
+            )
+        );
+
+        let abs = Path::new("/tmp/already-absolute/app.apk");
+        assert_eq!(absolute_artifact_path(workspace, abs), abs);
     }
 
     struct TempDir(PathBuf);

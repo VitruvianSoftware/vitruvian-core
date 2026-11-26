@@ -21,6 +21,8 @@ filegroup(
     srcs = glob([
         "testdata/*.json",
         "testdata/acp/*.ndjson",
+        # A recorded ACP registry index (ACPRegistryTests).
+        "testdata/acp/*.json",
         # The fake `claude` and the recorded turns it replays (ClaudeSDKConnectionTests).
         "testdata/claude-sdk/*.json",
         "testdata/claude-sdk/*.mjs",
@@ -131,4 +133,12 @@ sh_test(
         "//apps/desktop/vitruvian-code/macos:docs_files",
         "//apps/desktop/vitruvian-code/src:docs_files",
     ],
+)
+
+# Read by the Backstage backend's catalog and scorecard tests
+# (//apps/web/backstage/packages/backend:unit_tests).
+js_library(
+    name = "catalog_info",
+    srcs = ["catalog-info.yaml"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

@@ -48,3 +48,8 @@ spec:
       recordTTL: 60
       targets:
         - 10.44.86.211
+    - dnsName: minio-mcp.lab.ipv1337.dev
+      recordType: A
+      recordTTL: 60
+      targets:
+        - 10.44.86.211

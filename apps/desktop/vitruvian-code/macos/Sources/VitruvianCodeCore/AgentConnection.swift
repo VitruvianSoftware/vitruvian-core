@@ -206,6 +206,9 @@ public struct AgentConnectionSpec: Equatable, Sendable {
     public var turnModes: AgentTurnModes
     public var environment: [String: String]
     public var liveModeProvider: LiveModeProvider?
+    /// An agent sign-in method the user picked on the failure card. The connection sends ACP
+    /// `authenticate` with it right after `initialize`, before the session opens (`ACPAuth`).
+    public var signInMethodID: String?
 
     public var executablePath: String? {
         get { agentPath }
@@ -221,7 +224,8 @@ public struct AgentConnectionSpec: Equatable, Sendable {
         ollamaDefaultModel: String = VitruvianCodeSupport.ollamaFallbackModel,
         turnModes: AgentTurnModes = AgentTurnModes(),
         environment: [String: String] = [:],
-        liveModeProvider: LiveModeProvider? = nil
+        liveModeProvider: LiveModeProvider? = nil,
+        signInMethodID: String? = nil
     ) {
         var resolvedConfiguration = configuration
         resolvedConfiguration.activeProvider = provider
@@ -234,6 +238,7 @@ public struct AgentConnectionSpec: Equatable, Sendable {
         self.turnModes = turnModes
         self.environment = environment
         self.liveModeProvider = liveModeProvider
+        self.signInMethodID = signInMethodID
     }
 
     public static func == (lhs: AgentConnectionSpec, rhs: AgentConnectionSpec) -> Bool {
@@ -245,6 +250,7 @@ public struct AgentConnectionSpec: Equatable, Sendable {
             && lhs.ollamaDefaultModel == rhs.ollamaDefaultModel
             && lhs.turnModes == rhs.turnModes
             && lhs.environment == rhs.environment
+            && lhs.signInMethodID == rhs.signInMethodID
     }
 }
 

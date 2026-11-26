@@ -27,6 +27,11 @@ load("//tools/pulumi:defs.bzl", "pulumi_project")
 # every deploy while looking like a working optimisation.
 exports_files(["cmd/revname/main.go"])
 
+exports_files(
+    ["go.sum"],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 pulumi_project(
     name = "vitruvian-tabs",
     dir = "apps/suites/vitruvian-tabs/infra/app",

@@ -240,10 +240,10 @@ final class MessageSelectionClickTests: XCTestCase {
     func testAClickOnEmptySpaceDeselects() throws {
         try click(try point(in: "$a"))
         try XCTSkipIf(box.selected == nil, "the window got no clicks (no window server for it here)")
-        let below = try XCTUnwrap(box.frames["$b"]).maxY + 40
-        XCTAssertLessThan(below, host.bounds.height, "there is empty space below the messages")
-        try click(CGPoint(x: 300, y: below))
-        XCTAssertNil(box.selected, "a click below the messages deselects")
+        let above = try XCTUnwrap(box.frames["$a"]).minY - 40
+        XCTAssertGreaterThan(above, 0, "there is empty space above the bottom-anchored messages")
+        try click(CGPoint(x: 300, y: above))
+        XCTAssertNil(box.selected, "a click in empty space deselects")
     }
 
     /// A click on a reaction chip of the selected message reacts; it must not deselect the message as well.

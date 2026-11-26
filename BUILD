@@ -113,6 +113,15 @@ exports_files(
     visibility = ["//.github/actions/setup-bazel:__pkg__"],
 )
 
+# Exported so setup-go's tests verify go-cache.yaml and go.mod.
+exports_files(
+    [
+        ".github/workflows/go-cache.yaml",
+        "go.mod",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 # agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
 # worktrees under it), but a file named from this package still resolves.
 # //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.
@@ -273,6 +282,7 @@ filegroup(
     name = "workflow_files",
     srcs = glob([".github/workflows/*.yaml"]),
     visibility = [
+        "//.github/actions/setup-go:__pkg__",
         "//catalog:__pkg__",
         "//tools/ci:__pkg__",
         "//tools/ci/actionpins:__pkg__",
@@ -535,4 +545,20 @@ exports_files(
         "packages/pulumi/library/.github/workflows/release.yml",
     ],
     visibility = ["//packages/pulumi/library/go:__pkg__"],
+)
+
+# Repo-root files the Backstage backend's tests read: the root catalog, the
+# Aspect task file the scaffolder checks for, and what the scorecard facts
+# look at (LICENSE, CODEOWNERS, the incident runbook).
+js_library(
+    name = "backstage_backend_test_data",
+    srcs = [
+        ".github/CODEOWNERS",
+        "LICENSE",
+        "MODULE.aspect",
+        "catalog-info.yaml",
+        "docs/operations/incident-triage-runbook.md",
+        "gitops/catalog-info.yaml",
+    ],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

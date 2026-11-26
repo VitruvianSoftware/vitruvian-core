@@ -422,6 +422,21 @@ final class TimelineTableBehaviorQATests: XCTestCase {
         XCTAssertTrue(coordinator.entries[targetRow].isHighlighted, "$30 entry must carry isHighlighted == true")
         XCTAssertFalse(coordinator.entries[neighborRow].isHighlighted, "neighbor $29 must not be highlighted")
 
+        // Let the background measuring of rows off screen finish first (on a slow machine it is still running here),
+        // so what is counted below is only what clearing the highlight does.
+        var lastMisses = -1
+        var quietSince = Date()
+        let quietDeadline = Date().addingTimeInterval(5)
+        while Date() < quietDeadline {
+            await asyncPump(host, for: 0.05)
+            if coordinator.heightCache.misses != lastMisses {
+                lastMisses = coordinator.heightCache.misses
+                quietSince = Date()
+            } else if Date().timeIntervalSince(quietSince) >= 0.3 {
+                break
+            }
+        }
+
         // Release the 3s highlight timer and verify only a targeted visual update runs (zero height cache misses).
         coordinator.heightCache.resetCounters()
         sleepGate.releaseHighlights()

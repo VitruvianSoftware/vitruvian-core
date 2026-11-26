@@ -26,6 +26,7 @@ Component package providing implementation for `tools/conformance/src/checks`.
 - `[ci.rs:repo_restore_step_guarded]`
 - `[ci.rs:repository_restore_problems]`
 - `[ci.rs:llvm_restore_branch_problems]`
+- `[maven_pin.rs:check_maven_lock_files]`
 
 ## Invariants
 - [brew.rs:192]: `assert!(problems(text).is_empty(), "{:?}", problems(text));`

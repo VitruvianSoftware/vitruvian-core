@@ -323,6 +323,29 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     public var compactionSuggestion = "Context is getting large"
     public var compactAction = "Compact"
     public var keepAction = "Keep"
+    public var mcpStatusButton = "MCP servers"
+    public var mcpStatusExplanation = "Loaded by this chat’s agent from its own settings. Change them there."
+    public var mcpStatusNone = "This agent has no MCP servers."
+    public var mcpStatusNotConnected = "Send a message to connect, then look again."
+    public var mcpStatusFailedPrefix = "Could not read the servers: "
+    public var mcpStatusLoading = "Reading…"
+    public var mcpStatusRefresh = "Refresh"
+    public var mcpStatusReveal = "Show in Finder"
+    public var mcpStateConnected = "Connected"
+    public var mcpStateFailed = "Failed"
+    public var mcpStateNeedsSignIn = "Needs sign-in"
+    public var mcpStatePending = "Starting"
+    public var mcpStateDisabled = "Off"
+    public var mcpStateUnknown = "On, status not reported"
+    public var mcpSourceClaudeUser = "Claude Code settings"
+    public var mcpSourceClaudeLocal = "Claude Code settings for this project"
+    public var mcpSourceClaudeProject = "Project .mcp.json"
+    public var mcpSourceClaudeAI = "claude.ai connector"
+    public var mcpSourceClaudeManaged = "Managed by your organization"
+    public var mcpSourceClaudePlugin = "Claude Code plugin"
+    public var mcpSourceClaudeAgent = "Claude Code agent"
+    public var mcpSourceClaudeOther = "Claude Code"
+    public var mcpSourceAgy = "agy settings"
     public var usageLimitReached = "Usage limit reached"
     public var usageLimitResetsAtPrefix = "Resets at "
     public var usageLimitReady = "Limit reset, ready to resume"
@@ -336,6 +359,23 @@ public struct VitruvianCodeChatStrings: Sendable, Equatable {
     /// On a scheduled automation saved before scheduled runs could start an
     /// agent: it runs again once switched off and on.
     public var automationNeedsReEnable = "Turn off and on, then export again"
+
+    // MARK: Sign-in from the failure card (ACPAuth)
+
+    public var signInNeededTitle = "Sign-in needed"
+    public var signInWithFormat = "Sign in with %@"
+    public var signInSheetTitleFormat = "Sign in to %@"
+    public var signInCommandCaption = "Vitruvian Code runs this command for you. Finish any step it opens in your browser. Your login stays with the agent."
+    public var signInVariablesPrefix = "Settings it gets: "
+    public var signInRefusedPrefix = "Left out for safety: "
+    public var signInRun = "Run"
+    public var signInCancel = "Cancel"
+    public var signInClose = "Close"
+    public var signInRunning = "Waiting for sign-in to finish…"
+    public var signInFailedFormat = "Sign-in did not finish (status %@). Nothing was retried."
+    public var signInCouldNotStart = "The sign-in command could not start."
+    public var signInCancelled = "Sign-in cancelled. Nothing was retried."
+    public var signInReplyPlaceholder = "Type a reply to the command and press Return"
 
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",

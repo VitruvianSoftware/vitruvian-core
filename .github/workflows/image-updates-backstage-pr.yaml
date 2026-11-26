@@ -116,7 +116,7 @@ jobs:
 
           body="Opened automatically by argocd-image-updater's git write-back after a new digest landed behind ghcr.io/vitruviansoftware/backstage:latest.
 
-          The image is built from this repository, so this digest is the most recent \`main\` build of \`apps/web/backstage/\`. Review the resolved digest in \`gitops/argocd/platform/backstage/values.yaml\`, then merge through the normal queue -- ArgoCD rolls the new image out on merge, which is what removes the old manual \`kubectl rollout restart\` step."
+          The image is built from this repository, so this digest is the most recent \`main\` build of \`apps/web/backstage/\`. Review the resolved digest in \`gitops/argocd/platform/backstage/values.yaml\`, it merges itself through the queue on green CI (image-update-pr-automerge.yaml; label it do-not-automerge to hold) -- ArgoCD rolls the new image out on merge, which is what removes the old manual \`kubectl rollout restart\` step."
 
           section="${CHANGELOG:-changelog unavailable: empty changelog output}"
           case "$section" in

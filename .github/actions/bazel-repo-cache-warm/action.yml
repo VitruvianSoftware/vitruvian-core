@@ -20,14 +20,16 @@
 
 # Shared composite for .github/workflows/bazel-repo-cache.yaml.
 #
-# Runs the clean-state archive fill, offline completeness proof
-# (`--repository_disable_download`) plus vacuity control check, and — only when
-# inputs.mode == 'save' — capacity check, archive-only actions/cache/save,
-# confirmation readback, and pruning of superseded and legacy same-platform
-# repository entries.
+# Runs the clean-state archive + Go module fill, prunes extracted Go module
+# trees to keep only `cache/download`, runs the offline completeness proof
+# (`--repository_disable_download` + `--repo_env=GOPROXY=off`) plus vacuity
+# control checks, and — only when inputs.mode == 'save' — runs lookup-only
+# checks, downloads Linux LLVM linker `.debs`, runs the capacity guard, saves
+# repository/gomod/debs entries via actions/cache/save, confirms readback, and
+# prunes superseded same-platform entries.
 
 name: Warm and verify Bazel repository cache
-description: Warm, offline-verify, and (in save mode on main) guard, save, confirm, and prune the Bazel repository archive cache.
+description: Warm, offline-verify, and (in save mode on main) guard, save, confirm, and prune the Bazel repository, Go module, and Linux .debs caches.
 
 inputs:
   mode:
@@ -65,6 +67,7 @@ runs:
         PLATFORM_OS_INPUT: ${{ inputs.platform-os }}
         PLATFORM_ARCH_INPUT: ${{ inputs.platform-arch }}
         LOCK_HASH_INPUT: ${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion') }}
+        GOMOD_HASH_INPUT: ${{ hashFiles('go.work', 'go.work.sum', 'go.sum', 'apps/cli/vitruvian-devx/go.sum', 'apps/desktop/vitruvian-courier/engine/go.sum', 'packages/vitruvian-sdk/go/go.sum', 'packages/pulumi/library/go/go.sum', 'packages/pulumi/library/go/pkg/app/go.sum', 'packages/pulumi/library/go/pkg/bootstrap/go.sum', 'packages/pulumi/library/go/pkg/cai_monitoring/go.sum', 'packages/pulumi/library/go/pkg/centralized_logging/go.sum', 'packages/pulumi/library/go/pkg/cicd/go.sum', 'packages/pulumi/library/go/pkg/cloud_dns/go.sum', 'packages/pulumi/library/go/pkg/cloud_functions/go.sum', 'packages/pulumi/library/go/pkg/cloud_router/go.sum', 'packages/pulumi/library/go/pkg/cloud_storage/go.sum', 'packages/pulumi/library/go/pkg/compute_instance/go.sum', 'packages/pulumi/library/go/pkg/data/go.sum', 'packages/pulumi/library/go/pkg/gcloud/go.sum', 'packages/pulumi/library/go/pkg/google_group/go.sum', 'packages/pulumi/library/go/pkg/iam/go.sum', 'packages/pulumi/library/go/pkg/instance_template/go.sum', 'packages/pulumi/library/go/pkg/kms/go.sum', 'packages/pulumi/library/go/pkg/log_export/go.sum', 'packages/pulumi/library/go/pkg/neon/go.sum', 'packages/pulumi/library/go/pkg/network/go.sum', 'packages/pulumi/library/go/pkg/network_firewall_policy/go.sum', 'packages/pulumi/library/go/pkg/network_peering/go.sum', 'packages/pulumi/library/go/pkg/org_policy/go.sum', 'packages/pulumi/library/go/pkg/private_service_connect/go.sum', 'packages/pulumi/library/go/pkg/project_factory/go.sum', 'packages/pulumi/library/go/pkg/pubsub/go.sum', 'packages/pulumi/library/go/pkg/upstash/go.sum', 'packages/pulumi/library/go/pkg/vpc_service_controls/go.sum') }}
       run: |
         set -euo pipefail
         case "$MODE_INPUT" in
@@ -74,12 +77,15 @@ runs:
             exit 1
             ;;
         esac
+        debs_sha_key="$(bash .github/actions/setup-bazel/libxml2_debs.sh sha-key)"
         {
           echo "MODE=$MODE_INPUT"
           echo "PLATFORM_OS=$PLATFORM_OS_INPUT"
           echo "PLATFORM_ARCH=$PLATFORM_ARCH_INPUT"
           echo "PLATFORM=${PLATFORM_OS_INPUT}-${PLATFORM_ARCH_INPUT}"
           echo "LOCK_HASH=$LOCK_HASH_INPUT"
+          echo "GOMOD_HASH=$GOMOD_HASH_INPUT"
+          echo "DEBS_SHA_KEY=$debs_sha_key"
         } >> "$GITHUB_ENV"
 
     - name: Free up runner disk space
@@ -110,12 +116,19 @@ runs:
       run: |
         set -euo pipefail
         REPO="${HOME}/.cache/bazel-repo"
+        GOMOD="${HOME}/.cache/bazel-gomod"
         CONTENTS="${RUNNER_TEMP}/warm-contents"
         OB="${RUNNER_TEMP}/warm-ob"
 
         if [ -e "$REPO" ]; then
           if [ ! -d "$REPO" ] || [ -n "$(ls -A "$REPO")" ]; then
             echo "::error::REPO directory '$REPO' already exists and is non-empty"
+            exit 1
+          fi
+        fi
+        if [ -e "$GOMOD" ]; then
+          if [ ! -d "$GOMOD" ] || [ -n "$(ls -A "$GOMOD")" ]; then
+            echo "::error::GOMOD directory '$GOMOD' already exists and is non-empty"
             exit 1
           fi
         fi
@@ -128,12 +141,25 @@ runs:
           exit 1
         fi
 
-        mkdir -p "$REPO" "$CONTENTS" "$OB"
+        mkdir -p "$REPO" "$GOMOD" "$CONTENTS" "$OB"
         {
           echo "REPO=$REPO"
+          echo "GOMOD=$GOMOD"
           echo "CONTENTS=$CONTENTS"
           echo "OB=$OB"
         } >> "$GITHUB_ENV"
+
+        if [ "$PLATFORM_OS" = "linux" ]; then
+          DEBS_DIR="${HOME}/.cache/ci-debs"
+          if [ -e "$DEBS_DIR" ]; then
+            if [ ! -d "$DEBS_DIR" ] || [ -n "$(ls -A "$DEBS_DIR")" ]; then
+              echo "::error::DEBS_DIR directory '$DEBS_DIR' already exists and is non-empty"
+              exit 1
+            fi
+          fi
+          mkdir -p "$DEBS_DIR"
+          echo "DEBS_DIR=$DEBS_DIR" >> "$GITHUB_ENV"
+        fi
 
     - name: Online fill (download all external archives)
       shell: bash
@@ -148,7 +174,29 @@ runs:
           ${extra_flags[@]+"${extra_flags[@]}"} \
           --repository_cache="$REPO" \
           --repo_contents_cache="$CONTENTS" \
+          --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1 \
+          --repo_env=GOMODCACHE="$GOMOD" \
           "${targets[@]}"
+
+    - name: Strip extracted Go module trees (keep cache/download only)
+      shell: bash
+      run: |
+        set -euo pipefail
+        chmod -R u+w "$GOMOD"
+        for p in "$GOMOD"/* "$GOMOD"/.[!.]* "$GOMOD"/..?*; do
+          [ -e "$p" ] || [ -L "$p" ] || continue
+          [ "${p##*/}" = "cache" ] || rm -rf "$p"
+        done
+        if [ -d "${GOMOD}/cache" ]; then
+          for p in "${GOMOD}/cache"/* "${GOMOD}/cache"/.[!.]* "${GOMOD}/cache"/..?*; do
+            [ -e "$p" ] || [ -L "$p" ] || continue
+            [ "${p##*/}" = "download" ] || rm -rf "$p"
+          done
+        fi
+        if [ ! -d "${GOMOD}/cache/download" ] || [ -z "$(find "${GOMOD}/cache/download" -type f -print -quit)" ]; then
+          echo "::error::${GOMOD}/cache/download is empty after online fill and prune"
+          exit 1
+        fi
 
     - name: Measure archive vs contents sizes
       shell: bash
@@ -168,11 +216,15 @@ runs:
         archive_bytes=$((archive_kb * 1024))
         contents_size="$(du -sh "$CONTENTS" | cut -f1)"
         repo_total_size="$(du -sh "$REPO" | cut -f1)"
+        gomod_size="$(du -sh "$GOMOD" | cut -f1)"
+        gomod_kb="$(du -sk "$GOMOD" | cut -f1)"
+        gomod_bytes=$((gomod_kb * 1024))
 
         echo "Mode: ${MODE}"
         echo "Archives (${REPO}/content_addressable): ${archive_size} (${archive_bytes} bytes)"
         echo "Contents (${CONTENTS}): ${contents_size}"
         echo "Total REPO (${REPO}): ${repo_total_size}"
+        echo "Go modules (${GOMOD}/cache/download): ${gomod_size} (${gomod_bytes} bytes)"
 
         {
           echo "### Bazel Repository Cache (${PLATFORM_OS}-${PLATFORM_ARCH}, mode: ${MODE})"
@@ -181,12 +233,15 @@ runs:
           echo "|---|---|"
           echo "| Archives (\`$REPO/content_addressable\`) | ${archive_size} (${archive_bytes} bytes) |"
           echo "| Contents (\`$CONTENTS\`) | ${contents_size} |"
-          echo "| Total saved path (\`$REPO\`) | ${repo_total_size} |"
+          echo "| Total saved repo path (\`$REPO\`) | ${repo_total_size} |"
+          echo "| Go modules (\`$GOMOD/cache/download\`) | ${gomod_size} (${gomod_bytes} bytes) |"
         } >> "$GITHUB_STEP_SUMMARY"
 
         {
           echo "ARCHIVE_SIZE=${archive_size}"
           echo "ARCHIVE_BYTES=${archive_bytes}"
+          echo "GOMOD_SIZE=${gomod_size}"
+          echo "GOMOD_BYTES=${gomod_bytes}"
         } >> "$GITHUB_ENV"
 
     - name: Verify offline completeness from a clean state
@@ -198,11 +253,19 @@ runs:
         set -euo pipefail
         OB2="${RUNNER_TEMP}/verify-ob"
         CONTENTS2="${RUNNER_TEMP}/verify-contents"
-        if [ -e "$OB2" ] || [ -e "$CONTENTS2" ]; then
-          echo "::error::verify directories already exist ($OB2 / $CONTENTS2)"
+        GOMOD_VERIFY="${RUNNER_TEMP}/verify-gomod"
+        if [ -e "$OB2" ] || [ -e "$CONTENTS2" ] || [ -e "$GOMOD_VERIFY" ]; then
+          echo "::error::verify directories already exist ($OB2 / $CONTENTS2 / $GOMOD_VERIFY)"
           exit 1
         fi
-        mkdir -p "$OB2" "$CONTENTS2"
+        mkdir -p "$OB2" "$CONTENTS2" "$GOMOD_VERIFY"
+        cp -R "${GOMOD}/." "$GOMOD_VERIFY/"
+
+        cleanup_verify() {
+          bazel --output_base="$OB2" shutdown >/dev/null 2>&1 || true
+          chmod -R u+w "$GOMOD_VERIFY" 2>/dev/null || true
+          rm -rf "$OB2" "$CONTENTS2" "$GOMOD_VERIFY"
+        }
 
         bazel --output_base="$OB" shutdown || true
         rm -rf "$OB" "$CONTENTS"
@@ -213,6 +276,7 @@ runs:
           repository_cache)"
         if [ "$got_repo" != "$REPO" ]; then
           echo "::error::bazel info repository_cache returned '$got_repo', expected '$REPO'"
+          cleanup_verify
           exit 1
         fi
         canon="$(bazel --output_base="$OB2" canonicalize-flags --for_command=build -- \
@@ -220,10 +284,12 @@ runs:
           --repo_contents_cache="$CONTENTS2")"
         if ! grep -Fqx -- "--repository_cache=${REPO}" <<<"$canon"; then
           echo "::error::canonicalized flags did not include --repository_cache=${REPO}"
+          cleanup_verify
           exit 1
         fi
         if ! grep -Fqx -- "--repo_contents_cache=${CONTENTS2}" <<<"$canon"; then
           echo "::error::canonicalized flags did not include --repo_contents_cache=${CONTENTS2}"
+          cleanup_verify
           exit 1
         fi
         for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
@@ -233,6 +299,7 @@ runs:
             gc_lock) ;;
             *)
               echo "::error::unexpected entry '$entry' in '$CONTENTS2' before offline check (only gc_lock is allowed)"
+              cleanup_verify
               exit 1
               ;;
           esac
@@ -247,6 +314,9 @@ runs:
           --repository_disable_download \
           --repository_cache="$REPO" \
           --repo_contents_cache="$CONTENTS2" \
+          --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1 \
+          --repo_env=GOMODCACHE="$GOMOD_VERIFY" \
+          --repo_env=GOPROXY=off \
           "${targets[@]}" 2>&1 | tee "$log_file"
         verify_rc="${PIPESTATUS[0]}"
         set -e
@@ -257,18 +327,26 @@ runs:
             echo "#### Offline completeness check FAILED (exit ${verify_rc})"
             echo ""
             echo '```'
-            grep -E 'ERROR:|download.*disabled|no such package|Cannot find|not found in repository cache' "$log_file" || tail -n 100 "$log_file"
+            grep -E 'ERROR:|download.*disabled|no such package|Cannot find|not found in repository cache|GOPROXY=off' "$log_file" || tail -n 100 "$log_file"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          bazel --output_base="$OB2" shutdown || true
-          rm -rf "$OB2" "$CONTENTS2"
+          cleanup_verify
           exit "$verify_rc"
         fi
 
         if [ -e "${REPO}/contents" ]; then
           echo "::error::${REPO}/contents was created during offline verification"
+          cleanup_verify
           exit 1
         fi
+        for p in "$GOMOD"/* "$GOMOD"/.[!.]* "$GOMOD"/..?*; do
+          [ -e "$p" ] || [ -L "$p" ] || continue
+          if [ "${p##*/}" != "cache" ]; then
+            echo "::error::unexpected extracted directory '${p##*/}' in '$GOMOD' during offline verification"
+            cleanup_verify
+            exit 1
+          fi
+        done
         extracted_count=0
         for p in "$CONTENTS2"/* "$CONTENTS2"/.[!.]* "$CONTENTS2"/..?*; do
           [ -e "$p" ] || [ -L "$p" ] || continue
@@ -284,35 +362,63 @@ runs:
         done
         if [ "$extracted_count" -eq 0 ]; then
           echo "::error::verify contents directory '$CONTENTS2' has no extracted repos after offline build (only lock files or empty)"
+          cleanup_verify
           exit 1
         fi
         echo "Offline build populated ${extracted_count} extracted repo content entries in ${CONTENTS2}."
 
-        bazel --output_base="$OB2" shutdown || true
-        rm -rf "$OB2" "$CONTENTS2"
+        cleanup_verify
 
-        # Control check: prove the offline completeness check can fail.
+        # Control check 1: prove the repo-archive offline completeness check can fail.
         OB3="${RUNNER_TEMP}/control-ob"
         EMPTY_REPO="${RUNNER_TEMP}/empty-repo"
         EMPTY_CONTENTS="${RUNNER_TEMP}/empty-contents"
-        mkdir -p "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
+        EMPTY_GOMOD="${RUNNER_TEMP}/empty-gomod"
+        mkdir -p "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS" "$EMPTY_GOMOD"
         set +e
         bazel --output_base="$OB3" build --nobuild \
           ${extra_flags[@]+"${extra_flags[@]}"} \
           --repository_disable_download \
           --repository_cache="$EMPTY_REPO" \
           --repo_contents_cache="$EMPTY_CONTENTS" \
+          --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1 \
+          --repo_env=GOMODCACHE="$EMPTY_GOMOD" \
+          --repo_env=GOPROXY=off \
           "${targets[@]}" >/dev/null 2>&1
         control_rc=$?
         set -e
         bazel --output_base="$OB3" shutdown || true
-        rm -rf "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS"
+        rm -rf "$OB3" "$EMPTY_REPO" "$EMPTY_CONTENTS" "$EMPTY_GOMOD"
         if [ "$control_rc" -eq 0 ]; then
           echo "::error::the completeness check is vacuous"
           exit 1
         fi
 
-        echo "Offline completeness verified (control check exited ${control_rc})."
+        # Control check 2: with populated repo cache but empty GOMODCACHE + GOPROXY=off, Go fetch must fail.
+        OB4="${RUNNER_TEMP}/control-go-ob"
+        EMPTY_CONTENTS4="${RUNNER_TEMP}/empty-go-contents"
+        EMPTY_GOMOD4="${RUNNER_TEMP}/empty-go-gomod"
+        mkdir -p "$OB4" "$EMPTY_CONTENTS4" "$EMPTY_GOMOD4"
+        set +e
+        bazel --output_base="$OB4" build --nobuild \
+          ${extra_flags[@]+"${extra_flags[@]}"} \
+          --repository_disable_download \
+          --repository_cache="$REPO" \
+          --repo_contents_cache="$EMPTY_CONTENTS4" \
+          --repo_env=GO_REPOSITORY_USE_HOST_MODCACHE=1 \
+          --repo_env=GOMODCACHE="$EMPTY_GOMOD4" \
+          --repo_env=GOPROXY=off \
+          "${targets[@]}" >/dev/null 2>&1
+        go_control_rc=$?
+        set -e
+        bazel --output_base="$OB4" shutdown || true
+        rm -rf "$OB4" "$EMPTY_CONTENTS4" "$EMPTY_GOMOD4"
+        if [ "$go_control_rc" -eq 0 ]; then
+          echo "::error::the Go module completeness check is vacuous"
+          exit 1
+        fi
+
+        echo "Offline completeness verified (archive control exited ${control_rc}, go control exited ${go_control_rc})."
 
     - name: Check if complete repository cache already exists
       id: cache-lookup
@@ -322,6 +428,24 @@ runs:
         lookup-only: true
         path: ${{ env.REPO }}
         key: setup-bazel-1-${{ env.PLATFORM }}-repository-full-${{ env.LOCK_HASH }}
+
+    - name: Check if Go module cache already exists
+      id: gomod-cache-lookup
+      if: inputs.mode == 'save'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        lookup-only: true
+        path: ${{ env.GOMOD }}
+        key: bazel-gomod-1-${{ env.PLATFORM }}-${{ env.GOMOD_HASH }}
+
+    - name: Check if LLVM linker .debs cache already exists
+      id: debs-cache-lookup
+      if: inputs.mode == 'save' && inputs.platform-os == 'linux'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        lookup-only: true
+        path: ${{ env.DEBS_DIR }}
+        key: ci-debs-1-linux-x64-${{ env.DEBS_SHA_KEY }}
 
     - name: Write COMPLETE.json marker
       if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true'
@@ -350,16 +474,47 @@ runs:
             f.write("\n")
         PY
 
+    - name: Download LLVM linker .debs for cache
+      if: inputs.mode == 'save' && inputs.platform-os == 'linux' && steps.debs-cache-lookup.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash .github/actions/setup-bazel/libxml2_debs.sh fetch "$DEBS_DIR"
+        debs_size="$(du -sh "$DEBS_DIR" | cut -f1)"
+        debs_kb="$(du -sk "$DEBS_DIR" | cut -f1)"
+        debs_bytes=$((debs_kb * 1024))
+        echo "LLVM linker .debs (${DEBS_DIR}): ${debs_size} (${debs_bytes} bytes)"
+        echo "| LLVM linker .debs (\`$DEBS_DIR\`) | ${debs_size} (${debs_bytes} bytes) |" >> "$GITHUB_STEP_SUMMARY"
+        {
+          echo "DEBS_SIZE=${debs_size}"
+          echo "DEBS_BYTES=${debs_bytes}"
+        } >> "$GITHUB_ENV"
+
     - name: Check Actions cache capacity before saving
       id: capacity-guard
-      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true'
+      if: inputs.mode == 'save' && (steps.cache-lookup.outputs.cache-hit != 'true' || steps.gomod-cache-lookup.outputs.cache-hit != 'true' || (inputs.platform-os == 'linux' && steps.debs-cache-lookup.outputs.cache-hit != 'true'))
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         ACTIONS_CACHE_LIMIT_CONFIRMED_GB: ${{ inputs.cache-limit-gb }}
+        REPO_HIT: ${{ steps.cache-lookup.outputs.cache-hit }}
+        GOMOD_HIT: ${{ steps.gomod-cache-lookup.outputs.cache-hit }}
+        DEBS_HIT: ${{ steps.debs-cache-lookup.outputs.cache-hit }}
       run: |
         set -euo pipefail
-        python3 .github/actions/setup-bazel/cache_capacity_guard.py --platform "$PLATFORM"
+        need_repo_bytes=$([ "${REPO_HIT:-}" = "true" ] && echo 0 || echo "${ARCHIVE_BYTES}")
+        need_gomod_bytes=$([ "${GOMOD_HIT:-}" = "true" ] && echo 0 || echo "${GOMOD_BYTES}")
+        need_debs_bytes=0
+        if [ "$PLATFORM_OS" = "linux" ] && [ "${DEBS_HIT:-}" != "true" ]; then
+          need_debs_bytes="${DEBS_BYTES:-0}"
+        fi
+        python3 .github/actions/setup-bazel/cache_capacity_guard.py \
+          --platform "$PLATFORM" \
+          --archive-bytes "$need_repo_bytes" \
+          --gomod-bytes "$need_gomod_bytes" \
+          --gomod-hash "$GOMOD_HASH" \
+          --debs-bytes "$need_debs_bytes" \
+          --debs-hash "$DEBS_SHA_KEY"
 
     - name: Save complete repository cache (attempt 1)
       id: cache-save-1
@@ -407,11 +562,70 @@ runs:
         echo "::warning::${msg}"
         echo "${msg}" >> "$GITHUB_STEP_SUMMARY"
 
+    - name: Save Go module cache (attempt 1)
+      id: gomod-cache-save-1
+      continue-on-error: true
+      if: inputs.mode == 'save' && steps.gomod-cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ env.GOMOD }}
+        key: bazel-gomod-1-${{ env.PLATFORM }}-${{ env.GOMOD_HASH }}
+
+    - name: Back off before Go module cache upload retry 2
+      if: inputs.mode == 'save' && steps.gomod-cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.gomod-cache-save-1.outcome != 'success'
+      shell: bash
+      run: sleep 5
+
+    - name: Save Go module cache (attempt 2)
+      id: gomod-cache-save-2
+      continue-on-error: true
+      if: inputs.mode == 'save' && steps.gomod-cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.gomod-cache-save-1.outcome != 'success'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ env.GOMOD }}
+        key: bazel-gomod-1-${{ env.PLATFORM }}-${{ env.GOMOD_HASH }}
+
+    - name: Warn if Go module cache upload failed after retries
+      id: gomod-cache-save-warn
+      if: inputs.mode == 'save' && steps.gomod-cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.gomod-cache-save-1.outcome != 'success' && steps.gomod-cache-save-2.outcome != 'success'
+      shell: bash
+      run: |
+        msg="Go module cache upload failed for ${PLATFORM_OS}-${PLATFORM_ARCH} after 2 attempts."
+        echo "::warning::${msg}"
+        echo "${msg}" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Save LLVM linker .debs cache
+      id: debs-cache-save
+      continue-on-error: true
+      if: inputs.mode == 'save' && inputs.platform-os == 'linux' && steps.debs-cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ env.DEBS_DIR }}
+        key: ci-debs-1-linux-x64-${{ env.DEBS_SHA_KEY }}
+
+    - name: Warn if LLVM linker .debs cache upload failed
+      id: debs-cache-save-warn
+      if: inputs.mode == 'save' && inputs.platform-os == 'linux' && steps.debs-cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && steps.debs-cache-save.outcome != 'success'
+      shell: bash
+      run: |
+        msg="LLVM linker .debs cache upload failed for ${PLATFORM_OS}-${PLATFORM_ARCH}."
+        echo "::warning::${msg}"
+        echo "${msg}" >> "$GITHUB_STEP_SUMMARY"
+
     - name: Confirm saved cache and prune superseded same-platform entries
-      if: inputs.mode == 'save' && steps.cache-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true' && (steps.cache-save-1.outcome == 'success' || steps.cache-save-2.outcome == 'success' || steps.cache-save-3.outcome == 'success')
+      if: inputs.mode == 'save' && steps.capacity-guard.outputs.allow_save == 'true' && ((steps.cache-lookup.outputs.cache-hit != 'true' && (steps.cache-save-1.outcome == 'success' || steps.cache-save-2.outcome == 'success' || steps.cache-save-3.outcome == 'success')) || (steps.gomod-cache-lookup.outputs.cache-hit != 'true' && (steps.gomod-cache-save-1.outcome == 'success' || steps.gomod-cache-save-2.outcome == 'success')) || (inputs.platform-os == 'linux' && steps.debs-cache-lookup.outputs.cache-hit != 'true' && steps.debs-cache-save.outcome == 'success'))
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        REPO_SAVED: ${{ steps.cache-lookup.outputs.cache-hit != 'true' && (steps.cache-save-1.outcome == 'success' || steps.cache-save-2.outcome == 'success' || steps.cache-save-3.outcome == 'success') }}
+        GOMOD_SAVED: ${{ steps.gomod-cache-lookup.outputs.cache-hit != 'true' && (steps.gomod-cache-save-1.outcome == 'success' || steps.gomod-cache-save-2.outcome == 'success') }}
+        DEBS_SAVED: ${{ inputs.platform-os == 'linux' && steps.debs-cache-lookup.outputs.cache-hit != 'true' && steps.debs-cache-save.outcome == 'success' }}
       run: |
         set -euo pipefail
-        python3 .github/actions/setup-bazel/cache_prune.py --platform "$PLATFORM"
+        python3 .github/actions/setup-bazel/cache_prune.py \
+          --platform "$PLATFORM" \
+          --repo-saved "${REPO_SAVED:-false}" \
+          --gomod-saved "${GOMOD_SAVED:-false}" \
+          --gomod-hash "$GOMOD_HASH" \
+          --debs-saved "${DEBS_SAVED:-false}" \
+          --debs-hash "$DEBS_SHA_KEY"

@@ -151,6 +151,27 @@ spec:
                 enabled: false
                 podMonitor:
                   enabled: true
+              # Read-only login for the Postgres MCP server (crystaldba/postgres-mcp,
+              # --access-mode=restricted), reached through the zitadel-db-cluster-ro
+              # service. pg_read_all_data grants SELECT on every table and nothing
+              # else: no writes, no DDL. CNPG keeps the role in sync with the
+              # password in SealedSecret zitadel-db-mcp-readonly (basic-auth).
+              roles:
+                - name: mcp_readonly
+                  ensure: present
+                  comment: Read-only login for the Postgres MCP server
+                  login: true
+                  superuser: false
+                  createdb: false
+                  createrole: false
+                  inherit: true
+                  # CNPG's webhook defaults this to -1 (no limit); stating it keeps
+                  # Argo CD from showing the Cluster as OutOfSync forever.
+                  connectionLimit: -1
+                  inRoles:
+                    - pg_read_all_data
+                  passwordSecret:
+                    name: zitadel-db-mcp-readonly
               # Fresh bootstrap: create db `zitadel` owned by `zitadel`, with the
               # password from SealedSecret zitadel-db-app-credentials (basic-auth).
               # CNPG ignores this block once the cluster is initialized.

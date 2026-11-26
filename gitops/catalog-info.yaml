@@ -120,6 +120,30 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
+  name: minio-mcp
+  title: MinIO MCP server
+  description: Read-only MCP server that lets MCP clients list MinIO buckets and objects; reachable on the LAN and tailnet only, with no login of its own
+  annotations:
+    backstage.io/techdocs-ref: dir:..
+    argocd/app-name: minio-mcp
+  links:
+    - url: https://minio-mcp.lab.ipv1337.dev/mcp
+      title: MCP endpoint (LAN/tailnet)
+      icon: web
+    - url: https://github.com/minio/mcp-server-aistor
+      title: Upstream docs
+      icon: docs
+spec:
+  type: mcp-server
+  lifecycle: production
+  owner: platform-team
+  system: platform-runtime
+  dependsOn:
+    - resource:default/minio
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
   name: cloudnative-pg
   title: CloudNativePG
   description: PostgreSQL operator running the Backstage, Zitadel and buzz clusters

@@ -410,7 +410,10 @@ def _eval_gha_expr(expr, step_outcomes):
     if s.startswith("${{") and s.endswith("}}"):
         s = s[3:-2].strip()
     s = s.replace("inputs.mode", "'save'")
+    s = s.replace("inputs.platform-os", "'linux'")
     s = s.replace("steps.cache-lookup.outputs.cache-hit", "'false'")
+    s = s.replace("steps.gomod-cache-lookup.outputs.cache-hit", "'true'")
+    s = s.replace("steps.debs-cache-lookup.outputs.cache-hit", "'true'")
     s = s.replace("steps.capacity-guard.outputs.allow_save", "'true'")
 
     def repl_outcome(m):
@@ -595,3 +598,100 @@ def test_main_exits_1_on_wiring_bugs(tmp_path, capsys, repo, token, archive_byte
     assert rc == 1
     assert "::error::" in capsys.readouterr().err
     assert "allow_save=false" in output.read_text(encoding="utf-8")
+
+
+def test_gomod_and_debs_key_matchers_capacity_and_priority():
+    assert guard.is_superseded_gomod_cache_key(
+        f"bazel-gomod-1-linux-x64-{OLDER_LINUX_HASH_1}",
+        "linux-x64",
+        CURRENT_HASH,
+    )
+    assert not guard.is_superseded_gomod_cache_key(
+        f"bazel-gomod-1-linux-x64-{CURRENT_HASH}",
+        "linux-x64",
+        CURRENT_HASH,
+    )
+    assert not guard.is_superseded_gomod_cache_key(
+        f"bazel-gomod-1-darwin-arm64-{OTHER_DARWIN_HASH}",
+        "linux-x64",
+        CURRENT_HASH,
+    )
+    assert guard.is_superseded_debs_cache_key(
+        "ci-debs-1-linux-x64-oldsha",
+        "linux-x64",
+        "newsha",
+    )
+    assert not guard.is_superseded_debs_cache_key(
+        "ci-debs-1-linux-x64-newsha",
+        "linux-x64",
+        "newsha",
+    )
+
+    caches = [
+        {
+            "id": 10,
+            "key": f"setup-bazel-1-linux-x64-repository-{LIVE_LEGACY_LINUX_HASH}",
+            "size_in_bytes": 1_000_000_000,
+        },
+        {
+            "id": 11,
+            "key": f"setup-bazel-1-linux-x64-repository-full-{OLDER_LINUX_HASH_1}",
+            "size_in_bytes": 1_000_000_000,
+        },
+        {
+            "id": 12,
+            "key": f"bazel-gomod-1-linux-x64-{OLDER_LINUX_HASH_1}",
+            "size_in_bytes": 500_000_000,
+        },
+        {
+            "id": 13,
+            "key": "ci-debs-1-linux-x64-oldsha",
+            "size_in_bytes": 12_000_000,
+        },
+        {
+            "id": 14,
+            "key": f"bazel-gomod-1-darwin-arm64-{OTHER_DARWIN_HASH}",
+            "size_in_bytes": 9_000_000_000,
+        },
+    ]
+
+    # Needed = 5_000_000_000 + 500_000_000 + 10_000_000 = 5_510_000_000.
+    # Usage = 12_000_000_000 -> total 17_510_000_000 > 15_000_000_000 (need 2_510_000_000 deleted).
+    # Should delete id=10 (1B), id=11 (1B), id=12 (500M), id=13 (12M) -> 2_512_000_000 deleted,
+    # real_peak = 14_998_000_000 <= 15_000_000_000, and never touch darwin id=14.
+    deleted = []
+    ok, report = guard.prepare_capacity_for_save(
+        total_active_bytes=12_000_000_000,
+        caches=caches,
+        archive_bytes=5_000_000_000,
+        limit_gb_raw="15",
+        platform="linux-x64",
+        current_lock_hash=CURRENT_HASH,
+        gomod_bytes=500_000_000,
+        debs_bytes=10_000_000,
+        current_gomod_hash=CURRENT_HASH,
+        current_debs_hash="newsha",
+        delete_fn=deleted.append,
+    )
+    assert ok is True
+    assert deleted == [10, 11, 12, 13]
+    assert report["needed_bytes"] == 5_510_000_000
+    assert report["real_peak_bytes"] == 14_998_000_000
+
+    # If gomod + debs push over limit even after deleting all replaceable Linux entries, skip and delete nothing.
+    deleted_overflow = []
+    ok_ov, _rep_ov = guard.prepare_capacity_for_save(
+        total_active_bytes=12_100_000_000,
+        caches=caches,
+        archive_bytes=5_000_000_000,
+        limit_gb_raw="15",
+        platform="linux-x64",
+        current_lock_hash=CURRENT_HASH,
+        gomod_bytes=500_000_000,
+        debs_bytes=10_000_000,
+        current_gomod_hash=CURRENT_HASH,
+        current_debs_hash="newsha",
+        delete_fn=deleted_overflow.append,
+    )
+    assert ok_ov is False
+    assert deleted_overflow == []

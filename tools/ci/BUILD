@@ -59,6 +59,7 @@ _BUILD_CI_TOOLS = [
     "chart_render",
     "deploy_affected",
     "foundation_app_digest_guard",
+    "foundation_leaf_guard",
     "gitops_validate",
     "gitops_values_render",
     "go_test_with_retry",
@@ -2018,6 +2019,57 @@ rust_test(
     data = [":foundation_app_digest_guard"],
     edition = "2021",
     env = {"BIN": "$(rootpath :foundation_app_digest_guard)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
+)
+
+# foundation-leaf-guard: the first job of foundation-proj-deploy.yaml and
+# foundation-app-deploy.yaml refuses any working-directory, business-unit or
+# environment that is not one of the stage's own leaves (#4279).
+rust_library(
+    name = "foundation_leaf_guard_lib",
+    srcs = ["src/foundation_leaf_guard/lib.rs"],
+    crate_name = "foundation_leaf_guard",
+    crate_root = "src/foundation_leaf_guard/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_binary(
+    name = "foundation_leaf_guard",
+    srcs = ["src/foundation_leaf_guard/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":foundation_leaf_guard_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_test(
+    name = "foundation_leaf_guard_lib_test",
+    size = "small",
+    crate = ":foundation_leaf_guard_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Black-box: runs the REAL binary against a fake checkout, and reads both
+# deploy workflows to check every job waits for the guard.
+rust_test(
+    name = "foundation_leaf_guard_test",
+    size = "small",
+    srcs = ["src/foundation_leaf_guard/tests.rs"],
+    data = [
+        ":foundation_leaf_guard",
+        "//:workflow_files",
+    ],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :foundation_leaf_guard)"},
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
 )

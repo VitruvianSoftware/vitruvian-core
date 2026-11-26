@@ -1,0 +1,223 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: zitadel-mcp-viewer-apply
+
+# Manual apply of the zitadel-mcp-viewer stack: the read-only Zitadel machine
+# user `mcp-viewer` (org role ORG_OWNER_VIEWER) and its expiring Personal Access
+# Token, used by the Zitadel MCP server on James's Mac.
+#
+# Same shape as zitadel-apps-mcp-slack-apply.yaml (tunnel, plan guard, report on
+# preview too), minus anything app-specific. The PAT is a SECRET output and this
+# workflow never reads it: no --show-secrets anywhere. James reads it locally
+# after an `up`:
+#   bazel run //infrastructure/pulumi/platform/zitadel-mcp-viewer:stack -- output patToken --show-secrets
+#
+# Dispatch-only, like its siblings: an `up` creates a live credential, so a
+# person chooses when.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preview (safe, default) | up (CREATES live Zitadel resources)"
+        required: true
+        default: preview
+        type: choice
+        options: [preview, up]
+
+# Serialize applies of this stack; never cancel an in-flight pulumi up.
+# Mirrors the identical guard on the sibling _oauth-identity-apply.yaml /
+# _vitruvian-tabs-identity-apply.yaml (which this workflow otherwise matches step
+# for step — same tailnet-tunnel + pulumi-up shape). Without this, two
+# manual dispatches within the same window (or one double-click) could run
+# `pulumi up --yes` on the SAME Zitadel OIDC client stack concurrently;
+# Pulumi's own per-stack state locking is the only backstop today, unlike
+# the siblings where it's an explicit, documented guard.
+concurrency:
+  group: zitadel-mcp-viewer-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    # checkout only. No `id-token: write` — that exists in the sibling for its
+    # GCP Secret Manager writes, and this stack has no GCP resources.
+    permissions:
+      contents: read
+    # Supplies HEADSCALE_CI_AUTHKEY and ZITADEL_MACHINE_KEY_JSON,
+    # which are ENVIRONMENT secrets rather than repo secrets — this stack cannot
+    # authenticate without it. The name says oauth-user-inspector because that is
+    # where they were first seeded; they are instance-wide credentials,
+    # not app-scoped. A dedicated environment would be tidier and would cost a
+    # human more secret copies, so it is deliberately not done here.
+    environment: oauth-user-inspector-development
+    env:
+      DEPLOY_ENV: development
+      # Authenticate Pulumi's github:// plugin downloads (pulumi-resource-zitadel
+      # comes from github://api.github.com/pulumiverse) so the job does not hit
+      # the 60/hr/IP unauthenticated GitHub API rate limit CI runners routinely
+      # exhaust (intermittent 403s); GITHUB_TOKEN raises this to 5000/hr. Same
+      # class of fix as #756 / the identity-apply workflows. Seen live on
+      # delivery run 37446763025 (2026-10-06): "rate limit exceeded: 403".
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the Zitadel tunnel (Headscale join + TLS terminator prep)
+        uses: ./.github/actions/zitadel-tunnel-setup
+        with:
+          headscale-authkey: ${{ secrets.HEADSCALE_CI_AUTHKEY }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
+
+      - name: "Run Pulumi (${{ inputs.action }})"
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
+          ACTION: ${{ inputs.action }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/platform/zitadel-mcp-viewer
+        run: |
+          set -euo pipefail
+          # The 409 retry helper, //tools/pulumi:retry-concurrent-update. This job
+          # sets up no Bazel and the helper is one std-only file, so the runner's
+          # rustc builds it from the checkout (about a second), before the tunnel.
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
+          # guarded-up (//tools/pulumi:guarded-up) runs `pulumi preview --json`, the
+          # plan guard, then `pulumi up`, as one unit retried on the 409. The guard
+          # refuses a plan that deletes or replaces anything nobody approved: on
+          # the Zitadel provider a replace of an OIDC app DELETES the live client
+          # and breaks hosted login (2026-06-26).
+          guarded_up="${RUNNER_TEMP}/guarded-up"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/guarded_up.rs" -o "$guarded_up"
+          # The terminator must live inside THIS step — a backgrounded process does
+          # not survive across steps.
+          #
+          # Target a cluster node's Headscale address on the gateway NodePort
+          # ($ZITADEL_GATEWAY, picked by the zitadel-tunnel-setup action), NOT the
+          # LB VIP 10.44.86.211. The VIP is a Cilium eBPF LB address: a packet
+          # forwarded to it by the subnet router is dropped in Cilium's datapath
+          # before load-balancing, so conntrack never sees it. Fixed in 7fea0b3f
+          # for the sibling workflow.
+          # NOTE: zitadel-apps/APPLYING-FROM-CI.md still documents the VIP form; it
+          # predates that fix and is stale on this point.
+          # :30265 is pinned in gitops/argocd/platform/envoy-gateway/gateway/envoyproxy.yaml
+          # precisely so this hardcoding cannot drift.
+          : "${ZITADEL_GATEWAY:?zitadel-tunnel-setup did not pick a gateway node}"
+          sudo socat OPENSSL-LISTEN:443,bind=127.0.0.1,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+            TCP:"${ZITADEL_GATEWAY}" &
+          trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
+
+          # Fail loudly on the route rather than letting Pulumi report a confusing
+          # provider error. This is also the positive control that the tunnel works:
+          # if healthz answers, the internal path is up.
+          for _ in $(seq 1 15); do
+            curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
+          echo "internal route to auth.ipv1337.dev is up"
+
+          # plan-guard:begin
+          # No --create: the development stack is created once by hand
+          # (`bazel run //infrastructure/pulumi/platform/zitadel-mcp-viewer:stack -- init development`),
+          # and a missing stack is a mistake to stop on, not one to paper over.
+          pulumi stack select "$DEPLOY_ENV"
+          pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
+
+          if [ "$ACTION" = "up" ]; then
+            # refresh is a Pulumi Cloud update too, so it waits out the 409.
+            "$retry" pulumi refresh --yes
+            # Which deletes and replaces may apply: only ones a reviewed commit named
+            # with an `Allow-destroy: <urn>` line. A push reads the pushed commits; a
+            # release reads the commits since the product's previous release
+            # (tools/pulumi/release_approvals.sh). A manual run approves nothing.
+            allow=()
+            case "${EVENT_NAME:-}" in
+              push)
+                allow=(--allow-destroy-from-event "${GITHUB_EVENT_PATH:?}")
+                ;;
+              release)
+                approvals="${RUNNER_TEMP}/release-approvals.json"
+                "$GITHUB_WORKSPACE/tools/pulumi/release_approvals.sh" "$approvals"
+                allow=(--allow-destroy-from-event "$approvals")
+                ;;
+            esac
+            "$guarded_up" "zitadel-mcp-viewer ${DEPLOY_ENV}" ${allow[@]+"${allow[@]}"}
+          else
+            pulumi preview --diff
+          fi
+          # plan-guard:end
+
+          # ---------------------------------------------------------------
+          # REPORTING LIVES IN THIS STEP, DELIBERATELY, AND IS NOT GATED ON
+          # $ACTION. Both properties are fixes for how the first `up` failed.
+          #
+          # 1. In a separate step it could not work at all: the socat terminator
+          #    above is backgrounded and trapped on EXIT, so it dies when this
+          #    step ends and `refresh` got `dial tcp 127.0.0.1:443: connection
+          #    refused`. The comment above the socat line already said a
+          #    backgrounded process does not survive across steps; the reporting
+          #    step was written one step later anyway.
+          #
+          # 2. It used to carry `if: inputs.action == 'up'`, which meant the only
+          #    run that could ever execute it was the irreversible one. Every
+          #    safe rehearsal took the branch that skipped it, so its first
+          #    execution was necessarily the run that creates live resources. A
+          #    code path whose sole test is the dangerous path has no test.
+          #    Running it on `preview` too is the point, not a side effect.
+          # ---------------------------------------------------------------
+
+          # Reporting runs on preview too (see zitadel-apps-mcp-slack-apply.yaml
+          # for why a report that only runs on `up` has no test). Skip only on a
+          # preview of a stack with nothing applied yet.
+          if [ "$ACTION" != "up" ] && ! pulumi stack output machineUserId >/dev/null 2>&1; then
+            echo "stack has no outputs yet — nothing applied, skipping the report"
+            exit 0
+          fi
+          "$retry" pulumi refresh --yes
+
+          # NO --show-secrets anywhere in this workflow. patToken is the
+          # credential; James reads it locally after an apply. The outputs below
+          # are not secret.
+          OUTPUTS="machineUserId orgRole patExpiry"
+          ROLE=""
+          for o in $OUTPUTS; do
+            v="$(pulumi stack output "$o")"
+            if [ -z "$v" ]; then
+              echo "::error::stack output $o read back empty — refusing to report a blank value" >&2
+              exit 1
+            fi
+            printf '%-14s %s\n' "$o" "$v"
+            if [ "$o" = "orgRole" ]; then ROLE="$v"; fi
+          done
+          # This identity must stay read-only.
+          if [ "$ROLE" != "ORG_OWNER_VIEWER" ]; then
+            echo "::error::orgRole is '$ROLE', not ORG_OWNER_VIEWER — the MCP identity must stay read-only" >&2
+            exit 1
+          fi

@@ -897,6 +897,7 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
             promptInactivityTimeout: promptInactivityTimeout,
             cancelGraceTimeout: cancelGraceTimeout,
             sessionSetupTimeout: sessionSetupTimeout,
+            signInMethodID: spec.signInMethodID,
             processFactory: processFactory
         )
     }
@@ -914,6 +915,7 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
         cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
         sessionSetupTimeout: TimeInterval = ACPTransport.defaultSessionSetupTimeout,
         terminationGrace: TimeInterval = AgentProcess.defaultTerminationGrace,
+        signInMethodID: String? = nil,
         processFactory: @escaping ACPConnection.ProcessFactory = ACPLaunchedProcess.live
     ) {
         // Ensure CLI arguments never pass `--dangerously-skip-permissions`, `yolo`, or `auto_edit`.
@@ -1022,7 +1024,8 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
             promptOutcomeWatcher: promptOutcomeWatcher,
             promptContextUsageProvider: promptContextUsageProvider,
             promptInactivityTimeout: promptInactivityTimeout,
-            cancelGraceTimeout: cancelGraceTimeout
+            cancelGraceTimeout: cancelGraceTimeout,
+            authenticateMethodID: signInMethodID
         )
 
         self.inner = ACPConnection(
@@ -1098,5 +1101,14 @@ public final class AntigravityACPConnection: PersistentAgentConnection {
     ) async throws {
         let targetMode = AntigravityACPSupport.cliSessionMode(for: approvalMode, planSwitch: planSwitch)
         try await inner.setSessionMode(targetMode)
+    }
+}
+
+extension AntigravityACPConnection: AgentSessionListing {
+    /// agy's own past sessions over `session/list` (`AgentSessionHistory`). agy
+    /// 1.5.16 advertises it and needs `oauth-personal` sign-in first, which the
+    /// inner connection does when agy asks.
+    public func listSessionPage(cwd: String?, cursor: String?) async throws -> AgentSessionPage {
+        try await inner.listSessionPage(cwd: cwd, cursor: cursor)
     }
 }

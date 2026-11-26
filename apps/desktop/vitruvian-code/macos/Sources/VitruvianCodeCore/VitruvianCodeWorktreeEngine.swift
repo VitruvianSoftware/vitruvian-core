@@ -901,7 +901,7 @@ public struct VitruvianCodeMultiRepoWorkspace: Equatable, Sendable {
         switch route {
         case .claude, .ollama, .antigravity:
             return childRepos.flatMap { ["--add-dir", $0] }
-        case .opencode, .custom:
+        case .opencode, .custom, .registry:
             return []
         }
     }

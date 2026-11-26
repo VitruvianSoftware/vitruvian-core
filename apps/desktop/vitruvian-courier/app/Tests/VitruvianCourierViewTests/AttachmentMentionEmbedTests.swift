@@ -244,7 +244,11 @@ final class AttachmentMentionEmbedTests: XCTestCase {
                 RichTextView(rich: RichText(text: text, entities: entities), onBubble: false, revealed: .constant(false))
                     .environment(\.courierMessagePointSize, 22).padding(12)
             }
-            return try luminances(name, "light").min() ?? 1
+            // The typical ink, not the darkest pixel: the link's ↗ is drawn at full strength in a quote too, and on a
+            // Retina screen (two pixels per point) its thin strokes reach pure black in both pictures. The text, which
+            // is most of the ink, is what is dimmed.
+            let ink = try luminances(name, "light").filter { $0 < 0.75 }.sorted()
+            return ink.isEmpty ? 1 : ink[ink.count / 2]
         }
         XCTAssertGreaterThan(try render("link-quoted", quoted: true), try render("link-flat", quoted: false),
                              "a link in a quote is dimmed as it always was")

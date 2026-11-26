@@ -379,6 +379,18 @@ spec:
                       - "s3:DeleteObject"
                       - "s3:AbortMultipartUpload"
                       - "s3:ListMultipartUploadParts"
+              # Read-only listing for the MinIO MCP server (mcp-server-aistor, run
+              # without --allow-write/--allow-delete/--allow-admin). It can see which
+              # buckets exist and what keys they hold, but NOT read an object:
+              # these buckets hold database backups, so there is no s3:GetObject.
+              - name: mcp-readonly
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::*'
+                    actions:
+                      - "s3:ListAllMyBuckets"
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
             users:
               - accessKey: grafana-db-backup
                 existingSecret: minio-user-grafana-db-backup
@@ -436,6 +448,10 @@ spec:
                 existingSecret: minio-user-buzz-media
                 existingSecretKey: secretKey
                 policy: buzz-media
+              - accessKey: mcp-readonly
+                existingSecret: minio-user-mcp-readonly
+                existingSecretKey: secretKey
+                policy: mcp-readonly
               # Deliberately NOT listed: `console`. The chart's DEFAULT users
               # list creates console / console123 with full admin rights; any
               # `users:` list replaces that default. The live one (created at

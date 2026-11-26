@@ -84,7 +84,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         internal var hasCustomMakeConnection: Bool { customMakeConnection != nil }
         /// Builds the `AgentConnection` for a turn. Defaults to `AntigravityACPConnection` when
         /// `spec.provider` is Antigravity with `.acp` selected, `ClaudeSDKConnection` when it is
-        /// Claude with `.claudeSDK` selected, and `CommandLineConnection` otherwise.
+        /// Claude or Ollama (claude) with `.claudeSDK` selected, and `CommandLineConnection` otherwise.
         public var makeConnection: (AgentConnectionSpec) -> any AgentConnection {
             get {
                 if let customMakeConnection { return customMakeConnection }
@@ -93,7 +93,10 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                     if spec.provider.route == .antigravity && spec.provider.connection == .acp {
                         return AntigravityACPConnection(spec: spec, environment: current)
                     }
-                    if spec.provider.route == .claude && spec.provider.connection == .claudeSDK {
+                    if spec.provider.route == .registry {
+                        return ACPRegistryConnection.make(spec: spec, environment: current)
+                    }
+                    if spec.provider.runsOnClaudeSDK {
                         return ClaudeSDKConnection(spec: spec, environment: current)
                     }
                     return CommandLineConnection(spec: spec, environment: current)
@@ -357,6 +360,16 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
 
     public let session: VitruvianCodeQuickPromptSession
     private let environment: Environment
+
+    /// The installer Settings adds and removes ACP registry agents with: the
+    /// real network and programs, installing under this app's state folder.
+    /// Installing happens only when Settings calls `install`.
+    public func makeRegistryInstaller() -> ACPRegistryInstaller {
+        ACPRegistryInstaller(
+            stateDirectory: environment.stateDirectory,
+            host: .live(home: environment.home),
+            environment: VitruvianCodeSupport.childEnvironment(base: environment.processEnvironment, home: environment.home))
+    }
     private let host: any VitruvianCodeHost
     /// The bot this app launched, as opposed to one adopted from the PID file.
     private var managedPID: Int32?
@@ -645,7 +658,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             query = ("opencode", ["models"])
         case .ollama:
             query = ("ollama", ["list"])
-        case .claude, .custom:
+        case .claude, .custom, .registry:
             query = nil
         }
         guard let query else {
@@ -690,6 +703,11 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                                                        home: environment.home,
                                                        isExecutable: environment.isExecutable,
                                                        fileExists: environment.fileExists)
+        case .registry:
+            // The copy the user installed from Settings, or nothing: a turn never installs.
+            guard let agent = provider.registryAgent else { return nil }
+            return ACPRegistryInstaller.installedReceipt(stateDirectory: environment.stateDirectory,
+                                                         agentID: agent.agentID, version: agent.version)?.executablePath
         case .custom:
             break
         }
@@ -1154,6 +1172,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
+        let started = process.processIdentifier
+        ChildProcesses.shared.add(started, leadsGroup: false)
         // Only the child keeps the write end, so its exit reaches the reader as EOF.
         try? pipe.fileHandleForWriting.close()
         try? input.fileHandleForReading.close()
@@ -1170,6 +1190,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 DispatchQueue.main.async { onOutput(chunk) }
             }
             process.waitUntilExit()
+            ChildProcesses.shared.remove(started)
             writer.close()
             let status = process.terminationStatus
             try? reader.close()
@@ -1207,6 +1228,8 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         process.standardOutput = output
         process.standardError = errors
         try process.run()
+        let started = process.processIdentifier
+        ChildProcesses.shared.add(started, leadsGroup: false)
         // Only the child keeps the write ends, so its exit reaches the readers as EOF.
         try? output.fileHandleForWriting.close()
         try? errors.fileHandleForWriting.close()
@@ -1231,6 +1254,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             try? outputReader.close()
             errorsRead.wait()
             process.waitUntilExit()
+            ChildProcesses.shared.remove(started)
             let status = process.terminationStatus
             DispatchQueue.main.async { onExit(status) }
         }
@@ -1258,6 +1282,11 @@ extension VitruvianCodeEngine {
     /// Switches this chat only to the command-line connection and re-sends the failed prompt once.
     public func useCommandLineForCurrentChat() {
         session.useCommandLineForThisChat(configuration: configuration, agentPath: agentPath)
+    }
+
+    /// Signs in with a method from the failure card, then retries the failed prompt (`ACPAuth`).
+    public func signInForCurrentChat(with method: AgentSignInMethod) {
+        session.signIn(with: method, configuration: configuration, agentPath: agentPath)
     }
 
     /// Reads agy, claude or OpenCode conversation index; empty when provider has none.

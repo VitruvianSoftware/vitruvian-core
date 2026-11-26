@@ -229,11 +229,14 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
+    const ANDROID_PLATFORMS_FLAG: &str =
+        "--android_platforms=@rules_android//:armeabi-v7a,@rules_android//:arm64-v8a,@rules_android//:x86_64";
+
     println!("==> Building all 4 Vitruvian Watch release APKs with Bazel");
     let build_status = Command::new("bazel")
         .args([
             "build",
-            "--android_platforms=@rules_android//:armeabi-v7a,@rules_android//:arm64-v8a,@rules_android//:x86_64",
+            ANDROID_PLATFORMS_FLAG,
             "//apps/mobile/vitruvian-watch/apps/vitruvian-pulse:app",
             "//apps/mobile/vitruvian-watch/apps/remote:app",
             "//apps/mobile/vitruvian-watch/apps/home-control:app",
@@ -248,14 +251,6 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let bin_root = match Command::new("bazel").args(["info", "bazel-bin"]).output() {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
-        _ => {
-            eprintln!("Error: cannot determine bazel-bin");
-            return 1;
-        }
-    };
-
     let dist_dir = suite_dir.join("dist");
     let _ = fs::remove_dir_all(&dist_dir);
     if fs::create_dir_all(&dist_dir).is_err() {
@@ -267,14 +262,13 @@ pub fn run(args: &[String]) -> i32 {
 
     for &(pkg, display_name) in APK_SPECS {
         let apk_name = apk_filename(display_name, &version);
-        let src_apk = format!(
-            "{}/apps/mobile/vitruvian-watch/apps/{}/app.apk",
-            bin_root, pkg
-        );
-        if !Path::new(&src_apk).is_file() {
-            eprintln!("Error: Expected APK output at {} not found", src_apk);
-            return 1;
-        }
+        let src_apk = match crate::locate_apk(ANDROID_PLATFORMS_FLAG, pkg) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return 1;
+            }
+        };
         let dest = dist_dir.join(&apk_name);
         if fs::copy(&src_apk, &dest).is_err() {
             eprintln!("Error: failed to copy APK to dist/");

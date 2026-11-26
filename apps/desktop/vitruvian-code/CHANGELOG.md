@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.49.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.48.0...vitruvian-code-v1.49.0) (2026-11-25)
+
+
+### Features
+
+* **vitruvian-code:** add ACP registry agents from Settings and chat with them ([#5535](https://github.com/VitruvianSoftware/vitruvian-core/issues/5535)) ([f593f0a](https://github.com/VitruvianSoftware/vitruvian-core/commit/f593f0a1b4c4f1fad8d9bae4f9663812c214c657))
+
+## [1.48.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.47.0...vitruvian-code-v1.48.0) (2026-11-25)
+
+
+### Features
+
+* **vitruvian-code:** install agents from the ACP registry ([#5520](https://github.com/VitruvianSoftware/vitruvian-core/issues/5520)) ([3d9ed76](https://github.com/VitruvianSoftware/vitruvian-core/commit/3d9ed76ffc49062f382c13ec12ade8a846732360))
+
+## [1.47.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.46.0...vitruvian-code-v1.47.0) (2026-11-25)
+
+
+### Features
+
+* **vitruvian-code:** read chat history from the agent's session/list ([#5487](https://github.com/VitruvianSoftware/vitruvian-core/issues/5487)) ([1815819](https://github.com/VitruvianSoftware/vitruvian-core/commit/18158195b46262f02a4a6ca364814164a9aa3162))
+* **vitruvian-code:** sign in to an agent from the failure card ([#5486](https://github.com/VitruvianSoftware/vitruvian-core/issues/5486)) ([c5ad92c](https://github.com/VitruvianSoftware/vitruvian-core/commit/c5ad92c498a05f26f4a1f3969e52c982ceda6d8b))
+
+## [1.46.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.1...vitruvian-code-v1.46.0) (2026-11-24)
+
+
+### Features
+
+* **vitruvian-code:** show each live chat's MCP servers and where they are configured ([#5485](https://github.com/VitruvianSoftware/vitruvian-core/issues/5485)) ([5526dc7](https://github.com/VitruvianSoftware/vitruvian-core/commit/5526dc7939337416fdfe922ba8e66ab1d544311c))
+
+## [1.45.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.45.0...vitruvian-code-v1.45.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** end the tool within two seconds of shutdown ([#5491](https://github.com/VitruvianSoftware/vitruvian-core/issues/5491)) ([e96909a](https://github.com/VitruvianSoftware/vitruvian-core/commit/e96909a8371c87720e16795fc6d5006ecd65fbfc))
+
+## [1.45.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.2...vitruvian-code-v1.45.0) (2026-11-24)
+
+
+### Features
+
+* **vitruvian-code:** run Ollama (claude) on the live Agent SDK connection ([#5479](https://github.com/VitruvianSoftware/vitruvian-core/issues/5479)) ([772e022](https://github.com/VitruvianSoftware/vitruvian-core/commit/772e022779f9016b2e8cc24f042bcd9d22bb8413))
+
+## [1.44.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.1...vitruvian-code-v1.44.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** reopened chats keep their folder and the meter's real window ([#5476](https://github.com/VitruvianSoftware/vitruvian-core/issues/5476)) ([d224aeb](https://github.com/VitruvianSoftware/vitruvian-core/commit/d224aebc0a3e5e698f3136abcd7551339d8e20b0))
+
 ## [1.44.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.44.0...vitruvian-code-v1.44.1) (2026-11-24)
 
 

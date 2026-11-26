@@ -22,7 +22,12 @@ struct FormattingBarView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!item.isEnabled)
-                .help(item.help)
+                // The one tooltip: the name with its keys as key caps, or why the chat can't take it.
+                .courierTooltip(
+                    item.isEnabled ? item.title : item.help,
+                    shortcut: item.isEnabled && !item.keys.isEmpty ? item.keys : nil,
+                    edge: .top
+                )
                 .accessibilityLabel(item.title)
                 if item.kind == .strikethrough || item.kind == .pre || item.kind == .orderedList {
                     Divider().frame(height: 16)

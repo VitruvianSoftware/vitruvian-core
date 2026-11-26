@@ -90,6 +90,7 @@ fn concurrency_group_expr(phase: i64) -> &'static str {
 
 const BUILD_CI_TOOL_ACTION: &str = "./.github/actions/build-ci-tool";
 const SETUP_BAZEL_ACTION: &str = "./.github/actions/setup-bazel";
+const SETUP_GO_ACTION: &str = "./.github/actions/setup-go";
 const SELECT_XCODE_ACTION: &str = "./.github/actions/select-xcode";
 
 pub const MIT_HEADER: &str = "# Copyright (c) 2026 VitruvianSoftware
@@ -706,7 +707,7 @@ fn render_stripe_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R {
     b.push('\n');
     b.push_str("      - name: Set up Go\n");
     b.push_str("        if: steps.key.outputs.present == 'true'\n");
-    w!(b, "        uses: {}\n", opts.pin("actions/setup-go")?);
+    w!(b, "        uses: {}\n", SETUP_GO_ACTION);
     b.push_str("        with:\n");
     w!(b, "          go-version-file: {}/go.mod\n", dir);
     w!(b, "          cache-dependency-path: {}/go.sum\n", dir);
@@ -806,7 +807,7 @@ fn render_pagerduty_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R
     b.push('\n');
     b.push_str("      - name: Set up Go\n");
     b.push_str("        if: steps.key.outputs.present == 'true'\n");
-    w!(b, "        uses: {}\n", opts.pin("actions/setup-go")?);
+    w!(b, "        uses: {}\n", SETUP_GO_ACTION);
     b.push_str("        with:\n");
     w!(b, "          go-version-file: {}/go.mod\n", dir);
     w!(b, "          cache-dependency-path: {}/go.sum\n", dir);

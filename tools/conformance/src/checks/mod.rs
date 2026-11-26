@@ -30,6 +30,7 @@ mod governance;
 mod iac;
 mod labels;
 mod layout;
+mod maven_pin;
 mod release_dequeue;
 mod security;
 mod swift_tests;
@@ -112,6 +113,7 @@ pub fn run_all(ctx: &Context) {
     security::check_release_tag_exemptions(ctx);
 
     swift_tests::check_test_preferences(ctx);
+    maven_pin::check_maven_lock_files(ctx);
 }
 
 /// The workflow-label check alone: `bazel run //tools/conformance:workflow-labels`.

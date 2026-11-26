@@ -21,7 +21,8 @@ enum Snapshot {
     }
 
     /// Renders `view` at `width` (its height is what it needs, unless `height` is given) as `name`-light.png and
-    /// `name`-dark.png, and returns their sizes in pixels.
+    /// `name`-dark.png, and returns their sizes in points. (In points, not the PNGs' pixels: those follow the screen,
+    /// two per point on a Retina display and one on CI's Macs, and the callers compare points.)
     @discardableResult
     static func render<V: View>(_ name: String, width: CGFloat, height: CGFloat? = nil,
                                 prepare: (NSView) -> Void = { _ in },
@@ -59,7 +60,7 @@ enum Snapshot {
             guard let png = bitmap.representation(using: .png, properties: [:]) else { throw SnapshotError.noBitmap(name) }
             let url = directory.appendingPathComponent("\(name)-\(suffix).png")
             try png.write(to: url)
-            sizes.append(NSSize(width: bitmap.pixelsWide, height: bitmap.pixelsHigh))
+            sizes.append(bitmap.size)
             window.contentView = nil
         }
         return sizes

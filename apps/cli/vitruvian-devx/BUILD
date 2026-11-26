@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
@@ -100,6 +101,14 @@ exports_files(
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
 
+exports_files(
+    [
+        "go.mod",
+        "go.sum",
+    ],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)
+
 filegroup(
     name = "checked_in_skills",
     srcs = [
@@ -109,4 +118,12 @@ filegroup(
         ".github/skills/platform-engineer/SKILL.md",
     ],
     visibility = ["//apps/cli/vitruvian-devx:__subpackages__"],
+)
+
+# Read by the Backstage backend's catalog and scorecard tests
+# (//apps/web/backstage/packages/backend:unit_tests).
+js_library(
+    name = "catalog_info",
+    srcs = ["catalog-info.yaml"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

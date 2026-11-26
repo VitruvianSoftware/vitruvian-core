@@ -6,6 +6,13 @@ without editing anything on the Mac.
 
 Related: [Rotating secrets & API keys](key-rotation.md).
 
+> **Changed 2026-11-25.** There is no Argo CD MCP server any more: Argo CD state is
+> read through the read-only Kubernetes MCP, and the Grafana MCP uses a Viewer
+> service-account token, not the admin password. See
+> [Read-only MCP servers for the homelab](../guides/homelab-mcp-servers.md). The
+> `argocd-secret` backup and restore below still matter for Argo CD itself; the
+> "Verify the MCPs" steps for Argo CD are historical.
+
 ## The model
 
 Secrets are reproducible **from git**, encrypted as Bitnami `SealedSecret`s
@@ -117,7 +124,7 @@ Then restart Claude Desktop (Cmd-Q) and confirm both MCP servers connect.
 
 ## Notes
 
-- The `mcp` ArgoCD account (apiKey, role:admin) is created by pulumi
+- The `mcp` ArgoCD account (apiKey, role:readonly by default) is created by pulumi
   (`argocd_api_account` in `infrastructure/pulumi/platform/dev-local`; the enablement lives in
   the gitignored `Pulumi.local.yaml` on the operator's machine).
 - Losing **both** the Bitwarden items and the live cluster means re-bootstrapping from

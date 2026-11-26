@@ -1266,9 +1266,11 @@ jobs:
               - 'tools/ci/src/**'
               - 'tools/shell-compat/**'
               - 'tools/tools.lock.json'
-            # tools/osv-scan/src/text.rs MANIFESTS, plus requirements*.txt,
-            # the scanner and its install. //tools/ci:relevant_paths_test
-            # fails if a name in MANIFESTS is missing here.
+            # Every dependency file named in tools/osv-scan/src/text.rs
+            # (MANIFESTS, MANIFEST_SUFFIXES, MANIFEST_PATTERNS, UNSCANNABLE),
+            # the scanner and its install. //tools/osv-scan:osv-scan_test fails
+            # if one is missing here; //tools/ci:relevant_paths_test checks the
+            # scanner's own paths.
             osvscan:
               - '**/go.mod'
               - '**/go.sum'
@@ -1288,6 +1290,32 @@ jobs:
               - '**/composer.lock'
               - '**/osv-scanner.toml'
               - '**/requirements*.txt'
+              - '**/pubspec.lock'
+              - '**/Package.resolved'
+              - '**/pom.xml'
+              - '**/gradle.lockfile'
+              - '**/buildscript-gradle.lockfile'
+              - '**/verification-metadata.xml'
+              - '**/packages.lock.json'
+              - '**/packages.config'
+              - '**/mix.lock'
+              - '**/renv.lock'
+              - '**/conan.lock'
+              - '**/pdm.lock'
+              - '**/pylock.toml'
+              - '**/bun.lock'
+              - '**/stack.yaml.lock'
+              - '**/cabal.project.freeze'
+              - '**/*.csproj'
+              - '**/*.deps.json'
+              - '**/pylock.*.toml'
+              # Lockfiles osv-scanner cannot read: listed so the gate runs and
+              # refuses them (UNSCANNABLE in tools/osv-scan/src/text.rs).
+              - '**/Podfile.lock'
+              - '**/Cartfile.resolved'
+              - '**/deno.lock'
+              - '**/rebar.lock'
+              - '**/shard.lock'
               - 'tools/osv-scan/**'
               - 'packages/jq/**'
               - 'packages/pycompat/vitruvian-pycompat/**'
@@ -1383,7 +1411,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - uses: ./.github/actions/setup-go
         with:
           go-version-file: apps/cli/vitruvian-devx/go.mod
           # setup-go keys its module/build cache on a dependency file, defaulting
@@ -1445,7 +1473,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - uses: ./.github/actions/setup-go
         with:
           go-version-file: go.mod
           # Cache module downloads across runs, keyed on every IaC module's own
@@ -1583,7 +1611,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      - uses: ./.github/actions/setup-go
         with:
           go-version-file: go.mod
       # Runs BEFORE the build, because it is the same failure with a usable

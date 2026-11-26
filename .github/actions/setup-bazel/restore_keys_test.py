@@ -60,11 +60,17 @@ def test_setup_bazel_action_restore_keys_exact_order_and_same_platform_legacy_la
         "SETUP_BAZEL_ACTION_PATH", ".github/actions/setup-bazel/action.yml"
     )
     restore_steps = _find_restore_steps(path)
-    assert len(restore_steps) == 1, (
-        f"{path}: expected 1 restore step, got {len(restore_steps)}"
+    assert len(restore_steps) == 3, (
+        f"{path}: expected 3 restore steps (debs, repository, gomod), got {len(restore_steps)}"
     )
 
-    with_cfg = restore_steps[0].get("with") or {}
+    repo_steps = [
+        s
+        for s in restore_steps
+        if "-repository-full-" in str((s.get("with") or {}).get("key") or "")
+    ]
+    assert len(repo_steps) == 1, f"{path}: expected 1 repository restore step"
+    with_cfg = repo_steps[0].get("with") or {}
     exact_key = str(with_cfg.get("key") or "").strip()
     raw_restore_keys = with_cfg.get("restore-keys")
     assert raw_restore_keys is not None, f"{path}: expected non-empty restore-keys"
@@ -113,6 +119,54 @@ def test_setup_bazel_action_restore_keys_exact_order_and_same_platform_legacy_la
         assert same_legacy.startswith(rendered[-1])
         assert not other_legacy.startswith(rendered[-1])
 
+    gomod_steps = [
+        s
+        for s in restore_steps
+        if str((s.get("with") or {}).get("key") or "").startswith("bazel-gomod-1-")
+    ]
+    assert len(gomod_steps) == 1, f"{path}: expected 1 bazel-gomod restore step"
+    gomod_cfg = gomod_steps[0].get("with") or {}
+    gomod_key = str(gomod_cfg.get("key") or "").strip()
+    gomod_rks = [
+        line.strip()
+        for line in str(gomod_cfg.get("restore-keys") or "").splitlines()
+        if line.strip()
+    ]
+    assert len(gomod_rks) == 1 and gomod_key.startswith(gomod_rks[0]), (
+        f"{path}: gomod restore-keys {gomod_rks!r} must match key prefix of {gomod_key!r}"
+    )
+
+    debs_steps = [
+        s
+        for s in restore_steps
+        if str((s.get("with") or {}).get("key") or "").startswith(
+            "ci-debs-1-linux-x64-"
+        )
+    ]
+    assert len(debs_steps) == 1, f"{path}: expected 1 ci-debs restore step"
+
+    steps = _load_steps(path)
+    gomod_idx = next(
+        i
+        for i, s in enumerate(steps)
+        if isinstance(s, dict)
+        and str((s.get("with") or {}).get("key") or "").startswith("bazel-gomod-1-")
+    )
+    assert steps[gomod_idx].get("id") == "gomod-cache", (
+        f"{path}: gomod restore step must define id: gomod-cache"
+    )
+    notice_step = steps[gomod_idx + 1]
+    notice_if = str(notice_step.get("if") or "")
+    assert "steps.gomod-cache.outputs.cache-matched-key != ''" in notice_if, (
+        f"{path}: partial-hit notice step must check cache-matched-key != '', got {notice_if!r}"
+    )
+    assert "steps.gomod-cache.outputs.cache-hit != 'true'" in notice_if, (
+        f"{path}: partial-hit notice step must check cache-hit != 'true', got {notice_if!r}"
+    )
+    assert "::notice" in str(notice_step.get("run") or ""), (
+        f"{path}: partial-hit notice step must emit ::notice"
+    )
+
 
 def test_warm_composite_action_lookup_has_no_restore_keys():
     path = _resolve_path(
@@ -120,12 +174,17 @@ def test_warm_composite_action_lookup_has_no_restore_keys():
         ".github/actions/bazel-repo-cache-warm/action.yml",
     )
     restore_steps = _find_restore_steps(path)
-    assert restore_steps, f"{path}: expected at least one actions/cache/restore step"
+    assert len(restore_steps) == 3, (
+        f"{path}: expected 3 lookup-only actions/cache/restore steps, got {len(restore_steps)}"
+    )
+    keys = [str((s.get("with") or {}).get("key") or "") for s in restore_steps]
+    assert any("-repository-full-" in k for k in keys), keys
+    assert any(k.startswith("bazel-gomod-1-") for k in keys), keys
+    assert any(k.startswith("ci-debs-1-linux-x64-") for k in keys), keys
     for step in restore_steps:
         with_cfg = step.get("with") or {}
-        key = str(with_cfg.get("key") or "")
-        assert "-repository-full-" in key, (
-            f"{path}: lookup key {key!r} must contain '-repository-full-'"
+        assert with_cfg.get("lookup-only") is True, (
+            f"{path}: lookup step {step.get('id')!r} must set lookup-only: true"
         )
         assert not with_cfg.get("restore-keys"), (
             f"{path}: lookup-only step must not define restore-keys"

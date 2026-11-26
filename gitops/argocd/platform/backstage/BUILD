@@ -17,6 +17,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 
 gitops_manifest(
@@ -25,4 +26,15 @@ gitops_manifest(
         "applicationset.yaml",
         "dnsendpoint.yaml",
     ],
+)
+
+# The deployed chart values and ADC ConfigMap, which the backend's tests check
+# stay in step with app-config.yaml.
+js_library(
+    name = "backstage_backend_test_data",
+    srcs = [
+        "gcp-adc-configmap.yaml",
+        "values.yaml",
+    ],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

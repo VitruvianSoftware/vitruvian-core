@@ -799,7 +799,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/backend:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/backend:pkg; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/backend:pkg //apps/web/backstage/packages/backend:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/backend:pkg //apps/web/backstage/packages/backend:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -1251,9 +1251,11 @@ jobs:
           fi
           extra_flags+=("--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64")
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/vitruvian-remote:app //apps/mobile/vitruvian-remote:app_info_test //apps/mobile/vitruvian-remote:bridge_policy_test //apps/mobile/vitruvian-remote:bridge_restart_policy_test //apps/mobile/vitruvian-remote:derive_test //apps/mobile/vitruvian-remote:ed25519_test //apps/mobile/vitruvian-remote:format_test //apps/mobile/vitruvian-remote:hid_codes_test //apps/mobile/vitruvian-remote:lib //apps/mobile/vitruvian-remote:mock_host_walk_test //apps/mobile/vitruvian-remote:tuning_test //apps/mobile/vitruvian-remote:update_feed_test //apps/mobile/vitruvian-remote:wake_on_lan_test //apps/mobile/vitruvian-remote:wire_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/vitruvian-remote:app //apps/mobile/vitruvian-remote:app_info_test //apps/mobile/vitruvian-remote:bridge_policy_test //apps/mobile/vitruvian-remote:bridge_restart_policy_test //apps/mobile/vitruvian-remote:derive_test //apps/mobile/vitruvian-remote:ed25519_test //apps/mobile/vitruvian-remote:format_test //apps/mobile/vitruvian-remote:hid_codes_test //apps/mobile/vitruvian-remote:lib //apps/mobile/vitruvian-remote:mock_host_walk_test //apps/mobile/vitruvian-remote:tuning_test //apps/mobile/vitruvian-remote:update_feed_test //apps/mobile/vitruvian-remote:wake_on_lan_test //apps/mobile/vitruvian-remote:wire_test; else exit $rc; fi; }
-          bin=$(bazel info "${extra_flags[@]}" "${cache_flags[@]}" bazel-bin)
-          mkdir -p .pipeline-artifacts/vitruvian-remote-apk
-          cp -L "$bin/apps/mobile/vitruvian-remote/app.apk" .pipeline-artifacts/vitruvian-remote-apk/
+          cquery_out=$(bazel cquery "${extra_flags[@]}" "${cache_flags[@]}" --output=files '//apps/mobile/vitruvian-remote:app.apk')
+          f=$(printf '%s\n' "$cquery_out" | grep -E '/apps/mobile/vitruvian-remote/app\.apk$' || true)
+          if [ "$(printf '%s\n' "$f" | grep -c . || true)" -ne 1 ] || [ ! -f "$f" ]; then echo 'artifact vitruvian-remote-apk: expected exactly one existing file, got:' >&2; printf '%s\n' "$f" >&2; exit 1; fi
+          mkdir -p '.pipeline-artifacts/vitruvian-remote-apk'
+          cp -L "$f" '.pipeline-artifacts/vitruvian-remote-apk/'
 
       - name: Upload vitruvian-remote-apk
         if: success()
@@ -2107,9 +2109,11 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/android:actions_test //apps/suites/vitruvian-wand/android:gesture_planner_test //apps/suites/vitruvian-wand/android:native_engine_test //apps/suites/vitruvian-wand/android:stroke_coordinator_test //apps/suites/vitruvian-wand/android:vitruvian_wand_apk //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_lib //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/android:actions_test //apps/suites/vitruvian-wand/android:gesture_planner_test //apps/suites/vitruvian-wand/android:native_engine_test //apps/suites/vitruvian-wand/android:stroke_coordinator_test //apps/suites/vitruvian-wand/android:vitruvian_wand_apk //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_lib //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_test; else exit $rc; fi; }
-          bin=$(bazel info "${extra_flags[@]}" "${cache_flags[@]}" bazel-bin)
-          mkdir -p .pipeline-artifacts/vitruvian-wand-apk
-          cp -L "$bin/apps/suites/vitruvian-wand/android/vitruvian_wand_apk.apk" .pipeline-artifacts/vitruvian-wand-apk/
+          cquery_out=$(bazel cquery "${extra_flags[@]}" "${cache_flags[@]}" --output=files '//apps/suites/vitruvian-wand/android:vitruvian_wand_apk.apk')
+          f=$(printf '%s\n' "$cquery_out" | grep -E '/apps/suites/vitruvian-wand/android/vitruvian_wand_apk\.apk$' || true)
+          if [ "$(printf '%s\n' "$f" | grep -c . || true)" -ne 1 ] || [ ! -f "$f" ]; then echo 'artifact vitruvian-wand-apk: expected exactly one existing file, got:' >&2; printf '%s\n' "$f" >&2; exit 1; fi
+          mkdir -p '.pipeline-artifacts/vitruvian-wand-apk'
+          cp -L "$f" '.pipeline-artifacts/vitruvian-wand-apk/'
 
       - name: Upload vitruvian-wand-apk
         if: success()

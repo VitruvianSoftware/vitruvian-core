@@ -204,7 +204,7 @@ ALLOWED_WARM_TOKEN_STEPS = frozenset(
 
 
 def _record_step_field(step, field_line, line_no):
-    m = re.match(r"^(name|id|uses):\s*(.+?)\s*$", field_line)
+    m = re.match(r"^(name|id|uses|if):\s*(.+?)\s*$", field_line)
     if not m:
         return
     key, raw_val = m.group(1), m.group(2)
@@ -268,6 +268,7 @@ def _split_composite_steps(text):
                 "id": "",
                 "uses": "",
                 "uses_line": None,
+                "if": "",
                 "lines": [raw],
                 "text": "",
             }
@@ -283,6 +284,33 @@ def _split_composite_steps(text):
     for step in steps:
         step["text"] = "\n".join(step["lines"])
     return steps
+
+
+def _step_with_scalar(step, key):
+    """Return the scalar value of `key:` inside a step's `with:` mapping, or None."""
+    lines = step["lines"]
+    if not lines:
+        return None
+    step_indent = len(lines[0]) - len(lines[0].lstrip(" "))
+    with_indent = None
+    prefix = f"{key}:"
+    for raw in lines[1:]:
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if with_indent is None:
+            if indent == step_indent + 2 and stripped == "with:":
+                with_indent = indent
+            continue
+        if indent <= with_indent:
+            break
+        if indent == with_indent + 2 and stripped.startswith(prefix):
+            val = stripped[len(prefix) :].split(" #", 1)[0].strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+                val = val[1:-1]
+            return val
+    return None
 
 
 def test_warm_composite_capacity_guard_precedes_every_save_step():
@@ -357,3 +385,52 @@ def test_warm_composite_github_token_restricted_to_guard_prune_and_pre_save_dele
                 f"GH_TOKEN/GITHUB_TOKEN is allowed only on {sorted(ALLOWED_WARM_TOKEN_STEPS)}, "
                 f"found in step '{step['name']}' (line {step['start_line']})"
             )
+
+
+def test_warm_composite_save_steps_gated_on_save_mode_and_cache_miss():
+    steps = _split_composite_steps(
+        _resolve_warm_action_path().read_text(encoding="utf-8")
+    )
+    save_steps = [s for s in steps if s["uses"].startswith("actions/cache/save@")]
+    assert save_steps, "expected at least one actions/cache/save@ step"
+
+    for save in save_steps:
+        if_expr = save["if"]
+        assert if_expr, (
+            f"save step '{save['name']}' (line {save['start_line']}) must declare an if: gate"
+        )
+        bare = if_expr.removeprefix("${{").removesuffix("}}").strip()
+        norm = " ".join(bare.split()).replace('"', "'")
+        assert "inputs.mode == 'save'" in norm, (
+            f"save step '{save['name']}' (line {save['start_line']}) if: must require inputs.mode == 'save', got {if_expr!r}"
+        )
+        assert not _has_top_level_or(norm), (
+            f"save step '{save['name']}' (line {save['start_line']}) if: must not have a top-level || escape hatch: {if_expr!r}"
+        )
+        if save["id"].startswith("gomod-"):
+            expected_lookup = "steps.gomod-cache-lookup.outputs.cache-hit != 'true'"
+        elif save["id"].startswith("debs-"):
+            expected_lookup = "steps.debs-cache-lookup.outputs.cache-hit != 'true'"
+        else:
+            expected_lookup = "steps.cache-lookup.outputs.cache-hit != 'true'"
+        assert expected_lookup in norm, (
+            f"save step '{save['name']}' (line {save['start_line']}) if: must guard on {expected_lookup}, got {if_expr!r}"
+        )
+
+
+def test_warm_composite_bazelisk_setup_cache_save_gated_on_save_mode():
+    steps = _split_composite_steps(
+        _resolve_warm_action_path().read_text(encoding="utf-8")
+    )
+    setup_steps = [
+        s for s in steps if s["uses"].startswith("bazel-contrib/setup-bazel@")
+    ]
+    assert len(setup_steps) == 1, (
+        f"expected exactly 1 bazel-contrib/setup-bazel@ step, got {[(s['start_line'], s['name']) for s in setup_steps]}"
+    )
+    setup = setup_steps[0]
+    cache_save = _step_with_scalar(setup, "cache-save")
+    assert cache_save == "${{ inputs.mode == 'save' }}", (
+        f"setup step '{setup['name']}' (line {setup['start_line']}) cache-save: must be "
+        f"'${{{{ inputs.mode == 'save' }}}}', got {cache_save!r}"
+    )

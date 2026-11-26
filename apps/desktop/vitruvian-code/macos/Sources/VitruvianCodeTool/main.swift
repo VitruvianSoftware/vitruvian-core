@@ -117,6 +117,7 @@ func handed(_ app: App) -> [String: JSONValue] {
     return values
 }
 
+ToolTrace.mark("started")
 let kit = Kit()
 let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
@@ -184,6 +185,7 @@ for command in VitruvianCodeTool.Command.all + VitruvianCodeTool.Command.ade {
     tool.command(command) { _ in try CommandAnswer.handle(command) { try codeTool.run(command: $0) } }
 }
 tool.onStart = { app in
+    ToolTrace.mark("hello")
     let language = app.language
     let values = handed(app)
     // A loop, not `filter { }`: a closure written here is taken as the main
@@ -213,12 +215,13 @@ tool.onLanguageChanged = { app in
 }
 
 // The kit on its own thread; the app says goodbye, and the program ends
-// from the main thread, after the engine has let the bot be.
+// once the engine has stopped the chat's programs, or at ToolExit's
+// deadline if the main thread is too busy: inside the protocol's two
+// seconds either way. See ToolExit.
 Thread.detachNewThread {
     let status = kit.tool.serve()
-    Task { @MainActor in
-        await codeTool.stopAll()
-        exit(status)
-    }
+    ToolExit.leave(status: status, children: .shared, stop: {
+        await codeTool.stopAll(timeout: ToolExit.stopBudget)
+    }, end: { ToolExit.endProcess($0) })
 }
 application.run()

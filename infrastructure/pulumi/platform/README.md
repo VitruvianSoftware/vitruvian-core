@@ -13,4 +13,5 @@ Subsystem blueprint grouping child modules under `infrastructure/pulumi/platform
 - [zitadel-apps](./zitadel-apps/README.md): Contract for infrastructure/pulumi/platform/zitadel-apps
 - [zitadel-apps-mcp-slack](./zitadel-apps-mcp-slack/README.md): Contract for infrastructure/pulumi/platform/zitadel-apps-mcp-slack
 - [zitadel-apps-relay](./zitadel-apps-relay/README.md): Contract for infrastructure/pulumi/platform/zitadel-apps-relay
+- [zitadel-mcp-viewer](./zitadel-mcp-viewer/README.md): Read-only Zitadel machine user and PAT for the Zitadel MCP server
 

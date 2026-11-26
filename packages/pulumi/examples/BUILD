@@ -59,3 +59,8 @@ exports_files(
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
 )
+
+exports_files(
+    ["go-foundation/1-org/modules/go.sum"],
+    visibility = ["//.github/actions/setup-go:__pkg__"],
+)

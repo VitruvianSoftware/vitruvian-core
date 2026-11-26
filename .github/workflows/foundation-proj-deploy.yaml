@@ -112,11 +112,46 @@ permissions:
   id-token: write
 
 jobs:
+  # INPUTS FIRST (#4279). `working-directory`, `business-unit` and (on a
+  # workflow_call) `environment` are free strings, and the development and
+  # nonproduction Environments have no required reviewer, so a dispatch made
+  # straight through the API could point this stage's deploy identity at
+  # another Pulumi project. The checks in `//tools/agent-app workflow-run` are
+  # a guardrail for agents, not a boundary; this job is the boundary. It has
+  # no Environment, no secrets and no cloud identity, and every other job
+  # needs it, so a refused run never reaches GCP and never asks for approval.
+  leaf-guard:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build //tools/ci:foundation_leaf_guard (no Bazel on this job)
+        id: leaf-guard-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: foundation_leaf_guard
+
+      # The same `a || b` expressions every later job uses, so the guard
+      # checks exactly the values the preview and the apply will run with.
+      - name: Refuse anything but a gcp-projects leaf
+        env:
+          LEAF_GUARD_BIN: ${{ steps.leaf-guard-bin.outputs.path }}
+          WORKING_DIRECTORY: ${{ inputs['working-directory'] || inputs.working_directory }}
+          BUSINESS_UNIT: ${{ inputs['business-unit'] || inputs.business_unit }}
+          LEAF_ENVIRONMENT: ${{ inputs.environment }}
+        run: '"$LEAF_GUARD_BIN" gcp-projects "$WORKING_DIRECTORY" "$BUSINESS_UNIT" "$LEAF_ENVIRONMENT"'
+
   # On a DIRECT manual dispatch (not when foundation-release calls this via
   # workflow_call -- that run shows the changelog from its own `changelog` job),
   # render this stage's latest changelog into the run page before the gated
   # deploy. Ungated + independent of `deploy`, so it never delays the rollout.
   changelog:
+    needs: leaf-guard
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_changelog-summary.yaml
     with:
@@ -134,6 +169,7 @@ jobs:
   # Now the destroy is visible up front, and the guard below fails the run
   # outright so a stale plan cannot be approved by mistake.
   preview:
+    needs: leaf-guard
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     # Approval must not be required to SEE the plan, so this job needs an

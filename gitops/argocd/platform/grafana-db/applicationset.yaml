@@ -136,6 +136,27 @@ spec:
               postgresql:
                 parameters:
                   wal_keep_size: "4GB"
+              # Read-only login for the Postgres MCP server (crystaldba/postgres-mcp,
+              # --access-mode=restricted), reached through the grafana-db-cluster-ro
+              # service. pg_read_all_data grants SELECT on every table and nothing
+              # else: no writes, no DDL. CNPG keeps the role in sync with the
+              # password in SealedSecret grafana-db-mcp-readonly (basic-auth).
+              roles:
+                - name: mcp_readonly
+                  ensure: present
+                  comment: Read-only login for the Postgres MCP server
+                  login: true
+                  superuser: false
+                  createdb: false
+                  createrole: false
+                  inherit: true
+                  # CNPG's webhook defaults this to -1 (no limit); stating it keeps
+                  # Argo CD from showing the Cluster as OutOfSync forever.
+                  connectionLimit: -1
+                  inRoles:
+                    - pg_read_all_data
+                  passwordSecret:
+                    name: grafana-db-mcp-readonly
               # Async streaming replication (CNPG default — intentionally NO
               # `synchronous` block): laptop nodes sleep, so sync replication
               # would stall the primary on a sleeping standby.

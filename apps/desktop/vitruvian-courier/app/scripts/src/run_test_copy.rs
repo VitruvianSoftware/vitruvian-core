@@ -135,6 +135,23 @@ pub fn find_scenario(scenarios: &[PathBuf], name: &str) -> Result<PathBuf, Strin
         })
 }
 
+/// The folder, under `tmpdir`, that holds the unpacked test copy and its default data folders. Its name is short on
+/// purpose: the engine's socket is `<data>/engine.sock`, and macOS caps a Unix socket path at 103 bytes. `$TMPDIR` is
+/// already 49 of them (`/var/folders/xx/<28 characters>/T/`), so `vitruvian-courier-test-copy/seed-long-content` left
+/// the engine unable to start (`a_seeds_socket_path_fits_under_a_real_tmpdir` checks every scenario).
+pub const BASE_NAME: &str = "courier-test";
+
+/// The longest path macOS takes for a Unix socket: `sun_path` is 104 bytes, one of them the closing NUL.
+pub const MAX_SOCKET_PATH: usize = 103;
+
+/// The engine's socket in its data folder (the engine's `socketName`).
+pub const SOCKET_NAME: &str = "engine.sock";
+
+/// `tmpdir/BASE_NAME`.
+pub fn default_base(tmpdir: &str) -> PathBuf {
+    PathBuf::from(tmpdir).join(BASE_NAME)
+}
+
 /// The data folder to use, and whether to empty it first: --data as given (never emptied); else, with a seed,
 /// `base/seed-NAME`, emptied on every run so the scenario plays into an empty folder; else `base/data`.
 pub fn data_dir(base: &Path, data: Option<&Path>, seed: Option<&str>) -> (PathBuf, bool) {
@@ -153,8 +170,7 @@ pub fn run(args: &[String]) -> i32 {
             return 2;
         }
     };
-    let base = PathBuf::from(env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string()))
-        .join("vitruvian-courier-test-copy");
+    let base = default_base(&env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string()));
     let seed_file = match &opts.seed {
         None => None,
         Some(name) => match find_scenario(&opts.scenarios, name) {
@@ -266,7 +282,7 @@ mod tests {
             home
         ));
         assert!(!is_installed_apps_data(
-            Path::new("/tmp/vitruvian-courier-test-copy/data"),
+            Path::new("/tmp/courier-test/data"),
             home
         ));
     }
@@ -342,6 +358,43 @@ mod tests {
             .unwrap_err()
             .contains("none were passed in"));
         assert_eq!(scenario_names(&files), vec!["direct", "group-threads"]);
+    }
+
+    #[test]
+    fn a_seeds_socket_path_fits_under_a_real_tmpdir() {
+        // A real macOS $TMPDIR: /var/folders/, two characters, 28 characters, /T/ (49 bytes).
+        let tmpdir = "/var/folders/cr/4ch4t4hd0nd1t8tk23km89h80000gn/T/";
+        assert_eq!(tmpdir.len(), 49);
+        // Every scenario the test copy can be seeded with (BUILD gives this test the seed folder as data).
+        let dir = Path::new("apps/desktop/vitruvian-courier/seed/scenarios");
+        let mut names: Vec<String> = fs::read_dir(dir)
+            .expect("the seed scenarios are in the test's runfiles")
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.strip_suffix(".json").map(str::to_string)
+            })
+            .collect();
+        names.sort();
+        assert!(names.contains(&"long-content".to_string()), "{:?}", names);
+        // The folder without a seed too.
+        let mut folders: Vec<PathBuf> = names
+            .iter()
+            .map(|n| data_dir(&default_base(tmpdir), None, Some(n)).0)
+            .collect();
+        folders.push(data_dir(&default_base(tmpdir), None, None).0);
+        for folder in folders {
+            let socket = folder.join(SOCKET_NAME);
+            let len = socket.as_os_str().len();
+            // Room to spare: a seed name a few characters longer than today's must not break it either.
+            assert!(
+                len + 8 <= MAX_SOCKET_PATH,
+                "{} is {} bytes; a Unix socket path can be at most {} (want 8 to spare)",
+                socket.display(),
+                len,
+                MAX_SOCKET_PATH
+            );
+        }
     }
 
     #[test]

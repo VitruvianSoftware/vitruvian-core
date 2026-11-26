@@ -305,19 +305,32 @@ public struct ACPElicitationCapabilities: Equatable, Sendable, Codable {
     }
 }
 
+/// `clientCapabilities.auth`: `terminal` lets an agent advertise `type: "terminal"` sign-in
+/// methods, which the client runs as the agent's own program (ACP: protocol/initialization).
+public struct ACPClientAuthCapabilities: Equatable, Sendable, Codable {
+    public var terminal: Bool?
+
+    public init(terminal: Bool? = nil) {
+        self.terminal = terminal
+    }
+}
+
 public struct ACPClientCapabilities: Equatable, Sendable, Codable {
     public var fs: ACPFileSystemCapabilities?
     public var terminal: Bool?
     public var elicitation: ACPElicitationCapabilities?
+    public var auth: ACPClientAuthCapabilities?
 
     public init(
         fs: ACPFileSystemCapabilities? = nil,
         terminal: Bool? = nil,
-        elicitation: ACPElicitationCapabilities? = nil
+        elicitation: ACPElicitationCapabilities? = nil,
+        auth: ACPClientAuthCapabilities? = nil
     ) {
         self.fs = fs
         self.terminal = terminal
         self.elicitation = elicitation
+        self.auth = auth
     }
 }
 
@@ -469,15 +482,47 @@ public struct ACPAgentCapabilities: Equatable, Sendable, Codable {
     }
 }
 
+/// One sign-in method from `initialize`'s `authMethods`. `type` is absent or `agent` for a
+/// method the agent runs itself (the client sends `authenticate`), `terminal` for one the
+/// client runs as the agent's own program with `args` and `env` added, and `env_var` for the
+/// older form that names variables to set. ACP: protocol/authentication.
 public struct ACPAuthMethod: Equatable, Sendable, Codable {
     public var id: String
     public var name: String
     public var description: String?
+    public var type: String?
+    public var args: [String]?
+    public var env: [String: String]?
 
-    public init(id: String, name: String, description: String? = nil) {
+    public init(
+        id: String,
+        name: String,
+        description: String? = nil,
+        type: String? = nil,
+        args: [String]? = nil,
+        env: [String: String]? = nil
+    ) {
         self.id = id
         self.name = name
         self.description = description
+        self.type = type
+        self.args = args
+        self.env = env
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? self.id
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.type = try container.decodeIfPresent(String.self, forKey: .type)
+        // A malformed `args` or `env` drops only that field, not the whole `initialize` reply.
+        self.args = try? container.decodeIfPresent([String].self, forKey: .args)
+        self.env = try? container.decodeIfPresent([String: String].self, forKey: .env)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description, type, args, env
     }
 }
 
@@ -677,6 +722,69 @@ public struct ACPSessionCloseParams: Equatable, Sendable, Codable {
 
     public init(sessionId: String) {
         self.sessionId = sessionId
+    }
+}
+
+/// `session/list` request: an optional folder to filter by and the page to continue from.
+/// The same two fields T3 Code sends (`AcpSessionRuntime.ts`, `listSessions`).
+public struct ACPSessionListParams: Equatable, Sendable, Codable {
+    public var cwd: String?
+    public var cursor: String?
+
+    public init(cwd: String? = nil, cursor: String? = nil) {
+        self.cwd = cwd
+        self.cursor = cursor
+    }
+}
+
+/// One past session in a `session/list` reply, as the agent keeps it.
+public struct ACPSessionInfo: Equatable, Sendable, Codable {
+    public var sessionId: String
+    public var cwd: String?
+    public var title: String?
+    public var updatedAt: String?
+    public var additionalDirectories: [String]?
+    public var _meta: [String: ACPJSONValue]?
+
+    public init(
+        sessionId: String,
+        cwd: String? = nil,
+        title: String? = nil,
+        updatedAt: String? = nil,
+        additionalDirectories: [String]? = nil,
+        _meta: [String: ACPJSONValue]? = nil
+    ) {
+        self.sessionId = sessionId
+        self.cwd = cwd
+        self.title = title
+        self.updatedAt = updatedAt
+        self.additionalDirectories = additionalDirectories
+        self._meta = _meta
+    }
+}
+
+/// `session/list` reply: one page of sessions and, when there are more, the cursor for the next.
+public struct ACPSessionListResult: Equatable, Sendable, Codable {
+    public var sessions: [ACPSessionInfo]
+    public var nextCursor: String?
+
+    public init(sessions: [ACPSessionInfo] = [], nextCursor: String? = nil) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // One malformed entry is dropped, not the whole page, as T3 Code's
+        // `listAcpRegistrySessions` drops entries without an id or folder.
+        let raw = try container.decodeIfPresent([ACPJSONValue].self, forKey: .sessions) ?? []
+        self.sessions = raw.compactMap { try? $0.decode(ACPSessionInfo.self) }
+        self.nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessions
+        case nextCursor
     }
 }
 

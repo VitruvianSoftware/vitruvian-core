@@ -281,18 +281,26 @@ public struct AgentLiveFailure: Equatable, Sendable {
     public var source: Source
     public var isLocked: Bool
     public var restartFailureCount: Int
+    /// The agent needs the user to sign in, and these are the ways the card offers (`ACPAuth`).
+    public var signInMethods: [AgentSignInMethod]
+    /// True when the failure was the agent asking for sign-in.
+    public var needsSignIn: Bool
 
     public init(
         message: String,
         detail: String? = nil,
         source: Source = .generic,
         isLocked: Bool = false,
-        restartFailureCount: Int = 0
+        restartFailureCount: Int = 0,
+        signInMethods: [AgentSignInMethod] = [],
+        needsSignIn: Bool = false
     ) {
         self.message = message
         self.detail = detail
         self.source = source
         self.isLocked = isLocked
         self.restartFailureCount = restartFailureCount
+        self.signInMethods = signInMethods
+        self.needsSignIn = needsSignIn || !signInMethods.isEmpty
     }
 }

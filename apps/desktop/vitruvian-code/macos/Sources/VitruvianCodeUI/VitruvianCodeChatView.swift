@@ -98,6 +98,7 @@ public struct VitruvianCodeChatView: View {
     /// Files are being dragged over the chat.
     @State private var isDropTargeted = false
     @State private var hoveringFork = false
+    @State private var hoveringMCP = false
 
     public init(engine: VitruvianCodeEngine, strings: VitruvianCodeChatStrings, chrome: VitruvianCodeChatChrome) {
         self.engine = engine
@@ -326,6 +327,15 @@ public struct VitruvianCodeChatView: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+        // A terminal sign-in from the failure card (`ACPAuth`). Closing the sheet ends the program.
+        .sheet(item: Binding(
+            get: { session.signInRun },
+            set: { if $0 == nil { Task { await session.closeSignIn() } } }
+        )) { run in
+            AgentSignInSheetView(run: run, strings: strings) {
+                Task { await session.closeSignIn() }
+            }
+        }
         .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted) { providers in
             attachDroppedItems(providers, to: session)
         }
@@ -1191,6 +1201,36 @@ public struct VitruvianCodeChatView: View {
 
     /// Fork, on a reopened conversation: the next turn goes to a copy of it
     /// and the original stays as it was. A second click takes it back.
+    /// Opens the list of the MCP servers this chat's agent loaded. Hidden for a command-line chat.
+    private var mcpStatusButton: some View {
+        Button {
+            if session.mcpStatusPanel == nil {
+                Task { await session.openMCPStatus(configuration: engine.configuration) }
+            } else {
+                session.closeMCPStatus()
+            }
+        } label: {
+            Image(systemName: "server.rack")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(session.mcpStatusPanel != nil ? VitruvianCodeTheme.warmCoral
+                                 : (hoveringMCP ? Color.primary : Color.secondary.opacity(0.8)))
+        }
+        .buttonStyle(.plain)
+        .help(strings.mcpStatusButton)
+        .accessibilityLabel(strings.mcpStatusButton)
+        .onHover { hoveringMCP = $0 }
+        .popover(isPresented: Binding(
+            get: { session.mcpStatusPanel != nil },
+            set: { if !$0 { session.closeMCPStatus() } }
+        ), arrowEdge: .bottom) {
+            if let panel = session.mcpStatusPanel {
+                AgentMCPStatusView(panel: panel, strings: strings) {
+                    Task { await session.refreshMCPStatus(configuration: engine.configuration) }
+                }
+            }
+        }
+    }
+
     private var forkButton: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -1251,6 +1291,10 @@ public struct VitruvianCodeChatView: View {
                 }
                 if session.isResumed {
                     forkButton
+                }
+
+                if session.mcpStatusAgent(configuration: engine.configuration) != nil {
+                    mcpStatusButton
                 }
 
                 adeHeaderMenu
@@ -1407,8 +1451,10 @@ public struct VitruvianCodeChatView: View {
                                 failure: liveFailure,
                                 strings: strings,
                                 onRetry: { engine.retryQuickPrompt() },
-                                onUseCommandLine: { engine.useCommandLineForCurrentChat() },
-                                onDismiss: { session.dismissFailedTurn() }
+                                onUseCommandLine: engine.configuration.activeProvider.route == .registry
+                                    ? nil : { engine.useCommandLineForCurrentChat() },
+                                onDismiss: { session.dismissFailedTurn() },
+                                onSignIn: { method in engine.signInForCurrentChat(with: method) }
                             )
                         } else if session.lastFailedPrompt != nil {
                             HStack(spacing: 6) {

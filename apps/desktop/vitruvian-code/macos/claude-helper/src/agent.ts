@@ -524,6 +524,23 @@ function extractRequestedMode(
     : fallback;
 }
 
+/**
+ * The model the app asks a session to open on (`_meta.vitruvian.model`), passed
+ * to the SDK as its `model`. Ollama (claude) chats name one: Ollama serves its
+ * own models, not Claude's. Nil leaves Claude Code on its default.
+ */
+function extractRequestedModel(
+  meta: Record<string, unknown> | null | undefined,
+): string | undefined {
+  if (!isPlainRecord(meta) || !isPlainRecord(meta.vitruvian)) {
+    return undefined;
+  }
+  const rawModel = meta.vitruvian.model;
+  return typeof rawModel === "string" && rawModel.trim().length > 0
+    ? rawModel.trim()
+    : undefined;
+}
+
 /** Converts ACP prompt blocks into a single streaming SDK user message (T3 `ClaudeAdapterV2.ts:2398-2440`). */
 export function convertPromptBlocksToSdkUserMessage(
   blocks: readonly ContentBlock[],
@@ -1215,6 +1232,7 @@ export class ClaudeHelperAgent {
     }
 
     const initialMode = extractRequestedMode(input.meta, this.defaultMode);
+    const requestedModel = extractRequestedModel(input.meta);
     const env = buildSdkEnv(this.baseEnv, this.secrets.env);
     const mcpServers = convertMcpServers(
       input.mcpServers,
@@ -1248,6 +1266,7 @@ export class ClaudeHelperAgent {
       env,
       additionalDirectories: input.additionalDirectories,
       mcpServers,
+      model: requestedModel,
     });
 
     const sdkQuery = this.queryFn({
@@ -1272,8 +1291,8 @@ export class ClaudeHelperAgent {
       currentMode: initialMode,
       openedWithDangerousSkip: requiresDangerousSkipFlag(initialMode),
       models: [],
-      currentModel: undefined,
-      modelExplicitlySet: false,
+      currentModel: requestedModel,
+      modelExplicitlySet: requestedModel !== undefined,
       activeTurn: null,
       pendingReopenMode: null,
       closed: false,

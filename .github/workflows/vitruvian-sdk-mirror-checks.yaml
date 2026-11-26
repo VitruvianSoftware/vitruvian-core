@@ -35,21 +35,33 @@ name: Vitruvian SDK Mirror Checks
 # Only when the package changes. A standard GitHub-hosted runner on a public
 # repository is not billed. NOT a required check: red here means "the
 # mirror's CI would fail after the next export".
+# It also runs on pushes to main, to save the Rust toolchain cache. A red main
+# run counts toward post-merge health, and that is real signal.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/vitruvian-sdk/**'
+      - 'packages/pycompat/vitruvian-pycompat/**'
+      - 'tools/copybara/copy.bara.sky'
+      - 'tools/copybara/sdk_export_check.py'
+      - '.github/actions/rust-cache-dir/**'
+      - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   pull_request:
     paths:
       - 'packages/vitruvian-sdk/**'
       - 'packages/pycompat/vitruvian-pycompat/**'
       - 'tools/copybara/copy.bara.sky'
       - 'tools/copybara/sdk_export_check.py'
+      - '.github/actions/rust-cache-dir/**'
       - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
   workflow_dispatch:
 
-# A newer push to the same pull request replaces the older run.
+# Per-commit keying on non-PR events so pushes to main do not evict each other.
 concurrency:
-  group: vitruvian-sdk-mirror-checks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -69,9 +81,20 @@ jobs:
 
       # The version Bazel builds the same checks with (MODULE.bazel,
       # rust.toolchain), and the one the mirror's workflows install.
+      - name: Restore the Rust 1.98.1 toolchain cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache-dir
+        with:
+          version: 1.98.1
+
       - name: Rust 1.98.1
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache.outputs.usable }}
         run: |
-          rustup toolchain install 1.98.1 --profile minimal
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           rustup default 1.98.1
           cargo --version
 
@@ -97,9 +120,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore the Rust 1.98.1 toolchain cache
+        id: rust-cache
+        uses: ./.github/actions/rust-cache-dir
+        with:
+          version: 1.98.1
+
       - name: Rust 1.98.1
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache.outputs.usable }}
         run: |
-          rustup toolchain install 1.98.1 --profile minimal
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           rustup default 1.98.1
           cargo --version
 

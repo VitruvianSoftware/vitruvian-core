@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "session/new",
+  "params": {
+    "cwd": "/Users/example/Workspace/project",
+    "mcpServers": [],
+    "_meta": {
+      "vitruvian": {
+        "modeId": "default",
+        "model": "qwen3"
+      }
+    }
+  }
+}

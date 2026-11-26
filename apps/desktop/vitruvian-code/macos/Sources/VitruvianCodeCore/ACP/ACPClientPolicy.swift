@@ -73,6 +73,11 @@ public struct ACPClientPolicy: Equatable, Sendable {
     /// Whether the form capability is joined by URL mode when `elicitation` is on. The Claude
     /// helper takes forms only (`protocol/examples/client-initialize.json`).
     public var elicitationURLMode: Bool
+    /// Whether `clientCapabilities.auth.terminal` is advertised, so the agent may offer sign-in
+    /// methods the app runs as the agent's own program (`ACPAuth`). Off unless an agent's preset
+    /// turns it on, as T3 Code advertises it only where it can run them
+    /// (`packages/provider-acp-registry/src/server/auth.ts`).
+    public var authTerminal: Bool
 
     public init(
         readTextFile: Bool = false,
@@ -82,7 +87,8 @@ public struct ACPClientPolicy: Equatable, Sendable {
         sandbox: Sandbox? = nil,
         approvalPolicy: ApprovalPolicy? = nil,
         alwaysAsk: Bool = false,
-        elicitationURLMode: Bool = true
+        elicitationURLMode: Bool = true,
+        authTerminal: Bool = false
     ) {
         self.readTextFile = readTextFile
         self.writeTextFile = writeTextFile
@@ -92,6 +98,7 @@ public struct ACPClientPolicy: Equatable, Sendable {
         self.approvalPolicy = approvalPolicy
         self.alwaysAsk = alwaysAsk
         self.elicitationURLMode = elicitationURLMode
+        self.authTerminal = authTerminal
     }
 
     /// All client features disabled and no sandbox (`AcpSessionRuntime.ts:1790-1804`).
@@ -143,7 +150,8 @@ public struct ACPClientPolicy: Equatable, Sendable {
             terminal: terminal,
             elicitation: elicitation
                 ? ACPElicitationCapabilities(form: ACPEmptyObject(), url: elicitationURLMode ? ACPEmptyObject() : nil)
-                : nil
+                : nil,
+            auth: authTerminal ? ACPClientAuthCapabilities(terminal: true) : nil
         )
     }
 

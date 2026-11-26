@@ -43,6 +43,16 @@ struct SettingsView: View {
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
+    @State private var registryList: ACPRegistryAgentList?
+    @State private var showRegistryPicker = false
+
+    /// The one list of registry agents Settings uses, made on first need.
+    private func registryAgents() -> ACPRegistryAgentList {
+        if let registryList { return registryList }
+        let list = ACPRegistryAgentList(installer: configManager.makeRegistryInstaller())
+        registryList = list
+        return list
+    }
     // Antigravity tab state, loaded off the main thread on appear.
     @State private var agyPath: String? = nil
     @State private var agyVersion: String? = nil
@@ -251,9 +261,16 @@ struct SettingsView: View {
                             showsConnectionSetting: host.showsConnectionSetting,
                             strings: chatStrings,
                             onDelete: provider.isBuiltIn ? nil : {
+                                let removed = provider.shared
                                 configManager.providers.removeAll { $0.id == provider.id }
                                 if configManager.activeProviderId == provider.id {
                                     configManager.activeProviderId = CLIProvider.antigravity.id
+                                }
+                                if removed.registryAgent != nil {
+                                    // Its installed copy goes once no provider runs it.
+                                    let list = registryAgents()
+                                    let remaining = configManager.providers.map(\.shared)
+                                    Task { await list.removed(removed, remaining: remaining) }
                                 }
                             }
                         )
@@ -309,12 +326,25 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 4)
                 } else {
-                    Button("+ Add Custom Provider") {
-                        showAddProviderForm = true
+                    HStack(spacing: 16) {
+                        Button("+ Add Custom Provider") {
+                            showAddProviderForm = true
+                        }
+                        Button("+ Add from ACP Registry") {
+                            _ = registryAgents()
+                            showRegistryPicker = true
+                        }
                     }
                     .controlSize(.small)
                     .buttonStyle(.plain)
                     .foregroundStyle(.blue)
+                    .sheet(isPresented: $showRegistryPicker) {
+                        if let registryList {
+                            RegistryAgentPicker(list: registryList, configManager: configManager) {
+                                showRegistryPicker = false
+                            }
+                        }
+                    }
                 }
             }
                 }
@@ -505,6 +535,9 @@ struct ProviderRow: View {
 
     /// The actual command Vitruvian Code runs for built-in providers (not the stored template).
     private var actualCommand: String {
+        if let agent = provider.registryAgent {
+            return "ACP registry: \(agent.agentID) \(agent.version)"
+        }
         if provider.id == CLIProvider.antigravity.id {
             return "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions"
         } else if provider.id == CLIProvider.claude.id {
@@ -541,7 +574,7 @@ struct ProviderRow: View {
 
                 Spacer()
 
-                if showsConnectionSetting {
+                if showsConnectionSetting && provider.registryAgent == nil {
                     Picker(strings.connectionPreviewLabel, selection: $provider.connection) {
                         ForEach(Array(connectionChoices.enumerated()), id: \.offset) { _, choice in
                             Text(connectionLabel(choice))
@@ -552,8 +585,8 @@ struct ProviderRow: View {
                     .fixedSize()
                 }
 
-                // Only custom providers can be edited
-                if !provider.isBuiltIn {
+                // Only custom providers can be edited; a registry agent runs its installed copy.
+                if !provider.isBuiltIn && provider.registryAgent == nil {
                     Button(isEditing ? "Done" : "Edit") {
                         if isEditing {
                             provider.commandTemplate = draftTemplate

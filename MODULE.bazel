@@ -49,8 +49,27 @@ bazel_dep(name = "rules_apple", version = "5.1.0", repo_name = "build_bazel_rule
 # Loads CcInfo from rules_cc (Bazel 9 removed the builtin). 2.6.0 moved the
 # clippy aspect out of lint/ into the separate aspect_rules_lint_rust module;
 # rather than take that module we dropped clippy from tools/lint/linters.bzl
-# (nothing to lint -- Cargo members=[], zero .rs files), so 2.7.1 is a clean bump.
-bazel_dep(name = "aspect_rules_lint", version = "2.7.1")
+# (nothing to lint -- Cargo members=[], zero .rs files).
+bazel_dep(name = "aspect_rules_lint", version = "2.9.1")
+
+# rules_buf is not used directly: aspect_rules_lint (its buf lint aspect) and
+# protovalidate both depend on it, and it registers the buf toolchain. It is
+# declared here only to take the latest release; the transitive floors are
+# 0.5.2 and 0.3.0. 0.6.x raises gazelle's floor to 0.54.0 (bumped below).
+#
+# The buf binary version is NOT rules_buf's default: protovalidate pins
+# buf.toolchains(v1.50.0), and the extension takes the highest version any
+# module asks for. Declaring the latest release here makes it win. The sha256
+# is of the release's sha256.txt; each per-platform binary is then downloaded
+# against its line in that file, so every download stays checksummed.
+bazel_dep(name = "rules_buf", version = "0.6.1")
+
+buf = use_extension("@rules_buf//buf:extensions.bzl", "buf")
+buf.toolchains(
+    sha256 = "b05b543026f48418579c3e37b9c4f9b776b895085e453775ded018a06e631823",
+    version = "v1.75.0",
+)
+
 bazel_dep(name = "buildifier_prebuilt", version = "8.5.1.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
 bazel_dep(name = "rules_multitool", version = "1.11.1")
@@ -73,7 +92,7 @@ bazel_dep(name = "rules_python", version = "1.8.3")
 bazel_dep(name = "aspect_gazelle_prebuilt", version = "0.0.20")
 
 # Bare gazelle stays for the go_deps extension (Go dependency resolution).
-bazel_dep(name = "gazelle", version = "0.51.3")
+bazel_dep(name = "gazelle", version = "0.54.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "rules_oci", version = "2.3.0")
 bazel_dep(name = "tar.bzl", version = "0.10.5")
@@ -133,6 +152,15 @@ go_deps.gazelle_override(
 go_deps.gazelle_override(
     directives = ["gazelle:proto disable"],
     path = "go.mau.fi/mautrix-gvoice",
+)
+
+# github.com/google/safeopen (pulled in by rules_buf 0.6.x's go.mod): it checks
+# in its own BUILD files, which point at an @go_sys repo that does not exist
+# here. rules_buf sets this same override, but only as a dev dependency, so it
+# does not reach us. Regenerate the BUILD files instead.
+go_deps.gazelle_override(
+    build_file_generation = "clean",
+    path = "github.com/google/safeopen",
 )
 
 # go.mau.fi/webp (cgo libwebp, used by whatsmeow for stickers): gazelle files
@@ -406,11 +434,18 @@ use_repo(apple_cc_configure, "local_config_apple_cc_toolchains")
 register_toolchains("@llvm_toolchain//:all")
 
 # bazel run @hedron_compile_commands//:refresh_all
+#
+# Not on the BCR, so it is pinned to a commit (upstream's latest, 2025-08-11).
+# An archive with an integrity hash, not a git_override: a git fetch has no
+# checksum, so the download cache cannot serve it and every cold fetch goes to
+# GitHub (two macOS presubmit jobs on #5536 failed on exactly that fetch). The
+# archive's contents match the commit's tree file for file.
 bazel_dep(name = "hedron_compile_commands")
-git_override(
+archive_override(
     module_name = "hedron_compile_commands",
-    commit = "abb61a688167623088f8768cc9264798df6a9d10",
-    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    integrity = "sha256-Gwir/7++ifbb7mpbM3U3kugAT2o283wPchFb7IbmhyQ=",
+    strip_prefix = "bazel-compile-commands-extractor-abb61a688167623088f8768cc9264798df6a9d10",
+    urls = ["https://github.com/hedronvision/bazel-compile-commands-extractor/archive/abb61a688167623088f8768cc9264798df6a9d10.tar.gz"],
 )
 
 #########################
@@ -952,7 +987,7 @@ maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 # so Central is repeated here rather than inherited.
 #
 # After changing this list, re-pin the lock file:
-#   bazel run @unpinned_maven//:pin
+#   bazel run @maven//:pin
 maven.install(
     artifacts = [
         # Compose: versions come from the BOM below, so they cannot drift apart
@@ -1090,34 +1125,8 @@ http_archive(
 
 bazel_dep(name = "rules_kotlin", version = "2.3.20")
 
-# Force a transitive resolution of rules_android to pick up Bazel 9 fixes
-bazel_dep(name = "rules_android", version = "0.7.3")
-
-# rules_android 0.7.3 ships its `rules_android_maven` repo UNPINNED (its
-# lock_file line is commented out), so coursier resolves and downloads those
-# jars itself at fetch time, outside Bazel's downloader: tools/downloader.cfg
-# cannot redirect them. On 2026-11-05 Maven Central answered HTTP 429 for one
-# of them (org.robolectric:nativeruntime-dist-compat:1.0.16) for hours, from CI
-# and from a laptop, and every merge-queue trial that analysed an Android
-# target failed. Google's official Maven Central mirror served the same file.
-#
-# A root `maven.install` with the same name overrides rules_android's settings,
-# and its `repositories` REPLACE rules_android's list (measured: with only the
-# mirror listed, coursier tried nothing else). So the full list is spelled out:
-# Google Maven first (androidx and com.android.tools live only there), then
-# Google's mirror of Maven Central, then Maven Central itself as the last
-# resort. rules_android's two non-default settings are repeated verbatim.
-# Drop this block once rules_android pins the repo.
-maven.install(
-    name = "rules_android_maven",
-    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
-    repositories = [
-        "https://maven.google.com",
-        "https://maven-central.storage-download.googleapis.com/maven2",
-        "https://repo1.maven.org/maven2",
-    ],
-    use_starlark_android_rules = True,
-)
+# Force a transitive resolution of rules_android to pick up Bazel 9 fixes and upstream maven pins
+bazel_dep(name = "rules_android", version = "0.8.1")
 
 # Android NDK, so an APK can be built for the ABIs a DEVICE uses rather than
 # the ABI of whichever machine happened to build it.
@@ -1174,8 +1183,8 @@ register_toolchains("@androidsdk//:all")
 
 http_jar = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_jar")
 
-# Google's mirror of Maven Central first, Maven Central itself second -- the
-# same order as rules_android_maven above. With Maven Central as the only URL,
+# Google's mirror of Maven Central first, Maven Central itself second --
+# matching tools/downloader.cfg. With Maven Central as the only URL,
 # a 403 from it failed tidy-check in the merge queue (runs 43407933341 and
 # 43525890774, 2026-11-13); the integrity pin makes either source safe.
 http_jar(
@@ -1293,7 +1302,7 @@ http_file(
 # protobuf pulls it transitively and the default (0.10.1) loads the Bazel-9-
 # removed CcInfo builtin and fails analysis.
 bazel_dep(name = "protobuf", version = "35.1")
-bazel_dep(name = "protovalidate", version = "1.2.0")
+bazel_dep(name = "protovalidate", version = "1.2.2")
 bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
 bazel_dep(name = "grpc-java", version = "1.78.0")
 bazel_dep(name = "bazel_jar_jar", version = "0.1.12")

@@ -79,6 +79,7 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
     case alreadyStopped
     case unknownInteractionRequest(String)
     case missingSessionID
+    case sessionListNotAdvertised
 
     public var errorDescription: String? {
         switch self {
@@ -90,6 +91,8 @@ public enum ACPConnectionError: Error, Equatable, Sendable, LocalizedError {
             return "No pending ACP permission or question request matches '\(id)'."
         case .missingSessionID:
             return "ACP agent returned an empty session identifier."
+        case .sessionListNotAdvertised:
+            return "ACP agent does not advertise session/list support."
         }
     }
 }
@@ -131,6 +134,14 @@ public final class ACPConnection: PersistentAgentConnection {
         public var onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])?
         /// Custom failure builder when the launched process exits unexpectedly.
         public var onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)?
+        /// The sign-in methods a sign-in failure offers, in place of the ones built from the
+        /// agent's `authMethods` (`ACPAuth.signInMethods`). The Claude helper advertises none and
+        /// offers `claude auth login` instead.
+        public var signInMethods: (@MainActor @Sendable (_ advertised: [ACPAuthMethod]) -> [AgentSignInMethod])?
+        /// An agent sign-in method the user picked: sent as `authenticate` right after
+        /// `initialize`, before the session opens, as T3 Code does
+        /// (`packages/provider-acp-registry/src/server/auth.ts`).
+        public var authenticateMethodID: String?
 
         public init(
             initializeMeta: [String: ACPJSONValue]? = nil,
@@ -151,8 +162,12 @@ public final class ACPConnection: PersistentAgentConnection {
             cancelGraceTimeout: TimeInterval = ACPConnection.defaultCancelGraceTimeout,
             postInitializeRequests: (@MainActor @Sendable (ACPInitializeResult) -> [(method: String, params: ACPJSONValue)])? = nil,
             onExtensionNotification: (@MainActor @Sendable (_ method: String, _ params: ACPJSONValue?) -> [AgentEvent])? = nil,
-            onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)? = nil
+            onUnexpectedExitFailure: (@MainActor @Sendable (_ exit: AgentProcessExit, _ stderr: String?) -> AgentFailure)? = nil,
+            signInMethods: (@MainActor @Sendable (_ advertised: [ACPAuthMethod]) -> [AgentSignInMethod])? = nil,
+            authenticateMethodID: String? = nil
         ) {
+            self.signInMethods = signInMethods
+            self.authenticateMethodID = authenticateMethodID
             self.postInitializeRequests = postInitializeRequests
             self.onExtensionNotification = onExtensionNotification
             self.onUnexpectedExitFailure = onUnexpectedExitFailure
@@ -432,6 +447,31 @@ public final class ACPConnection: PersistentAgentConnection {
                 throw ACPConnectionError.alreadyStopped
             }
 
+            if let methodID = hooks.authenticateMethodID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !methodID.isEmpty {
+                // Only an agent method is sent: ACP forbids `authenticate` for a terminal method,
+                // and an `env_var` method's ID is never sent (T3 Code, `auth.ts`).
+                let offered = advertisedAuthMethods.first { $0.id == methodID }
+                let type = offered?.type?.lowercased()
+                guard offered != nil, type == nil || type == "agent" || type == "" else {
+                    throw ACPAuthFailureError(message: Self.signInMethodGoneMessage)
+                }
+                do {
+                    let _: ACPJSONValue = try await acpTransport.request(
+                        method: "authenticate",
+                        params: ACPAuthenticateParams(methodId: methodID),
+                        timeout: sessionSetupTimeout
+                    )
+                } catch {
+                    throw ACPAuthFailureError(
+                        message: hooks.authFailureMessage ?? Self.errorDescription(error)
+                    )
+                }
+                guard !isStopping, !isStopped else {
+                    throw ACPConnectionError.alreadyStopped
+                }
+            }
+
             let mcpServers = Self.encodeMCPServers(request.mcpServers, allowHTTP: resolvedCapabilities.mcpHTTP)
             let supportsAdditionalDirs = agentCaps?.sessionCapabilities?.supportsAdditionalDirectories == true
             let extraDirsSource: [String] = supportsAdditionalDirs
@@ -583,7 +623,7 @@ public final class ACPConnection: PersistentAgentConnection {
                 }
             }
             if !isStopping, !hasEmittedTerminalFailure {
-                let failure = Self.makeStartupFailure(from: error, detail: recentStderrDetail())
+                let failure = withSignInMethods(Self.makeStartupFailure(from: error, detail: recentStderrDetail()))
                 recordLogLine("[acp] startup failed: \(failure.message)")
                 emitTerminalPromptFailure(failure)
             }
@@ -613,6 +653,50 @@ public final class ACPConnection: PersistentAgentConnection {
                 eventsContinuation.finish()
             }
             throw error
+        }
+    }
+
+    /// One page of the agent's own past sessions (`session/list`), asked over this
+    /// already-open connection for the chat's "Recent sessions" list. It never
+    /// starts the agent: a connection with no process throws `notStarted`.
+    /// Throws `sessionListNotAdvertised` when the agent does not offer it. agy
+    /// answers `session/list` only after `authenticate` (seen on 1.5.16), and a
+    /// chat opened with `session/new` may never have sent it; so on "needs
+    /// sign-in" it sends the same headless `authenticate` with the saved login
+    /// that `start` sends, once, and asks again. No sign-in UI is shown; any
+    /// failure is thrown for the caller to fall back on.
+    public func listSessions(cwd: String?, cursor: String?) async throws -> ACPSessionListResult {
+        guard !isStopped, !isStopping else {
+            throw ACPConnectionError.alreadyStopped
+        }
+        guard let acpTransport = transport else {
+            throw ACPConnectionError.notStarted
+        }
+        guard capabilities.listSessions else {
+            throw ACPConnectionError.sessionListNotAdvertised
+        }
+        let params = ACPSessionListParams(cwd: cwd, cursor: cursor)
+        do {
+            return try await acpTransport.request(
+                method: "session/list",
+                params: params,
+                timeout: sessionSetupTimeout
+            )
+        } catch {
+            guard Self.isAuthRequiredError(error), let authMethodID = hooks.authMethodID,
+                  authMethods.isEmpty || authMethods.contains(where: { $0.id == authMethodID }) else {
+                throw error
+            }
+            let _: ACPJSONValue = try await acpTransport.request(
+                method: "authenticate",
+                params: ACPAuthenticateParams(methodId: authMethodID),
+                timeout: sessionSetupTimeout
+            )
+            return try await acpTransport.request(
+                method: "session/list",
+                params: params,
+                timeout: sessionSetupTimeout
+            )
         }
     }
 
@@ -785,6 +869,20 @@ public final class ACPConnection: PersistentAgentConnection {
                     finalizeStoppedConnection()
                 }
                 return .cancelled
+            }
+
+            // The agent wants sign-in mid-chat (the Claude helper answers a prompt this way when
+            // Claude Code is logged out): a sign-in failure, so the card offers the methods.
+            if Self.isPromptAuthRequiredError(error), !hasEmittedTerminalFailure {
+                emitTerminalPromptFailure(AgentFailure(
+                    kind: .auth,
+                    message: hooks.authFailureMessage ?? Self.errorDescription(error),
+                    detail: recentStderrDetail(),
+                    signInMethods: currentSignInMethods()
+                ))
+                // The session is no good until the user signs in; the next turn starts afresh.
+                Task { @MainActor [weak self] in await self?.stop() }
+                return .error
             }
 
             if case ACPTransportError.rpcError = error {
@@ -1759,6 +1857,44 @@ public final class ACPConnection: PersistentAgentConnection {
             result.append(trimmed)
         }
         return result
+    }
+
+    /// Shown when the picked agent sign-in method is no longer in the agent's `authMethods`.
+    public nonisolated static let signInMethodGoneMessage = "The agent no longer offers this sign-in method."
+
+    /// The sign-in methods for a sign-in failure on this connection.
+    private func currentSignInMethods() -> [AgentSignInMethod] {
+        if let custom = hooks.signInMethods {
+            return custom(authMethods)
+        }
+        var spec = launchSpec
+        if spec.workingDirectory?.isEmpty ?? true {
+            spec.workingDirectory = clientFiles?.workingDirectory
+        }
+        return ACPAuth.signInMethods(
+            advertised: authMethods,
+            launchSpec: spec,
+            terminalAdvertised: policy.authTerminal
+        )
+    }
+
+    private func withSignInMethods(_ failure: AgentFailure) -> AgentFailure {
+        guard failure.kind == .auth, failure.signInMethods.isEmpty else { return failure }
+        return AgentFailure(
+            kind: .auth,
+            message: failure.message,
+            detail: failure.detail,
+            signInMethods: currentSignInMethods()
+        )
+    }
+
+    /// A prompt failed because the agent needs sign-in: ACP's `auth_required` error (-32000), or
+    /// its reason in the error data. Narrower than at start-up, so a tool's own "unauthorized"
+    /// during a turn is not taken for a logged-out agent.
+    private static func isPromptAuthRequiredError(_ error: any Error) -> Bool {
+        guard case ACPTransportError.rpcError(let rpc) = error else { return false }
+        if rpc.code == -32000 { return true }
+        return (rpc.data?.serializedJSONString() ?? "").lowercased().contains("auth_required")
     }
 
     private static func isAuthRequiredError(_ error: any Error) -> Bool {

@@ -94,7 +94,7 @@ mindmap
 | `//tools/dupcheck` | Detects added code duplicating `packages/` (`--diff <base>...<head> [--strict] [--allow <glob>]`) and reproduces the duplicated helper-family table (`--families [--ref <commit>]`) |
 | `//tools/owners` | Validates and compiles per-subtree `OWNERS` files into `.github/CODEOWNERS` (`--check`, `--validate-only`, `--coverage-check`) |
 | `//tools/packages-index` | Generates (`--write`) and drift-checks (`--check`, also enforced by `//tools/conformance:check`) the `packages/README.md` package index from `packages/**/catalog-info.yaml` |
-| `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
+| `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (every lockfile osv-scanner reads; fails on ones it cannot). Gate: `osv-scan` |
 | `//tools/npm-publish-audit:check` | Verifies against the npm registry that packages claimed published by CI actually exist |
 | `//tools/registry-trust:inventory` | Lists every package we publish, its registry, mirror, workflow and environment, read from release-please |
 | `//tools/registry-trust:setup` | Sets up trusted publishing on crates.io and npm from that list; prints what PyPI needs entered by hand (`-- --dry-run` first) |
@@ -122,7 +122,7 @@ bazel run //<project-package>:{setup,preview,up,refresh,destroy,config,stack,sta
 
 Project packages include:
 - `//infrastructure/pulumi/platform/repo-config` (repository configuration, GitHub settings, sync-auth credentials)
-- `//infrastructure/pulumi/platform/{dev-local,stripe,zitadel-apps,zitadel-apps-mcp-slack,zitadel-apps-relay}`
+- `//infrastructure/pulumi/platform/{dev-local,stripe,zitadel-apps,zitadel-apps-mcp-slack,zitadel-apps-relay,zitadel-mcp-viewer}`
 - `//infrastructure/pulumi/foundation/...` (all stages × environments: org-folders, gcp-projects, etc.)
 - `//apps/suites/vitruvian-tabs/infra/{identity,build,data,app}`
 - `//apps/web/oauth-user-inspector/infra/{identity,app}`
