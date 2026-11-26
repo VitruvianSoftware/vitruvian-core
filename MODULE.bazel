@@ -433,20 +433,40 @@ use_repo(apple_cc_configure, "local_config_apple_cc_toolchains")
 
 register_toolchains("@llvm_toolchain//:all")
 
-# bazel run @hedron_compile_commands//:refresh_all
+# hedron_compile_commands: PARKED (commented out) 2026-11-25.
 #
-# Not on the BCR, so it is pinned to a commit (upstream's latest, 2025-08-11).
-# An archive with an integrity hash, not a git_override: a git fetch has no
-# checksum, so the download cache cannot serve it and every cold fetch goes to
-# GitHub (two macOS presubmit jobs on #5536 failed on exactly that fetch). The
-# archive's contents match the commit's tree file for file.
-bazel_dep(name = "hedron_compile_commands")
-archive_override(
-    module_name = "hedron_compile_commands",
-    integrity = "sha256-Gwir/7++ifbb7mpbM3U3kugAT2o283wPchFb7IbmhyQ=",
-    strip_prefix = "bazel-compile-commands-extractor-abb61a688167623088f8768cc9264798df6a9d10",
-    urls = ["https://github.com/hedronvision/bazel-compile-commands-extractor/archive/abb61a688167623088f8768cc9264798df6a9d10.tar.gz"],
-)
+# It writes compile_commands.json, which lets C/C++ editors (clangd, VS Code)
+# understand Bazel-built C/C++. It came with the kitchen-sink starter, nothing
+# here uses it, and under Bazel 9 its own BUILD file no longer loads
+# (`native.py_binary` was removed), so it only cost a download on every cold
+# CI runner.
+#
+# TODO(when C/C++ editor support is wanted, or by 2027-03-01): check upstream
+# before re-enabling.
+#   - Bazel: no built-in replacement. bazelbuild/bazel#29997 (`bazel compdb`)
+#     was declined in 2026-06 to keep language features out of Bazel; the
+#     feature request bazelbuild/bazel#23508 is still open. If Bazel or
+#     rules_cc ships one, use that and delete this block.
+#   - hedron: upstream inactive since 2025-08-11. Bazel 9 fixes are open, not
+#     merged: hedronvision/bazel-compile-commands-extractor#281 (smallest),
+#     #272, #278. If one lands, bump the commit; otherwise apply #281 as a
+#     patch on the archive below.
+#   - The usage line it shipped with (`bazel run
+#     @hedron_compile_commands//:refresh_all`) names a target that does not
+#     exist upstream; it needs a refresh_compile_commands() target of our own.
+#
+# Keep it an archive with an integrity hash, not a git_override: a git fetch
+# has no checksum, so the download cache cannot serve it (two macOS presubmit
+# jobs on #5536 failed on exactly that fetch). This archive is upstream's
+# latest commit; its contents match the commit's tree file for file.
+#
+# bazel_dep(name = "hedron_compile_commands")
+# archive_override(
+#     module_name = "hedron_compile_commands",
+#     integrity = "sha256-Gwir/7++ifbb7mpbM3U3kugAT2o283wPchFb7IbmhyQ=",
+#     strip_prefix = "bazel-compile-commands-extractor-abb61a688167623088f8768cc9264798df6a9d10",
+#     urls = ["https://github.com/hedronvision/bazel-compile-commands-extractor/archive/abb61a688167623088f8768cc9264798df6a9d10.tar.gz"],
+# )
 
 #########################
 # Support for Rust, see https://github.com/bazelbuild/rules_rust
