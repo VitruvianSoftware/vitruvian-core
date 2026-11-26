@@ -76,6 +76,7 @@ const REHEARSAL_ONLY: &[&str] = &[
     "Check the app inside the ZIP",
     // The rehearsal judges the tool's folder as the Vitruvian app would; a
     // release attaches its zip and judges nothing.
+    "Restore the Rust 1.98.1 toolchain cache",
     "Check the tool's folder",
 ];
 
@@ -116,10 +117,21 @@ const CHECKOUTS: &str = ".build/checkouts";
 
 fn shared_steps(release_job: &str) -> &'static [&'static str] {
     match release_job {
-        "build-macos" => &["Build for ${{ matrix.arch }}", "Upload arch binary"],
+        "build-macos" => &[
+            "Compute Rust 1.98.1 cache key and path",
+            "Restore Rust 1.98.1 toolchain cache (read-only)",
+            "Restore and save Rust 1.98.1 toolchain cache (main only)",
+            "Check the restored Rust 1.98.1 toolchain",
+            "Install Rust 1.98.1 toolchain",
+            "Build for ${{ matrix.arch }}",
+            "Upload arch binary",
+        ],
         "package" => &[
             "Download arm64 binary",
             "Download x86_64 binary",
+            "Compute bundled Node cache key",
+            "Restore bundled Node cache (read-only)",
+            "Restore and save bundled Node cache (main only)",
             "Fetch and verify bundled Node",
             "Create universal binary",
             "Assemble .app bundles",
@@ -526,11 +538,19 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
         }
     };
 
+    let build = body("Build for ${{ matrix.arch }}");
     expect(
         "the `swift build` line",
-        body("Build for ${{ matrix.arch }}")
+        build.iter().any(|l| l == "ARCH: ${{ matrix.arch }}")
+            && build
+                .iter()
+                .any(|l| l == "swift build -c release --arch \"$ARCH\""),
+    );
+    expect(
+        "the pinned `rustup toolchain install 1.98.1` line",
+        body("Install Rust 1.98.1 toolchain")
             .iter()
-            .any(|l| l == "swift build -c release --arch ${{ matrix.arch }}"),
+            .any(|l| l.contains("rustup toolchain install 1.98.1")),
     );
 
     let upload = body("Upload arch binary");

@@ -102,12 +102,110 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build for ${{ matrix.arch }}
+      - name: Compute Rust 1.98.1 cache key and path
+        id: rust-cache-key
+        env:
+          ARCH: ${{ matrix.arch }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
+          set -euo pipefail
+          case "${ARCH}" in
+            arm64) rust_target="aarch64-apple-darwin" ;;
+            x86_64) rust_target="x86_64-apple-darwin" ;;
+            *) echo "::error::Unsupported arch ${ARCH}" >&2; exit 1 ;;
+          esac
+          rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+          host_triple="$({ rustc -vV 2>/dev/null || true; } | awk '/^host:/ { print $2 }')"
+          if [ -z "$host_triple" ]; then
+            case "${RUNNER_OS}:${RUNNER_ARCH}" in
+              macOS:ARM64) host_triple="aarch64-apple-darwin" ;;
+              macOS:X64) host_triple="x86_64-apple-darwin" ;;
+              *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+            esac
+          fi
+          {
+            echo "rust-target=${rust_target}"
+            echo "path=${rustup_home}/toolchains/1.98.1-${host_triple}"
+            # Bump the v1 segment to drop a bad cache entry.
+            if [ "${rust_target}" = "${host_triple}" ]; then
+              echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal"
+            else
+              echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal-${rust_target}"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore Rust 1.98.1 toolchain cache (read-only)
+        id: rust-cache-restore
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Restore and save Rust 1.98.1 toolchain cache (main only)
+        id: rust-cache-save
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Check the restored Rust 1.98.1 toolchain
+        id: rust-cache-verify
+        env:
+          CACHE_HIT: ${{ steps.rust-cache-restore.outputs.cache-hit == 'true' || steps.rust-cache-save.outputs.cache-hit == 'true' }}
+          TOOLCHAIN_DIR: ${{ steps.rust-cache-key.outputs.path }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
+          verify_toolchain() {
+            if [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/cargo" ]; then
+              return 1
+            fi
+            local probe_dir rc=0
+            probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/rust-probe.XXXXXX")"
+            printf 'fn main(){}\n' > "${probe_dir}/probe.rs"
+            if ! "${TOOLCHAIN_DIR}/bin/rustc" --edition 2021 --target "${RUST_TARGET}" "${probe_dir}/probe.rs" -o "${probe_dir}/probe" >/dev/null 2>&1; then
+              rc=1
+            elif ! "${TOOLCHAIN_DIR}/bin/cargo" --version >/dev/null 2>&1; then
+              rc=1
+            fi
+            rm -rf "${probe_dir}"
+            return "${rc}"
+          }
+
+          usable=false
+          if [ "${CACHE_HIT}" = "true" ]; then
+            if verify_toolchain; then
+              usable=true
+            else
+              echo "::warning::Cached Rust toolchain at ${TOOLCHAIN_DIR} failed its check; deleting it so the workflow installs"
+              rm -rf "${TOOLCHAIN_DIR}"
+            fi
+          fi
+          echo "usable=${usable}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust 1.98.1 toolchain
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache-verify.outputs.usable }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal --target "${RUST_TARGET}"
+          fi
+          rustup default 1.98.1
+          rustc --version
+
+      - name: Build for ${{ matrix.arch }}
+        env:
+          ARCH: ${{ matrix.arch }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
           cd macos
-          swift build -c release --arch ${{ matrix.arch }}
-          RUST_TARGET=$([ "${{ matrix.arch }}" = "arm64" ] && echo "aarch64-apple-darwin" || echo "x86_64-apple-darwin")
-          rustup target add "$RUST_TARGET"
+          swift build -c release --arch "$ARCH"
           rustc --edition 2021 -O --target "$RUST_TARGET" --crate-type lib --crate-name vitruvian_code_src_lib ../src/rs/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_src_lib.rlib"
           rustc --edition 2021 -O --target "$RUST_TARGET" ../src/rs/main.rs -L "$RUNNER_TEMP" --extern vitruvian_code_src_lib="$RUNNER_TEMP/libvitruvian_code_src_lib.rlib" -o .build/release/bot-engine
 
@@ -153,7 +251,38 @@ jobs:
           name: VitruvianCode-x86_64
           path: /tmp/x86_64
 
+      - name: Compute bundled Node cache key
+        id: node-cache-key
+        run: |
+          set -euo pipefail
+          lock_file="macos/claude-helper/node.lock"
+          NODE_VERSION="$(awk -F= '$1 == "version" { print $2; exit }' "$lock_file")"
+          ARM64_SHA="$(awk -F= '$1 == "darwin-arm64" { print $2; exit }' "$lock_file")"
+          X64_SHA="$(awk -F= '$1 == "darwin-x64" { print $2; exit }' "$lock_file")"
+          test -n "$NODE_VERSION" && test -n "$ARM64_SHA" && test -n "$X64_SHA"
+          {
+            echo "path=${RUNNER_TEMP}/node-tarballs"
+            # Bump the v1 segment to drop a bad cache entry.
+            echo "key=vitruvian-code-node-v1-${NODE_VERSION}-${ARM64_SHA}-${X64_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore bundled Node cache (read-only)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.node-cache-key.outputs.path }}
+          key: ${{ steps.node-cache-key.outputs.key }}
+
+      - name: Restore and save bundled Node cache (main only)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.node-cache-key.outputs.path }}
+          key: ${{ steps.node-cache-key.outputs.key }}
+
       - name: Fetch and verify bundled Node
+        env:
+          NODE_CACHE_DIR: ${{ steps.node-cache-key.outputs.path }}
         run: |
           set -euo pipefail
           lock_file="macos/claude-helper/node.lock"
@@ -164,15 +293,26 @@ jobs:
 
           fetch_dir="$RUNNER_TEMP/node-fetch"
           rm -rf "$fetch_dir"
-          mkdir -p "$fetch_dir" /tmp/arm64/claude-helper /tmp/x86_64/claude-helper
+          mkdir -p "$NODE_CACHE_DIR" "$fetch_dir" /tmp/arm64/claude-helper /tmp/x86_64/claude-helper
 
           for spec in "darwin-arm64:${ARM64_SHA}:arm64" "darwin-x64:${X64_SHA}:x86_64"; do
             IFS=: read -r node_arch want_sha out_arch <<< "$spec"
             name="node-v${NODE_VERSION}-${node_arch}"
-            tarball="${fetch_dir}/${name}.tar.gz"
-            curl -fsSL --retry 3 --retry-all-errors \
-              "https://nodejs.org/dist/v${NODE_VERSION}/${name}.tar.gz" \
-              -o "$tarball"
+            tarball="${NODE_CACHE_DIR}/${name}.tar.gz"
+            if [ -f "$tarball" ]; then
+              if ! printf '%s  %s\n' "$want_sha" "$tarball" | shasum -a 256 -c -; then
+                echo "::warning::Cached ${name}.tar.gz failed sha256 check; re-downloading"
+                rm -f "$tarball"
+              fi
+            fi
+            if [ ! -f "$tarball" ]; then
+              tmp_tarball="${fetch_dir}/${name}.tar.gz"
+              curl -fsSL --retry 3 --retry-all-errors \
+                "https://nodejs.org/dist/v${NODE_VERSION}/${name}.tar.gz" \
+                -o "$tmp_tarball"
+              printf '%s  %s\n' "$want_sha" "$tmp_tarball" | shasum -a 256 -c -
+              mv "$tmp_tarball" "$tarball"
+            fi
             printf '%s  %s\n' "$want_sha" "$tarball" | shasum -a 256 -c -
             tar -xzf "$tarball" -C "$fetch_dir" "${name}/bin/node"
             cp "${fetch_dir}/${name}/bin/node" "/tmp/${out_arch}/node"
