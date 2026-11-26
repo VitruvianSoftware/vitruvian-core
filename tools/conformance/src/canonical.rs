@@ -94,9 +94,9 @@ pub fn canonical_node_exact(root: &str) -> Result<String, String> {
         .find(|l| !l.is_empty())
         .ok_or_else(|| ".nvmrc is empty".to_string())?;
 
-    let trimmed = first_line
-        .trim_start_matches(|c: char| c == ' ' || c == '\t' || c == 'v')
-        .trim_end_matches(|c: char| c == ' ' || c == '\t' || c == '\r');
+    // Strip at most one leading 'v' so 'v22.21.1' normalizes to '22.21.1'
+    // while 'vv22.21.1' is rejected.
+    let trimmed = first_line.strip_prefix('v').unwrap_or(first_line);
 
     let mut parts = trimmed.split('.');
     let valid = matches!(
@@ -111,7 +111,7 @@ pub fn canonical_node_exact(root: &str) -> Result<String, String> {
     );
     if !valid {
         return Err(format!(
-            ".nvmrc must contain an exact X.Y.Z Node version, got '{trimmed}'"
+            ".nvmrc must contain an exact X.Y.Z Node version, got '{first_line}'"
         ));
     }
 
@@ -821,5 +821,30 @@ catalogs:
         // Missing patch treated as 0.
         assert!(go_is_newer("1.24", "1.23.4"));
         assert!(!go_is_newer("1.23", "1.23.4"));
+    }
+
+    #[test]
+    fn canonical_node_exact_normalizes_and_rejects() {
+        let dir_plain = temp_dir_with_file(".nvmrc", "22.21.1\n");
+        assert_eq!(
+            canonical_node_exact(dir_plain.to_str().unwrap()).unwrap(),
+            "22.21.1"
+        );
+        let _ = fs::remove_dir_all(&dir_plain);
+
+        let dir_v = temp_dir_with_file(".nvmrc", "v22.21.1\n");
+        assert_eq!(
+            canonical_node_exact(dir_v.to_str().unwrap()).unwrap(),
+            "22.21.1"
+        );
+        let _ = fs::remove_dir_all(&dir_v);
+
+        let dir_vv = temp_dir_with_file(".nvmrc", "vv22.21.1\n");
+        assert!(canonical_node_exact(dir_vv.to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&dir_vv);
+
+        let dir_major = temp_dir_with_file(".nvmrc", "22\n");
+        assert!(canonical_node_exact(dir_major.to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&dir_major);
     }
 }

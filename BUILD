@@ -298,6 +298,7 @@ filegroup(
     srcs = glob([".github/actions/*/action.yml"]),
     visibility = [
         "//tools/ci:__pkg__",
+        "//tools/conformance:__pkg__",
         "//tools/delivery/gen:__pkg__",
     ],
 )

@@ -35,8 +35,9 @@ on:
       - '.github/actions/node-toolcache/**'
       - '.github/workflows/node-toolcache.yaml'
   schedule:
-    # Daily, off the hour, to refresh evicted entries without overwriting hits.
-    - cron: '41 7 * * *'
+    # Every 5 days, off the hour: GitHub evicts Actions cache entries after 7
+    # idle days, each restore refreshes last-access, and a restore is ~50 MB.
+    - cron: '41 7 */5 * *'
   workflow_dispatch: {}
 
 permissions:
@@ -56,11 +57,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          sparse-checkout: |
+            .github/actions/node-toolcache
+            .nvmrc
+          sparse-checkout-cone-mode: false
 
-      - name: Restore Node 22.21.1 toolcache
+      - name: Read Node version from .nvmrc
+        id: nvmrc
+        run: |
+          set -euo pipefail
+          raw="$(tr -d '[:space:]' < .nvmrc)"
+          version="${raw#v}"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::.nvmrc must contain an exact X.Y.Z Node version (optional single leading v), got '${raw}'" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Node toolcache
         uses: ./.github/actions/node-toolcache
         with:
-          version: '22.21.1'
+          version: ${{ steps.nvmrc.outputs.version }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -68,9 +85,11 @@ jobs:
           package-manager-cache: false
 
       - name: Verify Node version matches .nvmrc
+        env:
+          NODE_VERSION: ${{ steps.nvmrc.outputs.version }}
         run: |
           set -euo pipefail
-          want="v$(tr -d '[:space:]' < .nvmrc)"
+          want="v${NODE_VERSION}"
           got="$(node --version)"
           if [ "${got}" != "${want}" ]; then
             echo "::error::Expected Node ${want} from .nvmrc, got ${got}"

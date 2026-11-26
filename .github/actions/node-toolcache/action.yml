@@ -28,9 +28,11 @@
 #   dir:    ${RUNNER_TOOL_CACHE}/node/<version>/<arch>   (arch: x64 or arm64)
 #   marker: ${RUNNER_TOOL_CACHE}/node/<version>/<arch>.complete (sibling file)
 #
-# Both the directory and the sibling .complete marker are cached together. If a
-# restored copy fails `bin/node --version == v<version>`, it is deleted so
-# actions/setup-node downloads a clean copy.
+# Both the directory and the sibling .complete marker are cached together.
+# Whenever either the tool directory or the .complete marker exists, we verify
+# `bin/node --version == v<version>`, `bin/npm --version`, and
+# `bin/corepack --version`; if any check fails, both paths are deleted
+# regardless of `cache-hit` so actions/setup-node downloads a clean copy.
 
 name: Node toolcache directory
 description: Restore and (on main only) save the actions/setup-node toolcache entry for an exact Node release, verifying the restored binary before setup-node runs.
@@ -121,15 +123,29 @@ runs:
       run: |
         set -euo pipefail
         usable=false
-        if [ "${CACHE_HIT}" = "true" ]; then
+        has_state=false
+        if [ -e "${TOOL_DIR}" ] || [ -L "${TOOL_DIR}" ] || [ -e "${MARKER}" ] || [ -L "${MARKER}" ]; then
+          has_state=true
+        fi
+        if [ "${has_state}" = "true" ] || [ "${CACHE_HIT:-}" = "true" ]; then
           got=""
+          npm_ok=false
+          corepack_ok=false
           if [ -f "${MARKER}" ] && [ -x "${TOOL_DIR}/bin/node" ]; then
             got="$("${TOOL_DIR}/bin/node" --version 2>/dev/null || true)"
           fi
           if [ "${got}" = "v${NODE_VERSION}" ]; then
+            if [ -x "${TOOL_DIR}/bin/npm" ] && PATH="${TOOL_DIR}/bin:${PATH}" "${TOOL_DIR}/bin/npm" --version >/dev/null 2>&1; then
+              npm_ok=true
+            fi
+            if [ -x "${TOOL_DIR}/bin/corepack" ] && PATH="${TOOL_DIR}/bin:${PATH}" "${TOOL_DIR}/bin/corepack" --version >/dev/null 2>&1; then
+              corepack_ok=true
+            fi
+          fi
+          if [ "${got}" = "v${NODE_VERSION}" ] && [ "${npm_ok}" = "true" ] && [ "${corepack_ok}" = "true" ]; then
             usable=true
           else
-            echo "::warning::Cached Node at ${TOOL_DIR} failed verification (got '${got}', expected 'v${NODE_VERSION}'); deleting so actions/setup-node downloads a fresh copy"
+            echo "::warning::Node toolcache at ${TOOL_DIR} failed verification (cache-hit=${CACHE_HIT:-}, node='${got}', want='v${NODE_VERSION}', npm_ok=${npm_ok}, corepack_ok=${corepack_ok}); deleting so actions/setup-node downloads a fresh copy"
             rm -rf "${TOOL_DIR}" "${MARKER}"
           fi
         fi

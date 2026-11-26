@@ -87,7 +87,8 @@ jobs:
       - name: Verify Node version matches .nvmrc
         run: |
           set -euo pipefail
-          want="v$(tr -d '[:space:]' < .nvmrc)"
+          raw="$(tr -d '[:space:]' < .nvmrc)"
+          want="v${raw#v}"
           got="$(node --version)"
           if [ "${got}" != "${want}" ]; then
             echo "::error::Expected Node ${want} from .nvmrc, got ${got}"
