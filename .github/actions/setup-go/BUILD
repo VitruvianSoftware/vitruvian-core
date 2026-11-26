@@ -76,6 +76,24 @@ py_test(
 )
 
 py_test(
+    name = "cache_prune_test",
+    size = "small",
+    srcs = [
+        "cache_prune.py",
+        "cache_prune_test.py",
+    ],
+    # pytest skips directories whose name starts with a dot (.github), so name
+    # the file, or it collects nothing and fails with exit code 5.
+    args = ["$(rootpath cache_prune_test.py)"],
+    data = [
+        "//:.github/workflows/go-cache.yaml",
+    ],
+    env = {
+        "GO_CACHE_WORKFLOW_PATH": "$(rootpath //:.github/workflows/go-cache.yaml)",
+    },
+)
+
+py_test(
     name = "setup_go_key_repro_test",
     size = "small",
     srcs = [

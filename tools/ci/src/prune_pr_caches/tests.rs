@@ -479,7 +479,7 @@ fn listing_is_paginated_with_the_tsv_projection() {
     p.run("", "", &[], &[]);
     assert_has(
         &p.calls(),
-        "api --paginate repos/o/r/actions/caches?per_page=100 --jq .actions_caches[] | [.id, .size_in_bytes, .ref] | @tsv\n",
+        "api --paginate repos/o/r/actions/caches?per_page=100 --jq .actions_caches[] | [.id, .size_in_bytes, .ref, (.key // \"\"), (.created_at // \"\")] | @tsv\n",
         "listing call",
     );
 }
@@ -518,4 +518,147 @@ fn missing_gh_is_a_setup_error() {
     assert_eq!(o.code, 2, "{o:?}");
     assert_has(&o.stderr, "gh not found on PATH", "names the problem");
     assert_eq!(read(p.dir.join("calls")), "");
+}
+
+// --- superseded main LLVM caches -------------------------------------------
+
+#[test]
+fn deletes_superseded_main_llvm_caches_and_keeps_newest() {
+    let listing = format!(
+        "\
+201\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-oldhash1\t2026-11-23T23:56:43Z
+202\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-newhash3\t2026-11-25T22:52:33Z
+203\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-midhash2\t2026-11-25T20:35:28Z
+",
+        2 * MIB,
+        4 * MIB,
+        3 * MIB
+    );
+    let p = Pruner::with_listing(&listing);
+    let o = p.run("", "", &[], &[]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(p.deleted(), "201 203 ", "kept newest 202: {o:?}");
+    assert_eq!(out_value(&o, "deleted"), Some("2"), "{o:?}");
+    assert_eq!(out_value(&o, "freed_mib"), Some("5"), "{o:?}");
+    assert_eq!(out_value(&o, "remaining_entries"), Some("1"), "{o:?}");
+    assert_eq!(out_value(&o, "remaining_mib"), Some("4"), "{o:?}");
+}
+
+#[test]
+fn keeps_newest_main_llvm_cache_per_os_release_group() {
+    let listing = format!(
+        "\
+201\t{}\trefs/heads/main\tllvm-contents-v2-Linux-aaaa1111bbbb2222-hash1\t2026-11-24T10:00:00Z
+202\t{}\trefs/heads/main\tllvm-contents-v2-Linux-aaaa1111bbbb2222-hash2\t2026-11-25T10:00:00Z
+203\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cccc3333dddd4444-hash3\t2026-11-23T10:00:00Z
+",
+        MIB, MIB, MIB
+    );
+    let p = Pruner::with_listing(&listing);
+    let o = p.run("", "", &[], &[]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(
+        p.deleted(),
+        "201 ",
+        "only older entry in group aaaa1111bbbb2222 deleted: {o:?}"
+    );
+}
+
+#[test]
+fn never_deletes_single_or_non_llvm_main_caches() {
+    let listing = format!(
+        "\
+201\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-onlyhash\t2026-11-25T10:00:00Z
+202\t{}\trefs/heads/main\tsetup-go-Linux-x64-ubuntu26-go-1.26.10-aaa\t2026-11-24T10:00:00Z
+203\t{}\trefs/heads/main\tsetup-go-Linux-x64-ubuntu26-go-1.26.10-bbb\t2026-11-25T10:00:00Z
+204\t{}\trefs/heads/main\tsetup-bazel-1-linux-x64-repository-full-xxx\t2026-11-24T10:00:00Z
+205\t{}\trefs/heads/main\tpipeline-rdeps-map-v1-abc\t2026-11-24T10:00:00Z
+",
+        MIB, MIB, MIB, MIB, MIB
+    );
+    let p = Pruner::with_listing(&listing);
+    let o = p.run("", "", &[], &[]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(
+        p.deleted(),
+        "",
+        "must leave single LLVM & non-LLVM main caches alone"
+    );
+}
+
+#[test]
+fn missing_created_at_in_llvm_group_fails_closed() {
+    let listing = format!(
+        "\
+201\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-hash1\t2026-11-24T10:00:00Z
+202\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-hash2\t
+",
+        MIB, MIB
+    );
+    let p = Pruner::with_listing(&listing);
+    let o = p.run("", "", &[], &[]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(
+        p.deleted(),
+        "",
+        "missing created_at must fail closed for the whole group"
+    );
+}
+
+#[test]
+fn single_pr_mode_with_and_without_prune_main() {
+    let listing = format!(
+        "\
+104\t{}\trefs/pull/902/merge\tsome-pr-cache\t2026-11-25T10:00:00Z
+201\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-old\t2026-11-24T10:00:00Z
+202\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-new\t2026-11-25T10:00:00Z
+",
+        MIB, MIB, MIB
+    );
+    let p_pr_only = Pruner::with_listing(&listing);
+    let o1 = p_pr_only.run("902:CLOSED", "", &["902"], &[]);
+    assert_eq!(o1.code, 0, "{o1:?}");
+    assert_eq!(
+        p_pr_only.deleted(),
+        "104 ",
+        "PR-only mode leaves main untouched"
+    );
+
+    let p_with_main = Pruner::with_listing(&listing);
+    let o2 = p_with_main.run("902:CLOSED", "", &["--prune-main", "902"], &[]);
+    assert_eq!(o2.code, 0, "{o2:?}");
+    assert_eq!(
+        p_with_main.deleted(),
+        "104 201 ",
+        "--prune-main sweeps PR 902 and superseded main LLVM"
+    );
+}
+
+#[test]
+fn dry_run_reports_superseded_main_llvm_without_deleting() {
+    let listing = format!(
+        "\
+201\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-old\t2026-11-24T10:00:00Z
+202\t{}\trefs/heads/main\tllvm-contents-v2-Linux-cf72627ff81aef34-new\t2026-11-25T10:00:00Z
+",
+        2 * MIB,
+        3 * MIB
+    );
+    let p = Pruner::with_listing(&listing);
+    let o = p.run("", "", &[], &[("DRY_RUN", "1")]);
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(
+        read(p.dir.join("delete_paths")),
+        "",
+        "DRY_RUN issued a DELETE"
+    );
+    assert_has(
+        &o.stderr,
+        "DRY_RUN would delete cache 201 (2MiB) from refs/heads/main (superseded main cache)",
+        "logged superseded main cache",
+    );
+    assert_eq!(out_value(&o, "deleted"), Some("1"), "{o:?}");
+    assert_eq!(out_value(&o, "freed_mib"), Some("2"), "{o:?}");
+    assert_eq!(out_value(&o, "remaining_entries"), Some("2"), "{o:?}");
+    assert_eq!(out_value(&o, "remaining_mib"), Some("5"), "{o:?}");
 }

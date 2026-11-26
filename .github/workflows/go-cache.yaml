@@ -53,6 +53,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    outputs:
+      cache-key: ${{ steps.setup-go.outputs.cache-key }}
     concurrency:
       group: go-cache-warm-go-lint-devx
       cancel-in-progress: false
@@ -82,6 +84,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    outputs:
+      cache-key: ${{ steps.setup-go.outputs.cache-key }}
     concurrency:
       group: go-cache-warm-go-test-infra
       cancel-in-progress: false
@@ -119,6 +123,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    outputs:
+      cache-key: ${{ steps.setup-go.outputs.cache-key }}
     concurrency:
       group: go-cache-warm-example-build
       cancel-in-progress: false
@@ -150,6 +156,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    outputs:
+      cache-key: ${{ steps.setup-go.outputs.cache-key }}
     concurrency:
       group: go-cache-warm-pagerduty
       cancel-in-progress: false
@@ -179,6 +187,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    outputs:
+      cache-key: ${{ steps.setup-go.outputs.cache-key }}
     concurrency:
       group: go-cache-warm-stripe
       cancel-in-progress: false
@@ -208,6 +218,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    outputs:
+      cache-key: ${{ steps.setup-go.outputs.cache-key }}
     concurrency:
       group: go-cache-warm-sentry
       cancel-in-progress: false
@@ -234,3 +246,44 @@ jobs:
           (cd infrastructure/pulumi/platform/sentry && go mod download)
           (cd infrastructure/pulumi/platform/sentry-pagerduty && go mod download)
           mkdir -p "$(go env GOCACHE)"
+
+  prune-superseded:
+    name: prune-superseded
+    needs:
+      - warm-go-lint-devx
+      - warm-go-test-infra
+      - warm-example-build
+      - warm-pagerduty
+      - warm-stripe
+      - warm-sentry
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: go-cache-prune-superseded
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prune superseded setup-go caches on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEY_GO_LINT_DEVX: ${{ needs.warm-go-lint-devx.outputs.cache-key }}
+          KEY_GO_TEST_INFRA: ${{ needs.warm-go-test-infra.outputs.cache-key }}
+          KEY_EXAMPLE_BUILD: ${{ needs.warm-example-build.outputs.cache-key }}
+          KEY_PAGERDUTY: ${{ needs.warm-pagerduty.outputs.cache-key }}
+          KEY_STRIPE: ${{ needs.warm-stripe.outputs.cache-key }}
+          KEY_SENTRY: ${{ needs.warm-sentry.outputs.cache-key }}
+        run: |
+          set -euo pipefail
+          python3 .github/actions/setup-go/cache_prune.py \
+            --keep-key "$KEY_GO_LINT_DEVX" \
+            --keep-key "$KEY_GO_TEST_INFRA" \
+            --keep-key "$KEY_EXAMPLE_BUILD" \
+            --keep-key "$KEY_PAGERDUTY" \
+            --keep-key "$KEY_STRIPE" \
+            --keep-key "$KEY_SENTRY"

@@ -52,6 +52,9 @@ outputs:
   cache-hit:
     description: Whether an exact-key Go cache hit occurred.
     value: ${{ github.ref == 'refs/heads/main' && inputs.mode != 'restore' && steps.cache-save.outputs.cache-hit || steps.cache-restore.outputs.cache-hit }}
+  cache-key:
+    description: The computed setup-go primary cache key (empty if no dependency files matched).
+    value: ${{ steps.cache-key.outputs.key }}
   GOMODCACHE:
     description: The value of `go env GOMODCACHE`.
     value: ${{ steps.cache-key.outputs.gomodcache }}

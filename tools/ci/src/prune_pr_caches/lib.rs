@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 //! prune-pr-caches — delete GitHub Actions caches belonging to CLOSED pull
-//! requests.
+//! requests, deleted merge-queue branches, and superseded LLVM caches on main.
 
 use shell_compat::{capture, cat, env_or, env_or_empty, err, out, status, subst, which};
 use std::collections::HashMap;
@@ -29,15 +29,98 @@ fn log(msg: &[u8]) {
     err(&cat(&[b"prune-pr-caches: ", msg, b"\n"]));
 }
 
+struct MainEntry {
+    id: Vec<u8>,
+    id_num: Option<u64>,
+    size: u64,
+    created_at: Vec<u8>,
+}
+
+/// Group key for `refs/heads/main` LLVM contents caches: returns the
+/// `llvm-contents-v2-<os>-<osrel>-` prefix so superseded `MODULE.bazel`
+/// hashes are pruned while preserving the newest entry per `(os, osrel)`.
+fn llvm_main_group_prefix(key: &[u8]) -> Option<&[u8]> {
+    const PREFIX: &[u8] = b"llvm-contents-v2-";
+    let rest = key.strip_prefix(PREFIX)?;
+    let mut parts = rest.split(|&c| c == b'-');
+    let os = parts.next()?;
+    let osrel = parts.next()?;
+    let hash = parts.last()?;
+    if os.is_empty() || osrel.is_empty() || hash.is_empty() {
+        return None;
+    }
+    let last_dash = key.iter().rposition(|&c| c == b'-')?;
+    Some(&key[..=last_dash])
+}
+
+#[allow(clippy::too_many_arguments)]
+fn delete_or_dry_run(
+    gh: &[u8],
+    repo: &[u8],
+    dry_run: &[u8],
+    id: &[u8],
+    size: u64,
+    ref_name: &[u8],
+    reason: &[u8],
+    deleted: &mut u64,
+    freed: &mut u64,
+) {
+    if !dry_run.is_empty() {
+        log(&cat(&[
+            b"DRY_RUN would delete cache ",
+            id,
+            b" (",
+            (size / 1048576).to_string().as_bytes(),
+            b"MiB) from ",
+            ref_name,
+            b" (",
+            reason,
+            b")",
+        ]));
+        *deleted += 1;
+        *freed += size;
+        return;
+    }
+
+    let rc = status(
+        199,
+        Command::new(shell_compat::os(gh))
+            .arg("api")
+            .arg("-X")
+            .arg("DELETE")
+            .arg(shell_compat::os(&cat(&[
+                b"repos/",
+                repo,
+                b"/actions/caches/",
+                id,
+            ])))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null()),
+        true,
+    );
+    if rc == 0 {
+        *deleted += 1;
+        *freed += size;
+    } else {
+        log(&cat(&[b"failed to delete cache ", id, b" from ", ref_name]));
+    }
+}
+
 pub fn run(args: &[Vec<u8>]) -> i32 {
     let repo = env_or("REPO", b"VitruvianSoftware/vitruvian-core");
     let gh = env_or("GH", b"gh");
-    let only_pr = if !args.is_empty() {
-        args[0].clone()
-    } else {
-        Vec::new()
-    };
+    let mut only_pr = Vec::new();
+    let mut explicit_prune_main = false;
+    for arg in args {
+        if arg == b"--prune-main" {
+            explicit_prune_main = true;
+        } else if only_pr.is_empty() && !arg.is_empty() {
+            only_pr = arg.clone();
+        }
+    }
+    let prune_main = explicit_prune_main || only_pr.is_empty();
     let dry_run = env_or_empty("DRY_RUN");
+    let cache_limit_gb = env_or_empty("CACHE_LIMIT_GB");
 
     if which(&gh).is_none() {
         log(b"gh not found on PATH");
@@ -55,7 +138,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 b"/actions/caches?per_page=100",
             ])))
             .arg("--jq")
-            .arg(".actions_caches[] | [.id, .size_in_bytes, .ref] | @tsv"),
+            .arg(".actions_caches[] | [.id, .size_in_bytes, .ref, (.key // \"\"), (.created_at // \"\")] | @tsv"),
     );
     let listing = subst(r.stdout);
     if listing.is_empty() {
@@ -72,6 +155,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
 
     let mut pr_state_cache: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
     let mut branch_gone_cache: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+    let mut main_llvm_groups: HashMap<Vec<u8>, Vec<MainEntry>> = HashMap::new();
 
     let state_of = |num: &[u8], cache: &mut HashMap<Vec<u8>, Vec<u8>>| -> Vec<u8> {
         if let Some(v) = cache.get(num) {
@@ -132,7 +216,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         if line.is_empty() {
             continue;
         }
-        let fields: Vec<&[u8]> = line.splitn(3, |&c| c == b'\t').collect();
+        let fields: Vec<&[u8]> = line.splitn(5, |&c| c == b'\t').collect();
         if fields.len() < 3 {
             continue;
         }
@@ -142,6 +226,8 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
         let ref_name = fields[2];
+        let key = fields.get(3).copied().unwrap_or(b"");
+        let created_at = fields.get(4).copied().unwrap_or(b"");
         if ref_name.is_empty() {
             continue;
         }
@@ -156,6 +242,22 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         } else if ref_name.starts_with(b"refs/heads/gh-readonly-queue/") {
             kind = "queue";
         } else {
+            if prune_main && ref_name == b"refs/heads/main" {
+                if let Some(group_prefix) = llvm_main_group_prefix(key) {
+                    let id_num = std::str::from_utf8(id)
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok());
+                    main_llvm_groups
+                        .entry(group_prefix.to_vec())
+                        .or_default()
+                        .push(MainEntry {
+                            id: id.to_vec(),
+                            id_num,
+                            size,
+                            created_at: created_at.to_vec(),
+                        });
+                }
+            }
             continue;
         }
 
@@ -225,44 +327,49 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
             reason = cat(&[b"PR ", &st]);
         }
 
-        if !dry_run.is_empty() {
-            log(&cat(&[
-                b"DRY_RUN would delete cache ",
-                id,
-                b" (",
-                (size / 1048576).to_string().as_bytes(),
-                b"MiB) from ",
-                ref_name,
-                b" (",
-                &reason,
-                b")",
-            ]));
-            deleted += 1;
-            freed += size;
-            continue;
-        }
-
-        let rc = status(
-            199,
-            Command::new(shell_compat::os(&gh))
-                .arg("api")
-                .arg("-X")
-                .arg("DELETE")
-                .arg(shell_compat::os(&cat(&[
-                    b"repos/",
-                    &repo,
-                    b"/actions/caches/",
-                    id,
-                ])))
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null()),
-            true,
+        delete_or_dry_run(
+            &gh,
+            &repo,
+            &dry_run,
+            id,
+            size,
+            ref_name,
+            &reason,
+            &mut deleted,
+            &mut freed,
         );
-        if rc == 0 {
-            deleted += 1;
-            freed += size;
-        } else {
-            log(&cat(&[b"failed to delete cache ", id, b" from ", ref_name]));
+    }
+
+    if prune_main {
+        let mut prefixes: Vec<Vec<u8>> = main_llvm_groups.keys().cloned().collect();
+        prefixes.sort();
+        for prefix in prefixes {
+            let entries = main_llvm_groups.get_mut(&prefix).unwrap();
+            if entries.len() <= 1
+                || entries
+                    .iter()
+                    .any(|e| e.created_at.is_empty() || e.id_num.is_none())
+            {
+                continue;
+            }
+            entries.sort_by(|a, b| {
+                a.created_at
+                    .cmp(&b.created_at)
+                    .then_with(|| a.id_num.cmp(&b.id_num))
+            });
+            for entry in &entries[..entries.len() - 1] {
+                delete_or_dry_run(
+                    &gh,
+                    &repo,
+                    &dry_run,
+                    &entry.id,
+                    entry.size,
+                    b"refs/heads/main",
+                    b"superseded main cache",
+                    &mut deleted,
+                    &mut freed,
+                );
+            }
         }
     }
 
@@ -290,13 +397,25 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         kept_live.to_string().as_bytes(),
         b" to live queue entries)",
     ]));
-    log(&cat(&[
-        b"remaining: ",
-        remaining_entries.to_string().as_bytes(),
-        b" entries, ",
-        (remaining_bytes / 1048576).to_string().as_bytes(),
-        b"MiB of the 10240MiB repo budget",
-    ]));
+    if cache_limit_gb.is_empty() {
+        log(&cat(&[
+            b"remaining: ",
+            remaining_entries.to_string().as_bytes(),
+            b" entries, ",
+            (remaining_bytes / 1048576).to_string().as_bytes(),
+            b"MiB",
+        ]));
+    } else {
+        log(&cat(&[
+            b"remaining: ",
+            remaining_entries.to_string().as_bytes(),
+            b" entries, ",
+            (remaining_bytes / 1048576).to_string().as_bytes(),
+            b"MiB of the ",
+            &cache_limit_gb,
+            b"GB repo budget",
+        ]));
+    }
 
     out(&cat(&[b"deleted=", deleted.to_string().as_bytes(), b"\n"]));
     out(&cat(&[
