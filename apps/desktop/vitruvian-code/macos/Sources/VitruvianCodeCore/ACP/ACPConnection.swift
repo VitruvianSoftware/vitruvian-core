@@ -1033,6 +1033,13 @@ public final class ACPConnection: PersistentAgentConnection {
     }
 
     private func syncAgentPlanMode(_ planOn: Bool) async throws {
+        let before = configState.agentConfigOptions
+        // The chat's option menus show the agent's mode: tell them when plan changed it (OpenCode
+        // answers with its new options, which were stored but never shown).
+        defer {
+            let after = configState.agentConfigOptions
+            if after != before { emit(.configOptions(after)) }
+        }
         let planSensitive = configState.configOptions.filter {
             $0.type == "select" && ($0.category == "mode" || $0.category == "collaboration_mode")
         }
