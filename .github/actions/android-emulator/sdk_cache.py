@@ -41,6 +41,12 @@ _SYSTEM_IMAGE_RE = re.compile(
 )
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _REVISION_RE = re.compile(r"^[0-9]+(\.[0-9]+)*(-rc[0-9]+)?$")
+_RESOLVED_SUFFIX_RE = re.compile(
+    r"^pt[0-9]+(?:\.[0-9]+)*(?:-rc[0-9]+)?"
+    r"-emu[0-9]+(?:\.[0-9]+)*(?:-rc[0-9]+)?"
+    r"-plat[0-9]+(?:\.[0-9]+)*(?:-rc[0-9]+)?"
+    r"-img[0-9]+(?:\.[0-9]+)*(?:-rc[0-9]+)?$"
+)
 
 
 def validate_api_level(api_level: str) -> str:
@@ -99,7 +105,22 @@ def build_key_prefix(
     api = validate_api_level(api_level)
     img = validate_system_image(system_image)
     slug = img.replace(";", "_")
-    return f"android-emulator-sdk-{CACHE_SCHEMA_VERSION}-{os_tok}-{arch_tok}-api{api}-{slug}-"
+    return f"android-emulator-sdk-{CACHE_SCHEMA_VERSION}-{os_tok}-{arch_tok}-api{api}-{slug}-rev-"
+
+
+def matches_sdk_key_prefix(key: object, key_prefix: str) -> bool:
+    """True when `key` belongs to `key_prefix` (delimited) with a valid resolved revision suffix."""
+    if (
+        not isinstance(key, str)
+        or not isinstance(key_prefix, str)
+        or not key
+        or not key_prefix
+    ):
+        return False
+    delimited = key_prefix if key_prefix.endswith("-") else f"{key_prefix}-"
+    if not key.startswith(delimited):
+        return False
+    return bool(_RESOLVED_SUFFIX_RE.fullmatch(key[len(delimited) :]))
 
 
 def build_resolved_key(prefix: str, revisions_by_tag: dict[str, str]) -> str:
@@ -169,6 +190,11 @@ def read_package_xml_revision(package_xml_path: Path, expected_coordinate: str) 
     return version
 
 
+def _normalize_revision(version: str) -> str:
+    """Normalize sdkmanager revision text (e.g. '37.1.11 rc2' -> '37.1.11-rc2')."""
+    return re.sub(r"\s+rc([0-9]+)$", r"-rc\1", version.strip())
+
+
 def parse_sdkmanager_list_installed(stdout_text: str) -> dict[str, str]:
     """Parse `sdkmanager --list_installed` output into `{coordinate: version}`."""
     installed: dict[str, str] = {}
@@ -192,8 +218,35 @@ def parse_sdkmanager_list_installed(stdout_text: str) -> dict[str, str]:
         coord, version = cols[0], cols[1]
         if not coord or coord == "Path" or set(coord) <= {"-"}:
             continue
-        installed[coord] = version
+        installed[coord] = _normalize_revision(version)
     return installed
+
+
+def parse_sdkmanager_available_packages(stdout_text: str) -> dict[str, str]:
+    """Parse `sdkmanager --list` Available Packages section into `{coordinate: version}`."""
+    available: dict[str, str] = {}
+    in_available_section = False
+    for raw_line in stdout_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if "|" not in raw_line and stripped.endswith(":"):
+            if stripped.lower() == "available packages:":
+                in_available_section = True
+                continue
+            if in_available_section:
+                break
+            continue
+        if not in_available_section or "|" not in raw_line:
+            continue
+        cols = [c.strip() for c in raw_line.split("|")]
+        if len(cols) < 2:
+            continue
+        coord, version = cols[0], cols[1]
+        if not coord or coord == "Path" or set(coord) <= {"-"}:
+            continue
+        available[coord] = _normalize_revision(version)
+    return available
 
 
 def _write_github_output(output_file: str, pairs: list[tuple[str, str]]) -> None:
@@ -382,6 +435,63 @@ def verify_sdk(
     return len(errors) == 0, resolved_key, errors
 
 
+def resolve_target_key(
+    sdk_root: Path,
+    runner_os: str,
+    runner_arch: str,
+    api_level: str,
+    system_image: str,
+) -> tuple[bool, str, list[str]]:
+    """Resolve the upstream Android SDK target cache key using `sdkmanager --list` metadata only."""
+    if not sdk_root.is_dir():
+        return False, "", [f"SDK root does not exist: {sdk_root}"]
+
+    prefix = build_key_prefix(runner_os, runner_arch, api_level, system_image)
+    specs = package_specs(api_level, system_image)
+    sdkmanager_bin = _find_sdkmanager(sdk_root)
+    if sdkmanager_bin is None:
+        return False, "", ["sdkmanager binary not found"]
+
+    try:
+        proc = subprocess.run(
+            [sdkmanager_bin, f"--sdk_root={sdk_root}", "--list"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, "", [f"failed running sdkmanager --list: {exc}"]
+
+    if proc.returncode != 0:
+        return (
+            False,
+            "",
+            [f"sdkmanager --list exited {proc.returncode}: {proc.stderr.strip()}"],
+        )
+
+    available = parse_sdkmanager_available_packages(proc.stdout)
+    errors: list[str] = []
+    revisions_by_tag: dict[str, str] = {}
+    for tag, coord, _rel in specs:
+        rev = available.get(coord)
+        if rev is None:
+            errors.append(
+                f"sdkmanager --list Available Packages missing coordinate {coord!r}"
+            )
+            continue
+        if not _REVISION_RE.fullmatch(rev):
+            errors.append(
+                f"invalid upstream revision {rev!r} for {coord!r} in sdkmanager --list"
+            )
+            continue
+        revisions_by_tag[tag] = rev
+
+    if errors:
+        return False, "", errors
+    return True, build_resolved_key(prefix, revisions_by_tag), []
+
+
 def _dir_size_bytes(path: Path) -> int:
     total = 0
     if not path.exists():
@@ -470,8 +580,8 @@ def confirm_and_prune_superseded_sdk_caches(
     sleep_fn=time.sleep,
 ) -> dict:
     """Confirm `keep_key` exists on `refs/heads/main`, then delete superseded `key_prefix*` main caches."""
-    if not key_prefix or not keep_key or not keep_key.startswith(key_prefix):
-        raise ValueError("keep_key must be non-empty and start with key_prefix")
+    if not matches_sdk_key_prefix(keep_key, key_prefix):
+        raise ValueError("keep_key must be non-empty and match delimited key_prefix")
 
     confirmed = False
     last_error = None
@@ -522,11 +632,7 @@ def confirm_and_prune_superseded_sdk_caches(
         if entry.get("ref") != "refs/heads/main":
             continue
         key = entry.get("key")
-        if (
-            not isinstance(key, str)
-            or not key.startswith(key_prefix)
-            or key == keep_key
-        ):
+        if not matches_sdk_key_prefix(key, key_prefix) or key == keep_key:
             continue
         cache_id = entry.get("id")
         if isinstance(cache_id, bool) or not isinstance(cache_id, int):
@@ -587,6 +693,35 @@ def _cmd_clean(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_resolve_target(args: argparse.Namespace) -> int:
+    sdk_root = Path(args.sdk_root)
+    runner_os = _env_or_arg(args.runner_os, "RUNNER_OS")
+    runner_arch = _env_or_arg(args.runner_arch, "RUNNER_ARCH")
+    api_level = _env_or_arg(args.api_level, "API_LEVEL")
+    system_image = _env_or_arg(args.system_image, "SYSTEM_IMAGE")
+
+    ok, target_key, errors = resolve_target_key(
+        sdk_root=sdk_root,
+        runner_os=runner_os,
+        runner_arch=runner_arch,
+        api_level=api_level,
+        system_image=system_image,
+    )
+    if ok:
+        print(f"Resolved upstream Android SDK target key: key={target_key}")
+        _write_github_output(args.github_output, [("target-key", target_key)])
+        return 0
+
+    joined = "; ".join(errors)
+    print(
+        f"::error::Failed to resolve upstream Android SDK target key: {joined}",
+        file=sys.stderr,
+        flush=True,
+    )
+    _write_github_output(args.github_output, [("target-key", "")])
+    return 1
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     sdk_root = Path(args.sdk_root)
     runner_os = _env_or_arg(args.runner_os, "RUNNER_OS")
@@ -594,14 +729,19 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     api_level = _env_or_arg(args.api_level, "API_LEVEL")
     system_image = _env_or_arg(args.system_image, "SYSTEM_IMAGE")
 
-    ok, resolved_key, errors = verify_sdk(
-        sdk_root=sdk_root,
-        runner_os=runner_os,
-        runner_arch=runner_arch,
-        api_level=api_level,
-        system_image=system_image,
-        expected_key=args.expected_key,
-    )
+    if args.cache_hit is not None and args.cache_hit != "true":
+        ok = False
+        resolved_key = ""
+        errors = [f"cache restore was not an exact hit (cache-hit={args.cache_hit!r})"]
+    else:
+        ok, resolved_key, errors = verify_sdk(
+            sdk_root=sdk_root,
+            runner_os=runner_os,
+            runner_arch=runner_arch,
+            api_level=api_level,
+            system_image=system_image,
+            expected_key=args.expected_key,
+        )
     if ok:
         print(f"Verified Android SDK packages: key={resolved_key}")
         _write_github_output(
@@ -734,12 +874,19 @@ def main(argv: list[str] | None = None) -> int:
     add_sdk_flags(p_meta, with_os_arch=True)
     p_meta.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT", ""))
 
+    p_resolve = sub.add_parser("resolve-target")
+    add_sdk_flags(p_resolve, with_os_arch=True)
+    p_resolve.add_argument(
+        "--github-output", default=os.environ.get("GITHUB_OUTPUT", "")
+    )
+
     p_clean = sub.add_parser("clean")
     add_sdk_flags(p_clean, with_os_arch=False)
 
     p_verify = sub.add_parser("verify")
     add_sdk_flags(p_verify, with_os_arch=True)
     p_verify.add_argument("--expected-key", default="")
+    p_verify.add_argument("--cache-hit", default=None)
     p_verify.add_argument("--delete-on-failure", action="store_true")
     p_verify.add_argument(
         "--github-output", default=os.environ.get("GITHUB_OUTPUT", "")
@@ -765,6 +912,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "metadata":
         return _cmd_metadata(args)
+    if args.cmd == "resolve-target":
+        return _cmd_resolve_target(args)
     if args.cmd == "clean":
         return _cmd_clean(args)
     if args.cmd == "verify":

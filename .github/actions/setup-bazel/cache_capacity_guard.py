@@ -96,15 +96,24 @@ def is_superseded_debs_cache_key(key, platform, current_debs_hash):
 
 
 def is_superseded_prefixed_cache_key(entry, prefix, keep_key):
-    """True for `refs/heads/main` entries matching `prefix` with `key != keep_key`."""
-    if not isinstance(entry, dict) or not prefix or not keep_key:
+    """True for `refs/heads/main` entries matching delimited `prefix` with `key != keep_key`."""
+    if (
+        not isinstance(entry, dict)
+        or not isinstance(prefix, str)
+        or not prefix
+        or not keep_key
+    ):
         return False
     if entry.get("ref") != "refs/heads/main":
         return False
     key = entry.get("key")
-    if not isinstance(key, str) or not key.startswith(prefix):
+    if not isinstance(key, str):
         return False
-    return key != keep_key
+    delimited = prefix if prefix.endswith("-") else f"{prefix}-"
+    if not key.startswith(delimited):
+        return False
+    suffix = key[len(delimited) :]
+    return bool(suffix) and key != keep_key
 
 
 def parse_limit_gb_var(raw):

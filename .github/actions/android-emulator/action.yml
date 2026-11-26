@@ -26,10 +26,13 @@
 #
 # SDK packages fetched via sdkmanager (`platform-tools`, `emulator`,
 # `platforms;android-<api>`, and `system-images;...`) are cached in the GitHub
-# Actions cache using the split restore/main-save pattern: every ref restores
-# read-only, verifies `sdkmanager --list_installed`, `package.xml` revisions,
-# and `emulator -version`, and deletes + reinstalls on any failure; only
-# `refs/heads/main` saves, keyed by the resolved installed package revisions.
+# Actions cache using the split restore/main-save pattern: main warm runs
+# (`boot == 'false'`) resolve the upstream target key from `sdkmanager --list`
+# metadata and do a lookup-only check before downloading anything, while
+# presubmit/boot runs restore read-only by prefix, verify
+# `sdkmanager --list_installed`, `package.xml` revisions, and `emulator -version`,
+# and delete + reinstall on any failure; only `refs/heads/main` saves, keyed by
+# the resolved installed package revisions.
 name: Android emulator
 description: Restore/install the Android SDK emulator packages, boot a headless emulator, and export ANDROID_HOME/ANDROID_SERIAL.
 
@@ -65,11 +68,11 @@ inputs:
 
 outputs:
   cache-hit:
-    description: Whether a verified Android SDK cache restore succeeded.
-    value: ${{ steps.verify-restore.outputs.usable == 'true' }}
+    description: Whether an existing Android SDK cache entry satisfied this run (warm lookup hit or verified restore).
+    value: ${{ steps.warm-lookup.outputs.cache-hit == 'true' || steps.verify-restore.outputs.usable == 'true' }}
   cache-key:
     description: The resolved Android SDK cache key used or produced by this run.
-    value: ${{ steps.verify-restore.outputs.usable == 'true' && steps.verify-restore.outputs.resolved-key || steps.resolved.outputs.resolved-key }}
+    value: ${{ (steps.warm-lookup.outputs.cache-hit == 'true' && steps.warm-target.outputs.target-key) || (steps.verify-restore.outputs.usable == 'true' && steps.verify-restore.outputs.resolved-key) || steps.resolved.outputs.resolved-key }}
 
 runs:
   using: composite
@@ -122,8 +125,40 @@ runs:
           --sdk-root "${sdk}" \
           --github-output "${GITHUB_OUTPUT}"
 
+    - name: Resolve upstream Android SDK target cache key (main warm)
+      id: warm-target
+      if: github.ref == 'refs/heads/main' && inputs.boot == 'false'
+      shell: bash
+      env:
+        SDK_ROOT: ${{ steps.sdk.outputs.sdk-root }}
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+        API_LEVEL: ${{ inputs.api-level }}
+        SYSTEM_IMAGE: ${{ inputs.system-image }}
+      run: |
+        set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/sdk_cache.py" resolve-target \
+          --sdk-root "${SDK_ROOT}" \
+          --github-output "${GITHUB_OUTPUT}"
+
+    - name: Check if upstream Android SDK cache already exists (main warm, lookup only)
+      id: warm-lookup
+      if: github.ref == 'refs/heads/main' && inputs.boot == 'false' && steps.warm-target.outputs.target-key != ''
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        lookup-only: true
+        path: |
+          ${{ steps.sdk.outputs.platform-tools-path }}
+          ${{ steps.sdk.outputs.emulator-path }}
+          ${{ steps.sdk.outputs.platform-path }}
+          ${{ steps.sdk.outputs.system-image-path }}
+          ${{ steps.sdk.outputs.licenses-path }}
+        key: ${{ steps.warm-target.outputs.target-key }}
+
     - name: Check for cached Android SDK packages (lookup only)
       id: cache-lookup
+      if: github.ref != 'refs/heads/main' || inputs.boot == 'true'
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
@@ -139,7 +174,7 @@ runs:
           ${{ steps.sdk.outputs.key-prefix }}
 
     - name: Clear target SDK directories before clean restore
-      if: steps.cache-lookup.outputs.cache-matched-key != ''
+      if: (github.ref != 'refs/heads/main' || inputs.boot == 'true') && steps.cache-lookup.outputs.cache-matched-key != ''
       shell: bash
       env:
         SDK_ROOT: ${{ steps.sdk.outputs.sdk-root }}
@@ -151,7 +186,7 @@ runs:
 
     - name: Restore Android SDK packages (read-only)
       id: cache-restore
-      if: steps.cache-lookup.outputs.cache-matched-key != ''
+      if: (github.ref != 'refs/heads/main' || inputs.boot == 'true') && steps.cache-lookup.outputs.cache-matched-key != ''
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       env:
@@ -165,8 +200,11 @@ runs:
           ${{ steps.sdk.outputs.licenses-path }}
         key: ${{ steps.cache-lookup.outputs.cache-matched-key }}
 
+    # system.img is checked for existence and non-zero size only; a corrupt
+    # image fails emulator boot loudly so the run goes red.
     - name: Verify restored Android SDK packages
       id: verify-restore
+      if: (github.ref != 'refs/heads/main' || inputs.boot == 'true') && steps.cache-lookup.outputs.cache-matched-key != ''
       shell: bash
       env:
         SDK_ROOT: ${{ steps.sdk.outputs.sdk-root }}
@@ -178,27 +216,23 @@ runs:
         MATCHED_KEY: ${{ steps.cache-lookup.outputs.cache-matched-key }}
       run: |
         set -euo pipefail
-        if [ "${CACHE_HIT:-}" != "true" ]; then
-          {
-            echo "usable=false"
-            echo "resolved-key="
-          } >> "${GITHUB_OUTPUT}"
-          exit 0
-        fi
         python3 "${GITHUB_ACTION_PATH}/sdk_cache.py" verify \
           --sdk-root "${SDK_ROOT}" \
           --expected-key "${MATCHED_KEY}" \
+          --cache-hit "${CACHE_HIT}" \
           --delete-on-failure \
           --github-output "${GITHUB_OUTPUT}"
 
     - name: Install the emulator and system image
-      if: steps.verify-restore.outputs.usable != 'true'
+      if: steps.warm-lookup.outputs.cache-hit != 'true' && steps.verify-restore.outputs.usable != 'true'
       shell: bash
       env:
+        SDK_ROOT: ${{ steps.sdk.outputs.sdk-root }}
         API_LEVEL: ${{ inputs.api-level }}
         SYSTEM_IMAGE: ${{ inputs.system-image }}
       run: |
         set -euo pipefail
+        python3 "${GITHUB_ACTION_PATH}/sdk_cache.py" clean --sdk-root "${SDK_ROOT}"
         yes | timeout 180 sdkmanager --licenses >/dev/null 2>&1 || true
         timeout 900 sdkmanager --install \
           "platform-tools" \
@@ -208,7 +242,7 @@ runs:
 
     - name: Verify installed Android SDK packages and resolve cache key
       id: resolved
-      if: steps.verify-restore.outputs.usable != 'true'
+      if: steps.warm-lookup.outputs.cache-hit != 'true' && steps.verify-restore.outputs.usable != 'true'
       shell: bash
       env:
         SDK_ROOT: ${{ steps.sdk.outputs.sdk-root }}
@@ -224,7 +258,7 @@ runs:
 
     - name: Check if resolved Android SDK cache already exists (main only)
       id: exact-lookup
-      if: github.ref == 'refs/heads/main' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != ''
+      if: github.ref == 'refs/heads/main' && inputs.github-token != '' && inputs.cache-limit-gb != '' && steps.warm-lookup.outputs.cache-hit != 'true' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != ''
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
@@ -239,7 +273,7 @@ runs:
 
     - name: Measure Android SDK cache entry size (main only)
       id: measure
-      if: github.ref == 'refs/heads/main' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != '' && steps.exact-lookup.outputs.cache-hit != 'true'
+      if: github.ref == 'refs/heads/main' && inputs.github-token != '' && inputs.cache-limit-gb != '' && steps.warm-lookup.outputs.cache-hit != 'true' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != '' && steps.exact-lookup.outputs.cache-hit != 'true'
       shell: bash
       env:
         SDK_ROOT: ${{ steps.sdk.outputs.sdk-root }}
@@ -256,7 +290,7 @@ runs:
 
     - name: Check Actions cache capacity before saving (main only)
       id: capacity-guard
-      if: github.ref == 'refs/heads/main' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != '' && steps.exact-lookup.outputs.cache-hit != 'true'
+      if: github.ref == 'refs/heads/main' && inputs.github-token != '' && inputs.cache-limit-gb != '' && steps.warm-lookup.outputs.cache-hit != 'true' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != '' && steps.exact-lookup.outputs.cache-hit != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -268,7 +302,7 @@ runs:
         RESOLVED_KEY: ${{ steps.resolved.outputs.resolved-key }}
       run: |
         set -euo pipefail
-        python3 .github/actions/setup-bazel/cache_capacity_guard.py \
+        python3 "${GITHUB_ACTION_PATH}/../setup-bazel/cache_capacity_guard.py" \
           --platform "android-emulator-${RUNNER_OS}-${RUNNER_ARCH}" \
           --archive-bytes 0 \
           --extra-bytes "${COMPRESSED_BYTES}" \
@@ -277,7 +311,7 @@ runs:
 
     - name: Save Android SDK packages cache (main only)
       id: cache-save
-      if: github.ref == 'refs/heads/main' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != '' && steps.exact-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'
+      if: github.ref == 'refs/heads/main' && inputs.github-token != '' && inputs.cache-limit-gb != '' && steps.warm-lookup.outputs.cache-hit != 'true' && steps.verify-restore.outputs.usable != 'true' && steps.resolved.outputs.resolved-key != '' && steps.exact-lookup.outputs.cache-hit != 'true' && steps.capacity-guard.outputs.allow_save == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: |
@@ -289,7 +323,7 @@ runs:
         key: ${{ steps.resolved.outputs.resolved-key }}
 
     - name: Prune superseded Android SDK caches (main only)
-      if: github.ref == 'refs/heads/main' && steps.cache-save.outcome == 'success' && inputs.github-token != ''
+      if: github.ref == 'refs/heads/main' && inputs.github-token != '' && inputs.cache-limit-gb != '' && steps.cache-save.outcome == 'success'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}

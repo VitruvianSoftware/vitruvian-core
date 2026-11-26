@@ -698,11 +698,40 @@ def test_gomod_and_debs_key_matchers_capacity_and_priority():
 
 
 def test_extra_prefixed_cache_guard_cli(tmp_path, capsys):
-    prefix = "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_atd_x86_64-"
+    prefix = "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_atd_x86_64-rev-"
     keep_key = f"{prefix}pt37.0.1-emu37.1.11-plat2-img9"
     superseded_key = f"{prefix}pt36.0.0-emu36.1.0-plat1-img8"
     pr_key = f"{prefix}pt35.0.0-emu35.1.0-plat1-img7"
     unrelated_key = "setup-bazel-1-linux-x64-repository-full-" + CURRENT_HASH
+
+    # Delimited prefix check: -rev- and undelimited prefixes must never bleed across sibling coordinates.
+    assert not guard.is_superseded_prefixed_cache_key(
+        {
+            "id": 200,
+            "ref": "refs/heads/main",
+            "key": "android-emulator-sdk-v1-Linux-ARM64-api35-system-images_android-35_google_apis_arm64-v8a-rev-pt37.0.1-emu37.1.11-plat2-img9",
+        },
+        "android-emulator-sdk-v1-Linux-ARM64-api35-system-images_android-35_google_apis_arm64-rev-",
+        "android-emulator-sdk-v1-Linux-ARM64-api35-system-images_android-35_google_apis_arm64-rev-pt37.0.1-emu37.1.11-plat2-img9",
+    )
+    assert not guard.is_superseded_prefixed_cache_key(
+        {
+            "id": 202,
+            "ref": "refs/heads/main",
+            "key": "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_apis_x86_64-rev-pt37.0.1-emu37.1.11-plat2-img9",
+        },
+        "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_apis_x86",
+        "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_apis_x86-rev-pt37.0.1-emu37.1.11-plat2-img9",
+    )
+    assert guard.is_superseded_prefixed_cache_key(
+        {
+            "id": 201,
+            "ref": "refs/heads/main",
+            "key": superseded_key,
+        },
+        prefix.rstrip("-"),
+        keep_key,
+    )
 
     # 1. Fits directly without deletions.
     deleted_fit = []
