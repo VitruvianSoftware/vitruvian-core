@@ -1282,40 +1282,6 @@
         }
       }
     },
-    "@@hedron_compile_commands+//:workspace_setup.bzl%hedron_compile_commands_extension": {
-      "general": {
-        "bzlTransitiveDigest": "VKEmPr7MT1P804IDmQM/jmNu9PsxMc7rhjjAe4NyGdg=",
-        "usagesDigest": "CbJ2MjubH36j9xaONhhASfhodhpi5fzvuyg/IW2f7Ds=",
-        "recordedInputs": [
-          "REPO_MAPPING:hedron_compile_commands+,bazel_tools bazel_tools"
-        ],
-        "generatedRepoSpecs": {}
-      }
-    },
-    "@@hedron_compile_commands+//:workspace_setup_transitive.bzl%hedron_compile_commands_extension": {
-      "general": {
-        "bzlTransitiveDigest": "IfDf0vEa2jjQ11RNpUM0u4xftPXIs+pyM8IMVkRqVMk=",
-        "usagesDigest": "yxZQbFglJyjpn7JZ9mhIc3EhLzZivlbs6wiHWOKJ/UA=",
-        "recordedInputs": [],
-        "generatedRepoSpecs": {}
-      }
-    },
-    "@@hedron_compile_commands+//:workspace_setup_transitive_transitive.bzl%hedron_compile_commands_extension": {
-      "general": {
-        "bzlTransitiveDigest": "1p58k3o2Jgjt/pBE7cb8WmmkplrSguIKma/h32x7X10=",
-        "usagesDigest": "GkOuy/k8wz0dbKMeEJFKEJB3CWkMZt3DYcPgj4lALkI=",
-        "recordedInputs": [],
-        "generatedRepoSpecs": {}
-      }
-    },
-    "@@hedron_compile_commands+//:workspace_setup_transitive_transitive_transitive.bzl%hedron_compile_commands_extension": {
-      "general": {
-        "bzlTransitiveDigest": "arNWX4EleUjJxqkM5nCRTj+ce05Zz1gSdGH1DCKOoLs=",
-        "usagesDigest": "WZExKK/BI4lqpUZfPpv4YARDE1Y7igQB+wYGKvNoCKs=",
-        "recordedInputs": [],
-        "generatedRepoSpecs": {}
-      }
-    },
     "@@protobuf+//python/dist:system_python.bzl%system_python_extension": {
       "general": {
         "bzlTransitiveDigest": "qh0n9IrXU/xS94wxKQrG1J63zrLkA1Wy2Y3BQxptPcI=",
