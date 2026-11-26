@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.50.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.49.2...vitruvian-code-v1.50.0) (2026-11-26)
+
+
+### Features
+
+* **vitruvian-code:** run Claude on the Claude ACP adapter ([#5561](https://github.com/VitruvianSoftware/vitruvian-core/issues/5561)) ([6b9171a](https://github.com/VitruvianSoftware/vitruvian-core/commit/6b9171abe866ab9dfa7bde32a22a6effc94575dd))
+
 ## [1.49.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.49.1...vitruvian-code-v1.49.2) (2026-11-26)
 
 
