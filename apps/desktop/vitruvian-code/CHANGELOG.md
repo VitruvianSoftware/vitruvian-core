@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.49.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.49.1...vitruvian-code-v1.49.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** registry agents show their own mode; drop dead header pickers ([#5555](https://github.com/VitruvianSoftware/vitruvian-core/issues/5555)) ([4f49624](https://github.com/VitruvianSoftware/vitruvian-core/commit/4f49624fa095164ad58b95848e96ad31b128a887))
+
 ## [1.49.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.49.0...vitruvian-code-v1.49.1) (2026-11-26)
 
 
