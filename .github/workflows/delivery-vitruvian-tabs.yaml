@@ -304,7 +304,7 @@ jobs:
   # Consumed by: vitruvian-tabs-api, vitruvian-tabs-web
   vitruvian-tabs-build:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_api == 'true' || needs.orchestrate.outputs.affected_vitruvian_tabs_web == 'true')) || (github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v') || startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v'))) || (github.event_name == 'workflow_dispatch' && (inputs.unit == 'vitruvian-tabs-api' || inputs.unit == 'vitruvian-tabs-web')))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_api == 'true' || needs.orchestrate.outputs.affected_vitruvian_tabs_web == 'true')) || (github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v') || startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v'))) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && (inputs.unit == 'vitruvian-tabs-api' || inputs.unit == 'vitruvian-tabs-web')))
     concurrency:
       group: delivery-vitruvian-tabs-build
       cancel-in-progress: false
@@ -401,7 +401,7 @@ jobs:
     # happens to hold. `!cancelled()` keeps the whole condition reachable
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_api == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'development'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_api == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'development'))
     concurrency:
       group: delivery-vitruvian-tabs-api-development
       cancel-in-progress: false
@@ -438,7 +438,7 @@ jobs:
   # deploy still RUNNING is waited for (up to 40 min) and then judged; still
   # running after that, it blocks as not yet soaked.
   vitruvian-tabs-api-require-dev-soak:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'nonproduction'))
     runs-on: ubuntu-26.04
     timeout-minutes: 50
     permissions:
@@ -499,7 +499,7 @@ jobs:
     # success()-of-all-needs rather than ANDing with it, so without this
     # clause a RED interlock would still let the promotion run — the gate
     # silently a no-op, which is how it was found broken before.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && needs.vitruvian-tabs-api-require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && needs.vitruvian-tabs-api-require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-vitruvian-tabs-api-nonproduction
       cancel-in-progress: false
@@ -536,7 +536,7 @@ jobs:
     # happens to hold. `!cancelled()` keeps the whole condition reachable
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v') && needs.vitruvian-tabs-api-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-api-v') && needs.vitruvian-tabs-api-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-api' && inputs.environment == 'production'))
     concurrency:
       group: delivery-vitruvian-tabs-api-production
       cancel-in-progress: false
@@ -571,7 +571,7 @@ jobs:
   # GitHub Environment: foundation-proj-shared (its reviewer gate and WIF vars).
   vitruvian-tabs-build-stack-shared:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_build_stack == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-build-stack' && inputs.environment == 'shared'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_build_stack == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-build-stack' && inputs.environment == 'shared'))
     concurrency:
       group: delivery-vitruvian-tabs-build-stack-shared
       cancel-in-progress: false
@@ -626,7 +626,7 @@ jobs:
   # Single rung: delivers on an affected push (and on a dispatch naming it).
   vitruvian-tabs-dev-latest-publish:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_dev_latest == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-dev-latest' && inputs.environment == 'publish'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_dev_latest == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-dev-latest' && inputs.environment == 'publish'))
     concurrency:
       group: delivery-vitruvian-tabs-dev-latest-publish
       cancel-in-progress: false
@@ -665,7 +665,7 @@ jobs:
   # GitHub Environment: foundation-proj-development (its reviewer gate and WIF vars).
   vitruvian-tabs-identity-development:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_identity == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-identity' && inputs.environment == 'development'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_identity == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-identity' && inputs.environment == 'development'))
     concurrency:
       group: delivery-vitruvian-tabs-identity-development
       cancel-in-progress: false
@@ -685,7 +685,7 @@ jobs:
   # GitHub Environment: foundation-proj-nonproduction (its reviewer gate and WIF vars).
   vitruvian-tabs-identity-nonproduction:
     needs: [orchestrate, vitruvian-tabs-identity-development]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_identity == 'true')) && needs.vitruvian-tabs-identity-development.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-identity' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_identity == 'true')) && needs.vitruvian-tabs-identity-development.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-identity' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-vitruvian-tabs-identity-nonproduction
       cancel-in-progress: false
@@ -705,7 +705,7 @@ jobs:
   # GitHub Environment: foundation-proj-production (its reviewer gate and WIF vars).
   vitruvian-tabs-identity-production:
     needs: [orchestrate, vitruvian-tabs-identity-nonproduction]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_identity == 'true')) && needs.vitruvian-tabs-identity-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-identity' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_identity == 'true')) && needs.vitruvian-tabs-identity-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-identity' && inputs.environment == 'production'))
     concurrency:
       group: delivery-vitruvian-tabs-identity-production
       cancel-in-progress: false
@@ -736,7 +736,7 @@ jobs:
     # happens to hold. `!cancelled()` keeps the whole condition reachable
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_web == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'development'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_web == 'true')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'development'))
     concurrency:
       group: delivery-vitruvian-tabs-web-development
       cancel-in-progress: false
@@ -772,7 +772,7 @@ jobs:
   # deploy still RUNNING is waited for (up to 40 min) and then judged; still
   # running after that, it blocks as not yet soaked.
   vitruvian-tabs-web-require-dev-soak:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'nonproduction'))
     runs-on: ubuntu-26.04
     timeout-minutes: 50
     permissions:
@@ -833,7 +833,7 @@ jobs:
     # success()-of-all-needs rather than ANDing with it, so without this
     # clause a RED interlock would still let the promotion run — the gate
     # silently a no-op, which is how it was found broken before.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && needs.vitruvian-tabs-web-require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'nonproduction'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && needs.vitruvian-tabs-web-require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v')) || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-vitruvian-tabs-web-nonproduction
       cancel-in-progress: false
@@ -869,7 +869,7 @@ jobs:
     # happens to hold. `!cancelled()` keeps the whole condition reachable
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v') && needs.vitruvian-tabs-web-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'production'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-tabs-web-v') && needs.vitruvian-tabs-web-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.unit == 'vitruvian-tabs-web' && inputs.environment == 'production'))
     concurrency:
       group: delivery-vitruvian-tabs-web-production
       cancel-in-progress: false

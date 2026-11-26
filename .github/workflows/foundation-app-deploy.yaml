@@ -185,6 +185,9 @@ jobs:
       working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}
 
   deploy:
+    # Runs only from main: a hand-started run of a branch must not get this
+    # job's Environment secrets. //tools/conformance (DISPATCHGATE) checks it.
+    if: github.ref == 'refs/heads/main'
     needs: leaf-guard
     # Serialize per (stack dir + environment): a newer promotion run waits for an
     # older in-flight one rather than racing/deploying out of order onto live org

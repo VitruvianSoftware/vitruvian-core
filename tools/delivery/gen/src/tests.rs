@@ -533,6 +533,35 @@ fn dispatch_never_defaults_to_production() {
     }
 }
 
+/// A hand-started run of a branch must never reach a job: every dispatch arm
+/// the generator writes also requires the run to come from main. Checks every
+/// app's real rendered workflow, not one fixture, so a new arm that forgets
+/// the gate fails here.
+#[test]
+fn every_dispatch_arm_requires_main() {
+    let arm = "github.event_name == 'workflow_dispatch'";
+    let gated = format!("{} && {}", arm, render::DISPATCH_FROM_MAIN);
+    let mut arms = 0;
+    for g in render::group_by_app(&fixtures()).unwrap() {
+        let yaml = must_render(&g.units, 2);
+        for line in yaml.lines().filter(|l| l.trim_start().starts_with("if:")) {
+            let n = line.matches(arm).count();
+            arms += n;
+            assert_eq!(
+                line.matches(gated.as_str()).count(),
+                n,
+                "app {}: a dispatch arm without the main gate: {}",
+                g.app,
+                line.trim()
+            );
+        }
+    }
+    assert!(
+        arms > 0,
+        "no dispatch arm rendered; the test checks nothing"
+    );
+}
+
 #[test]
 fn unpinned_action_is_a_panic_not_an_error() {
     let empty = Pins::load(&format!("{}/action-pins.yml", testdata())).unwrap();

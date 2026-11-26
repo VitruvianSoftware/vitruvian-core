@@ -57,6 +57,13 @@ one thing — whenever the release path is unavailable or you need an
 out-of-band deploy. (Before the delivery orchestrator each app had its own
 dispatch; those per-app workflows are gone.)
 
+Start it **from `main`**. A dispatch started on any other branch or tag skips
+every deploy job: a hand-started run executes the code of the ref it is started
+on, so a branch must never reach a job that holds an Environment's secrets. The
+same rule holds for every hand-startable workflow that binds a GitHub
+Environment, and `//tools/conformance:check` (`DISPATCHGATE`) fails a job that
+drops it.
+
 > First-run note: `oauth-user-inspector-v*` releases are already published in
 > this repo, so oauth's `on: release` path is exercised. vitruvian-tabs has not merged a
 > `vitruvian-tabs-api` release under this flow yet — confirm the **first** tabula-api

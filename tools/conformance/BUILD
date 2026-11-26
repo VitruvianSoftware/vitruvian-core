@@ -84,6 +84,9 @@ rust_test(
     name = "conformance_check_test",
     size = "small",
     crate = ":conformance_check",
+    # dispatch_gate's test reads the real workflows, so a job that loses its
+    # main gate fails `bazel test` as well as `:check`.
+    data = ["//:workflow_files"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )

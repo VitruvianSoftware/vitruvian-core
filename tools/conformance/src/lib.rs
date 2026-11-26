@@ -353,6 +353,7 @@ impl Context {
             ("GITLEAKS", "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)"),
             ("GUARDREVIEW", "agent-guard review paths (every path that needs James's approval still names a file)"),
             ("SWIFTPREFS", "Swift test preferences (tests save under TEST_TMPDIR, never in ~/Library/Preferences)"),
+            ("DISPATCHGATE", "Dispatch gate (a hand-started run of a branch never reaches a GitHub Environment: those jobs require main)"),
             ("RELEASETAGS", "Release-tag exemptions (no rolling tag starts with a release-please release tag prefix)"),
             ("OCIBASE", "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)"),
             ("MAVENPIN", "Maven lock files (every maven.install in MODULE.bazel sets lock_file)"),

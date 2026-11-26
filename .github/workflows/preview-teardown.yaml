@@ -94,6 +94,9 @@ jobs:
 
   # Holds the credentials and runs no Bazel: it runs the binaries built above.
   reap:
+    # Runs only from main: a hand-started run of a branch must not get this
+    # job's Environment secrets. //tools/conformance (DISPATCHGATE) checks it.
+    if: github.ref == 'refs/heads/main'
     name: Reap Ephemeral Previews
     needs: build
     runs-on: ubuntu-26.04

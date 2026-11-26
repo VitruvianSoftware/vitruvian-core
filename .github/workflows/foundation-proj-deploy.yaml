@@ -169,6 +169,9 @@ jobs:
   # Now the destroy is visible up front, and the guard below fails the run
   # outright so a stale plan cannot be approved by mistake.
   preview:
+    # Runs only from main: a hand-started run of a branch must not get this
+    # job's Environment secrets. //tools/conformance (DISPATCHGATE) checks it.
+    if: github.ref == 'refs/heads/main'
     needs: leaf-guard
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -263,6 +266,9 @@ jobs:
           echo "plan is non-destructive (0 deleted, 0 replaced) — safe to apply"
 
   deploy:
+    # Runs only from main: a hand-started run of a branch must not get this
+    # job's Environment secrets. //tools/conformance (DISPATCHGATE) checks it.
+    if: github.ref == 'refs/heads/main'
     # Serialize per (stack dir + environment): a newer promotion run waits for an
     # older in-flight one rather than racing/deploying out of order onto live org
     # infra. Never cancel an in-flight pulumi up.
