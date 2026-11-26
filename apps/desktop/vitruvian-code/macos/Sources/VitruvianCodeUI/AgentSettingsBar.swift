@@ -40,9 +40,19 @@ public enum AgentSettingsBarLogic: Sendable {
         return false
     }
 
-    /// Filters `options` to non-mode options that offer selectable choices.
-    public static func visibleOptions(from options: [AgentConfigOption]) -> [AgentConfigOption] {
-        options.filter { !isModeOption($0) && !$0.options.isEmpty }
+    /// Filters `options` to the ones that offer selectable choices. Mode options are left out
+    /// unless `showsModes`: agy's modes belong to the chat's approval picker, but a registry
+    /// agent's modes are its own (OpenCode's "build" and "plan"), which T3 Code lets the user
+    /// pick with the agent's other options.
+    public static func visibleOptions(from options: [AgentConfigOption], showsModes: Bool = false) -> [AgentConfigOption] {
+        options.filter { (showsModes || !isModeOption($0)) && !$0.options.isEmpty }
+    }
+
+    /// Whether the chat header shows its own model and effort pickers for `route`. A registry
+    /// agent takes neither: its model and effort are its own session options, in the settings
+    /// row, and the header's pickers changed nothing for it.
+    public static func headerShowsModelAndEffort(for route: VitruvianCodeProviderRoute) -> Bool {
+        route != .registry
     }
 
     /// Plain-text display value for an `AgentConfigOption`.
@@ -59,6 +69,8 @@ public enum AgentSettingsBarLogic: Sendable {
 /// Slim composer-area row offering one compact menu per live non-mode `AgentConfigOption` with choices.
 public struct AgentSettingsBar: View {
     public let options: [AgentConfigOption]
+    /// Offers the agent's own mode options too (a registry agent's).
+    public let showsModes: Bool
     public let isDisabled: Bool
     public let errorMessage: String?
     public let strings: VitruvianCodeChatStrings
@@ -66,12 +78,14 @@ public struct AgentSettingsBar: View {
 
     public init(
         options: [AgentConfigOption],
+        showsModes: Bool = false,
         isDisabled: Bool = false,
         errorMessage: String? = nil,
         strings: VitruvianCodeChatStrings,
         onSelect: @escaping (String, AgentConfigValue) -> Void
     ) {
         self.options = options
+        self.showsModes = showsModes
         self.isDisabled = isDisabled
         self.errorMessage = errorMessage
         self.strings = strings
@@ -79,7 +93,7 @@ public struct AgentSettingsBar: View {
     }
 
     private var visibleOptions: [AgentConfigOption] {
-        AgentSettingsBarLogic.visibleOptions(from: options)
+        AgentSettingsBarLogic.visibleOptions(from: options, showsModes: showsModes)
     }
 
     public var body: some View {

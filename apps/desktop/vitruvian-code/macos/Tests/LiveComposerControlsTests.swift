@@ -94,6 +94,52 @@ final class LiveComposerControlsTests: XCTestCase {
         XCTAssertFalse(AgentSettingsBarLogic.isModeOption(input[4]))
     }
 
+    // MARK: - Registry agents pick their own modes
+
+    /// A registry agent's modes are its own (OpenCode's "build" and "plan"), offered with its other
+    /// options, as T3 Code does; agy's mode still goes only through the approval picker. The header's
+    /// own model and effort pickers, which changed nothing for a registry agent, are not shown for one.
+    func testARegistryAgentsOwnModeCanBePickedAndTheHeaderDropsItsInertPickers() async throws {
+        let connections = ComposerControlBox<[ComposerControlMockConnection]>([])
+        let rig = ComposerRig()
+        var env = rig.environment
+        env.makeConnection = { spec in
+            let conn = ComposerControlMockConnection(spec: spec)
+            connections.withValue { $0.append(conn) }
+            return conn
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+        let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.liveACPProvider)
+        session.send("Hello", configuration: config, agentPath: "/fake/agy")
+        try await waitUntil("prompt 1") { connections.value.first?.promptCalls.count == 1 }
+        let conn = try XCTUnwrap(connections.value.first)
+        let options: [AgentConfigOption] = [
+            AgentConfigOption(id: "model", name: "Model", value: .string("free"), options: ["free"], category: "model"),
+            AgentConfigOption(id: "mode", name: "Mode", value: .string("build"), options: ["build", "plan"], category: "mode"),
+        ]
+        conn.emit(.configOptions(options))
+        try await waitUntil("options received") { session.liveState.configOptions.count == 2 }
+        conn.emit(.finished(status: "completed", response: "Hi", error: nil, conversationID: "s-mode-1"))
+        conn.finishPrompt(with: .endTurn)
+        try await waitUntil("turn done") { !session.isRunning }
+
+        XCTAssertEqual(AgentSettingsBarLogic.visibleOptions(from: options).map(\.id), ["model"])
+        XCTAssertEqual(AgentSettingsBarLogic.visibleOptions(from: options, showsModes: true).map(\.id), ["model", "mode"])
+
+        let refused = await session.setLiveConfigOption(id: "mode", value: .string("plan"))
+        XCTAssertFalse(refused, "agy's mode stays with the approval picker")
+        XCTAssertTrue(conn.setConfigCalls.isEmpty)
+        _ = await session.setLiveConfigOption(id: "mode", value: .string("plan"), allowsModeOptions: true)
+        XCTAssertEqual(conn.setConfigCalls.first?.0, "mode")
+        XCTAssertEqual(conn.setConfigCalls.first?.1, .string("plan"))
+
+        XCTAssertFalse(AgentSettingsBarLogic.headerShowsModelAndEffort(for: .registry))
+        for route in [VitruvianCodeProviderRoute.antigravity, .claude, .ollama, .opencode, .custom] {
+            XCTAssertTrue(AgentSettingsBarLogic.headerShowsModelAndEffort(for: route), "\(route)")
+        }
+    }
+
     // MARK: - 2. Confirm-only updates, failure preservation, disabled during turn
 
     func testLiveConfigOptionUpdatesOnlyAfterConfirmationPreservesOnFailureAndRefusesDuringTurn() async throws {

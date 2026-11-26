@@ -200,14 +200,17 @@ public struct VitruvianCodeChatView: View {
                     strings: strings,
                     undoTurn: session.canUndoLastTurn ? { session.undoLastTurn(note: strings.undoTurnNote) } : nil
                 )
-                if !AgentSettingsBarLogic.visibleOptions(from: session.liveState.configOptions).isEmpty {
+                let showsAgentModes = engine.configuration.activeProvider.route == .registry
+                if !AgentSettingsBarLogic.visibleOptions(from: session.liveState.configOptions,
+                                                         showsModes: showsAgentModes).isEmpty {
                     AgentSettingsBar(
                         options: session.liveState.configOptions,
+                        showsModes: showsAgentModes,
                         isDisabled: session.isRunning || session.isUpdatingLiveConfigOption,
                         errorMessage: session.liveConfigOptionError,
                         strings: strings
                     ) { id, value in
-                        Task { await session.setLiveConfigOption(id: id, value: value) }
+                        Task { await session.setLiveConfigOption(id: id, value: value, allowsModeOptions: showsAgentModes) }
                     }
                 }
                 if !session.activeSubagents.isEmpty {
@@ -1366,9 +1369,15 @@ public struct VitruvianCodeChatView: View {
 
             HStack(spacing: 6) {
                 ChatProviderBadge(engine: engine, strings: strings)
-                ChatModelBadge(engine: engine, session: session, strings: strings)
-                if engine.configuration.activeProvider.route != .custom {
-                    ChatEffortBadge(engine: engine, strings: strings)
+                let route = engine.configuration.activeProvider.route
+                let showsModelAndEffort = AgentSettingsBarLogic.headerShowsModelAndEffort(for: route)
+                if showsModelAndEffort {
+                    ChatModelBadge(engine: engine, session: session, strings: strings)
+                }
+                if route != .custom {
+                    if showsModelAndEffort {
+                        ChatEffortBadge(engine: engine, strings: strings)
+                    }
                     ChatApprovalModeBadge(engine: engine, session: session, strings: strings)
                 }
                 ChatWorkingDirectoryBadge(engine: engine, session: session, strings: strings, showWindow: chrome.showWindow)

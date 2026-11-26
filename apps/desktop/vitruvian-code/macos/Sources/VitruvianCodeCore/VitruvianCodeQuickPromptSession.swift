@@ -3840,18 +3840,21 @@ extension VitruvianCodeQuickPromptSession {
     /// Never starts a connection early, never mutates optimistically before confirmation,
     /// and refuses mode/permission options (those go only through the mode picker).
     @discardableResult
-    public func setLiveConfigOption(id: String, value: AgentConfigValue) async -> Bool {
+    /// `allowsModeOptions` is for a registry agent, whose modes are its own and picked in the
+    /// settings row; agy's go only through the approval picker.
+    public func setLiveConfigOption(id: String, value: AgentConfigValue, allowsModeOptions: Bool = false) async -> Bool {
         guard !isRunning, !isUpdatingLiveConfigOption else { return false }
         liveConfigOptionError = nil
         let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedID.isEmpty,
-              trimmedID != ACPSessionConfigState.sessionModeOptionID,
-              trimmedID.lowercased() != "mode" else {
-            return false
-        }
-        if let existing = liveState.configOptions.first(where: { $0.id == trimmedID }),
-           existing.category?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "mode" {
-            return false
+        guard !trimmedID.isEmpty else { return false }
+        if !allowsModeOptions {
+            guard trimmedID != ACPSessionConfigState.sessionModeOptionID, trimmedID.lowercased() != "mode" else {
+                return false
+            }
+            if let existing = liveState.configOptions.first(where: { $0.id == trimmedID }),
+               existing.category?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "mode" {
+                return false
+            }
         }
         guard let active = liveConnection, active.isConnected else {
             liveConfigOptionError = strings.configOptionUnavailable

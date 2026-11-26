@@ -374,12 +374,25 @@ final class ACPRegistryAgentsTests: XCTestCase {
                 .agentSend(Self.ok([:])),
             ])
         }
+        var shownModes: [String] = []
+        let reader = Task { @MainActor in
+            for await event in connection.events {
+                if case .configOptions(let options) = event,
+                   case .string(let value)? = options.first(where: { $0.id == "mode" })?.value {
+                    shownModes.append(value)
+                }
+            }
+        }
         _ = try await withACPTestTimeout(seconds: 3) { try await connection.start(AgentSessionRequest(workingDirectory: "/w")) }
         try await connection.syncMode(approvalMode: .yolo, planSwitch: true)
         try await connection.syncMode(approvalMode: .yolo, planSwitch: true)
         try await connection.syncMode(approvalMode: .yolo, planSwitch: false)
         try await connection.syncMode(approvalMode: .standard, planSwitch: false)
         try await withACPTestTimeout(seconds: 3) { try await driver.value }
+        for _ in 0..<200 { await Task.yield() }
+        reader.cancel()
+        // The chat's menus are told each change: the agent's own mode first, then plan, then back.
+        XCTAssertEqual(shownModes, ["build", "plan", "build"], "the mode menu follows plan")
         let sets = await agent.allClientMessages()
             .filter { $0.objectValue?["method"]?.stringValue == "session/set_config_option" }
             .compactMap { $0.objectValue?["params"]?.objectValue }
