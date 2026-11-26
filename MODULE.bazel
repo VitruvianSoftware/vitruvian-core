@@ -1071,8 +1071,15 @@ maven.install(
         # 2.3.20 compiler the build dies with
         # NoSuchMethodError: FunctionTypeKind.<init> in ComposableFunction.
         "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.4.21",
+        # Pin Kotlin stdlib artifacts to match rules_kotlin 2.4.21 (avoids
+        # shipping a 2.4.0 Maven jar alongside rules_kotlin's 2.4.21 stdlib;
+        # kotlin-stdlib-common:2.4.21 is a POM-only redirect that eliminates
+        # the stale transitive 1.8.22 jar).
+        "org.jetbrains.kotlin:kotlin-stdlib:2.4.21",
+        "org.jetbrains.kotlin:kotlin-stdlib-common:2.4.21",
     ],
     # 2024.11.00 is the BOM for Compose 1.7.5.
+    # BOM upgrade tracked separately.
     boms = ["androidx.compose:compose-bom:2024.11.00"],
     lock_file = "//:maven_install.json",
     repositories = [
