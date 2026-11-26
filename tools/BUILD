@@ -11,6 +11,7 @@ included `.envrc` automates this for you.
 
 """
 
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@bazel_env.bzl", "bazel_env")
 load("@bazelrc-preset.bzl", "bazelrc_preset")
 load("@gazelle//:go_tools.bzl", "GO_TOOLS")
@@ -125,4 +126,11 @@ rust_test(
 exports_files(
     ["remote.bazelrc"],
     visibility = ["//tools/remote:__pkg__"],
+)
+
+# The initializer config the stamp-application template test reads.
+js_library(
+    name = "initializer_config",
+    srcs = ["initializer/config.json"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

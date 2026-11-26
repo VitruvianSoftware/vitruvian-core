@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # Live foundation bootstrap for the vitruviansoftware.dev org. Not gazelle-built /
@@ -17,4 +18,12 @@ pulumi_go_test(
     timeout = "long",
     # sa_preview_test.go runs the whole program with the committed stack config.
     extra_data = ["Pulumi.production.yaml"],
+)
+
+# The production stack config, which the Backstage backend's workload-identity
+# test checks against the deployed chart values.
+js_library(
+    name = "production_stack_config",
+    srcs = ["Pulumi.production.yaml"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

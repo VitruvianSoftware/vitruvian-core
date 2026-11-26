@@ -18,6 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -46,4 +47,12 @@ pipeline_unit(
     test_targets = [":pkg"],
     tier = "L1",
     timeout_minutes = 20,
+)
+
+# The release-coherence test in the backend checks this file's @backstage
+# versions against release-manifest.json.
+js_library(
+    name = "package_json",
+    srcs = ["package.json"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

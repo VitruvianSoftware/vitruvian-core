@@ -546,3 +546,19 @@ exports_files(
     ],
     visibility = ["//packages/pulumi/library/go:__pkg__"],
 )
+
+# Repo-root files the Backstage backend's tests read: the root catalog, the
+# Aspect task file the scaffolder checks for, and what the scorecard facts
+# look at (LICENSE, CODEOWNERS, the incident runbook).
+js_library(
+    name = "backstage_backend_test_data",
+    srcs = [
+        ".github/CODEOWNERS",
+        "LICENSE",
+        "MODULE.aspect",
+        "catalog-info.yaml",
+        "docs/operations/incident-triage-runbook.md",
+        "gitops/catalog-info.yaml",
+    ],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
+)

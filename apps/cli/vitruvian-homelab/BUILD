@@ -1,3 +1,4 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -109,4 +110,12 @@ exports_files(
         ".github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)
+
+# Read by the Backstage backend's catalog and scorecard tests
+# (//apps/web/backstage/packages/backend:unit_tests).
+js_library(
+    name = "catalog_info",
+    srcs = ["catalog-info.yaml"],
+    visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )

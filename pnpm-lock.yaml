@@ -804,6 +804,9 @@ importers:
       jest-environment-node:
         specifier: ^30.5.2
         version: 30.5.2
+      jest-junit:
+        specifier: ^17.0.0
+        version: 17.0.0
       js-yaml:
         specifier: ^5.5.0
         version: 5.5.0
