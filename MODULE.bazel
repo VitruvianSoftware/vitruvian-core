@@ -994,7 +994,7 @@ use_repo(crate, "vitruvian_wand_crates")
 #########################
 # Java and other JVM languages
 bazel_dep(name = "rules_java", version = "9.6.1")
-bazel_dep(name = "rules_jvm_external", version = "7.0")
+bazel_dep(name = "rules_jvm_external", version = "7.2")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 
@@ -1144,6 +1144,17 @@ http_archive(
 )
 
 bazel_dep(name = "rules_kotlin", version = "2.3.20")
+
+# rules_jvm_external 7.2 raises its rules_kotlin dep to 2.4.0 solely for Stardoc
+# on kt_defs.bzl (unused here). rules_kotlin 2.4.0 ships kotlinc 2.4.0 (whose
+# bundled jdeps plugin is ABI-coupled to 2.4.0, so kotlinc_version cannot hold
+# the compiler at 2.3.20), which breaks kotlin-compose-compiler-plugin-embeddable
+# 2.3.20 pinned in maven.install. Hold rules_kotlin at 2.3.20 until rules_kotlin
+# and the Compose compiler plugin are bumped together to 2.4.x.
+single_version_override(
+    module_name = "rules_kotlin",
+    version = "2.3.20",
+)
 
 # Force a transitive resolution of rules_android to pick up Bazel 9 fixes and upstream maven pins
 bazel_dep(name = "rules_android", version = "0.8.1")
