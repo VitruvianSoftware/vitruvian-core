@@ -131,6 +131,19 @@ def build_resolved_key(prefix: str, revisions_by_tag: dict[str, str]) -> str:
     )
 
 
+def warm_key_mismatch(target_key: str, resolved_key: str) -> str | None:
+    """Return an error message when both keys are non-empty and differ, else None."""
+    target = target_key.strip() if isinstance(target_key, str) else ""
+    resolved = resolved_key.strip() if isinstance(resolved_key, str) else ""
+    if not target or not resolved or target == resolved:
+        return None
+    return (
+        f"Android SDK warm target key ({target}) does not match installed resolved key "
+        f"({resolved}); cache was saved under the resolved key, but future warm lookups "
+        "will miss until key resolution matches."
+    )
+
+
 def _local_tag(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
@@ -858,6 +871,16 @@ def _cmd_prune(args: argparse.Namespace, sleep_fn=time.sleep) -> int:
     return 0
 
 
+def _cmd_check_warm_keys(args: argparse.Namespace) -> int:
+    target_key = _env_or_arg(args.target_key, "TARGET_KEY")
+    resolved_key = _env_or_arg(args.resolved_key, "RESOLVED_KEY")
+    mismatch = warm_key_mismatch(target_key, resolved_key)
+    if mismatch is not None:
+        print(f"::error::{mismatch}", file=sys.stderr, flush=True)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -909,6 +932,10 @@ def main(argv: list[str] | None = None) -> int:
         "--summary-file", default=os.environ.get("GITHUB_STEP_SUMMARY", "")
     )
 
+    p_check_warm = sub.add_parser("check-warm-keys")
+    p_check_warm.add_argument("--target-key", default=None)
+    p_check_warm.add_argument("--resolved-key", default=None)
+
     args = parser.parse_args(argv)
     if args.cmd == "metadata":
         return _cmd_metadata(args)
@@ -922,6 +949,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_measure(args)
     if args.cmd == "prune":
         return _cmd_prune(args)
+    if args.cmd == "check-warm-keys":
+        return _cmd_check_warm_keys(args)
     return 2
 
 

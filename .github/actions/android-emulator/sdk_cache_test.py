@@ -777,8 +777,35 @@ def test_action_warm_and_presubmit_paths():
         "capacity-guard",
         "cache-save",
         "Prune superseded Android SDK caches (main only)",
+        "check-warm-keys",
     ):
         assert expected_step in miss_steps
+    assert (
+        miss_steps.index("cache-save")
+        < miss_steps.index("Prune superseded Android SDK caches (main only)")
+        < miss_steps.index("check-warm-keys")
+    )
+
+    # Main warm miss with empty target-key or resolved-key skips check-warm-keys.
+    no_target_steps = _simulate_action_steps(
+        github_ref="refs/heads/main",
+        boot="false",
+        github_token="tok",
+        cache_limit_gb="20",
+        warm_hit="false",
+        target_key="",
+    )
+    assert "check-warm-keys" not in no_target_steps
+
+    no_resolved_steps = _simulate_action_steps(
+        github_ref="refs/heads/main",
+        boot="false",
+        github_token="tok",
+        cache_limit_gb="20",
+        warm_hit="false",
+        resolved_key="",
+    )
+    assert "check-warm-keys" not in no_resolved_steps
 
     # 3. Presubmit (PR / merge queue): prefix restore + verify only; never runs warm or save-only work.
     pr_steps = _simulate_action_steps(
@@ -801,10 +828,11 @@ def test_action_warm_and_presubmit_paths():
         "capacity-guard",
         "cache-save",
         "Prune superseded Android SDK caches (main only)",
+        "check-warm-keys",
     ):
         assert forbidden_step not in pr_steps
 
-    # 4. Main run without token or cache-limit-gb never runs measure/guard/save/prune.
+    # 4. Main run without token or cache-limit-gb never runs measure/guard/save/prune, and boot='true' never runs check-warm-keys.
     no_token_steps = _simulate_action_steps(
         github_ref="refs/heads/main",
         boot="true",
@@ -817,8 +845,47 @@ def test_action_warm_and_presubmit_paths():
         "capacity-guard",
         "cache-save",
         "Prune superseded Android SDK caches (main only)",
+        "check-warm-keys",
     ):
         assert save_step not in no_token_steps
+
+
+def test_warm_key_mismatch_and_cli(capsys):
+    target = "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_atd_x86_64-rev-pt37.0.3-emu37.3.10-plat2-img1"
+    resolved = "android-emulator-sdk-v1-Linux-X64-api35-system-images_android-35_google_atd_x86_64-rev-pt37.0.3-emu37.3.10-plat2-img2"
+
+    msg = sdk_cache.warm_key_mismatch(target, resolved)
+    assert msg is not None
+    assert target in msg
+    assert resolved in msg
+
+    rc_mismatch = sdk_cache.main(
+        ["check-warm-keys", "--target-key", target, "--resolved-key", resolved]
+    )
+    assert rc_mismatch == 1
+    captured = capsys.readouterr()
+    assert "::error::" in captured.err
+    assert target in captured.err
+    assert resolved in captured.err
+
+    assert sdk_cache.warm_key_mismatch(target, target) is None
+    rc_match = sdk_cache.main(
+        ["check-warm-keys", "--target-key", target, "--resolved-key", target]
+    )
+    assert rc_match == 0
+    captured = capsys.readouterr()
+    assert "::error::" not in captured.out
+    assert "::error::" not in captured.err
+
+    for t_key, r_key in (("", resolved), (target, ""), ("", "")):
+        assert sdk_cache.warm_key_mismatch(t_key, r_key) is None
+        rc_empty = sdk_cache.main(
+            ["check-warm-keys", "--target-key", t_key, "--resolved-key", r_key]
+        )
+        assert rc_empty == 0
+        captured = capsys.readouterr()
+        assert "::error::" not in captured.out
+        assert "::error::" not in captured.err
 
 
 def test_action_and_workflow_consistency():
@@ -854,6 +921,35 @@ def test_action_and_workflow_consistency():
     assert "inputs.github-token != ''" in save_steps[0]["if"]
     assert "inputs.cache-limit-gb != ''" in save_steps[0]["if"]
     assert "||" not in save_steps[0]["if"]
+
+    step_ids_and_names = [s.get("id") or s["name"] for s in steps]
+    save_idx = step_ids_and_names.index("cache-save")
+    prune_idx = step_ids_and_names.index(
+        "Prune superseded Android SDK caches (main only)"
+    )
+    check_warm_idx = step_ids_and_names.index("check-warm-keys")
+    assert save_idx < prune_idx < check_warm_idx
+
+    check_warm_step = steps[check_warm_idx]
+    check_if = check_warm_step["if"]
+    for required_cond in (
+        "github.ref == 'refs/heads/main'",
+        "inputs.boot == 'false'",
+        "steps.warm-target.outputs.target-key != ''",
+        "steps.resolved.outputs.resolved-key != ''",
+        "steps.warm-lookup.outputs.cache-hit != 'true'",
+        "steps.verify-restore.outputs.usable != 'true'",
+    ):
+        assert required_cond in check_if
+    assert "||" not in check_if
+    assert (
+        check_warm_step["env"]["TARGET_KEY"]
+        == "${{ steps.warm-target.outputs.target-key }}"
+    )
+    assert (
+        check_warm_step["env"]["RESOLVED_KEY"]
+        == "${{ steps.resolved.outputs.resolved-key }}"
+    )
 
     for step in steps:
         run_cmd = step.get("run")
