@@ -18,17 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Reclaim a closed PR's Actions caches (#1450).
+# Reclaim closed-PR, dead merge-queue, and superseded main LLVM Actions caches (#1450).
 #
-# The repo shares ONE 10 GiB Actions cache budget and GitHub evicts by LRU once
-# it is exceeded -- so orphaned entries do not merely waste space, they evict
-# the caches other lanes depend on. A PR-scoped cache is readable only from its
-# own ref, so once the PR closes it can never be read again, yet GitHub keeps it
-# for up to 7 days. An image-building PR leaves ~1.5 GiB behind.
-#
-# Measured 2026-08-20: 222 entries / 11.10 GiB against a 10 GiB cap -- already
-# over, already evicting -- of which 94 entries (3.11 GiB) belonged to two PRs
-# merged hours earlier.
+# The repo shares ONE Actions cache budget (20 GB, configured in
+# infrastructure/pulumi/platform/repo-config/actions-cache-limit-gb.txt) and
+# GitHub evicts by LRU once it is exceeded -- so orphaned or superseded entries
+# do not merely waste space, they evict the caches other lanes depend on. A
+# PR-scoped cache is readable only from its own ref, and an old main LLVM
+# cache minted by an unrelated MODULE.bazel bump is never hit again once main
+# moves forward, yet GitHub keeps both for up to 7 days.
 name: prune-pr-caches
 
 on:
@@ -70,14 +68,15 @@ jobs:
         with:
           tool: prune_pr_caches
 
-      - name: Delete caches belonging to closed pull requests
+      - name: Delete caches belonging to closed pull requests and superseded main LLVM entries
         id: prune
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PRUNE_BIN: ${{ steps.prune-bin.outputs.path }}
+          CACHE_LIMIT_GB: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
         run: |
-          "$PRUNE_BIN" ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }} >> "$GITHUB_OUTPUT"
+          "$PRUNE_BIN" --prune-main ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }} >> "$GITHUB_OUTPUT"
 
       - name: Report remaining cache budget
         # Every number here comes from the script, which enumerates the listing
@@ -91,6 +90,7 @@ jobs:
           FREED: ${{ steps.prune.outputs.freed_mib }}
           ENTRIES: ${{ steps.prune.outputs.remaining_entries }}
           MIB: ${{ steps.prune.outputs.remaining_mib }}
+          CACHE_LIMIT_GB: ${{ vars.ACTIONS_CACHE_LIMIT_CONFIRMED_GB }}
         run: |
           {
             echo "### Actions cache budget"
@@ -99,5 +99,5 @@ jobs:
             echo "|---|---|"
             echo "| reclaimed | ${DELETED} entries / ${FREED} MiB |"
             echo "| remaining | ${ENTRIES} entries / ${MIB} MiB |"
-            echo "| repo limit | 10240 MiB |"
+            echo "| repo limit | ${CACHE_LIMIT_GB:-20} GB |"
           } >> "$GITHUB_STEP_SUMMARY"

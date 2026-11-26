@@ -156,6 +156,7 @@ def test_composite_action_wiring():
     text = _resolve_action_path().read_text(encoding="utf-8")
     assert "cache: false" in text
     assert "mode:" in text
+    assert "cache-key:" in text
     assert "SETUP_GO_MODE: ${{ inputs.mode }}" in text
     assert "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" in text
     assert "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" in text
@@ -331,4 +332,7 @@ def test_go_cache_warm_workflow_wiring():
         assert job_id in non_comment
     assert non_comment.count("uses: ./.github/actions/setup-go") == 6
     assert non_comment.count("mode: save") == 6
-    assert non_comment.count("github.ref == 'refs/heads/main'") == 6
+    assert non_comment.count("github.ref == 'refs/heads/main'") == 7
+    assert "prune-superseded:" in non_comment
+    assert "actions: write" in non_comment
+    assert "cache_prune.py" in non_comment
