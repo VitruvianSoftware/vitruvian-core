@@ -32,6 +32,7 @@ mod iac;
 mod labels;
 mod layout;
 mod maven_pin;
+mod node_toolcache;
 mod release_dequeue;
 mod security;
 mod swift_tests;
@@ -65,6 +66,7 @@ pub fn run_all(ctx: &Context) {
     ci::check_job_timeouts(ctx);
     ci::check_sweep_backstop(ctx);
     ci::check_cache_save(ctx);
+    node_toolcache::check_node_toolcache(ctx);
     ci::check_goproxy_fallback(ctx);
     ci::check_image_workflow_paths(ctx);
     release_dequeue::check_release_dequeue(ctx);

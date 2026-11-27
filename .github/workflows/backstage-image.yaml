@@ -37,6 +37,7 @@ on:
       - '!apps/web/backstage/docs/**'
       - '!apps/web/backstage/src/**'
       - '!apps/web/backstage/**/*.md'
+      - '.github/actions/node-toolcache/action.yml'
       - '.github/workflows/backstage-image.yaml'
       - 'tools/ci/src/backstage_boot_smoke/**'
       - '!tools/ci/src/backstage_boot_smoke/**/BUILD'
@@ -69,6 +70,7 @@ on:
       - '!apps/web/backstage/docs/**'
       - '!apps/web/backstage/src/**'
       - '!apps/web/backstage/**/*.md'
+      - '.github/actions/node-toolcache/action.yml'
       - '.github/workflows/backstage-image.yaml'
       - 'tools/ci/src/backstage_boot_smoke/**'
       - '!tools/ci/src/backstage_boot_smoke/**/BUILD'
@@ -187,10 +189,26 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore Node 22.21.1 toolcache
+        uses: ./.github/actions/node-toolcache
+        with:
+          version: '22.21.1'
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+
+      - name: Verify Node version matches .nvmrc
+        run: |
+          set -euo pipefail
+          raw="$(tr -d '[:space:]' < .nvmrc)"
+          want="v${raw#v}"
+          got="$(node --version)"
+          if [ "${got}" != "${want}" ]; then
+            echo "::error::Expected Node ${want} from .nvmrc, got ${got}"
+            exit 1
+          fi
 
       - name: Enable corepack (pnpm)
         run: corepack enable

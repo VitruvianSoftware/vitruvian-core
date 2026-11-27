@@ -332,6 +332,7 @@ impl Context {
             ("TIMEOUT", "Job timeouts (#209: every job bounded — no 6h default-timeout runners)"),
             ("SWEEP", "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)"),
             ("CACHESAVE", "Actions cache saves (only bazel-repo-cache.yaml saves the Bazel repository cache; setup-bazel and other workflows restore only; LLVM cache saves only on hosted main)"),
+            ("NODETOOLCACHE", "Node toolcache (actions/setup-node preceded by node-toolcache, version == .nvmrc, main-only save, node-toolcache-v1)"),
             ("GOPROXY", "CI Go module fetches (#4187: GOPROXY falls through on a proxy.golang.org timeout)"),
             ("IMGPATHS", "Container image triggers (*-image.yaml push/PR paths match and ignore BUILD/docs/charts)"),
             ("RELEASEDEQ", "Release PR dequeue (every release-please job takes a stale queued release PR out of the merge queue first, and puts it back after)"),
