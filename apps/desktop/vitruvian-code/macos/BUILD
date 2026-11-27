@@ -360,14 +360,14 @@ genrule(
         "@nodejs_darwin_arm64//:node_bin",
     ],
     outs = ["node"],
-    cmd = "/usr/bin/lipo -create $(location @nodejs_darwin_arm64//:node_bin) $(location @nodejs_darwin_amd64//:node_bin) -output $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.node --entitlements $(location Resources/node.entitlements) $@",
+    cmd = "/usr/bin/lipo -create $(location @nodejs_darwin_arm64//:node_bin) $(location @nodejs_darwin_amd64//:node_bin) -output $@ && chmod 755 $@ && /usr/bin/strip -x $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.node --entitlements $(location Resources/node.entitlements) $@",
     executable = True,
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
 
 # `node-arm64` and `node-x86_64` for the app: each Node release is already thin,
-# so each is copied and signed with the JIT entitlements.
+# so each is copied, stripped of local/debug symbols, and signed with the JIT entitlements.
 [genrule(
     name = "node_helper_" + arch,
     srcs = [
@@ -375,7 +375,7 @@ genrule(
         "@nodejs_darwin_" + ("amd64" if arch == "x86_64" else "arm64") + "//:node_bin",
     ],
     outs = ["node-" + arch],
-    cmd = "cp $(location @nodejs_darwin_" + ("amd64" if arch == "x86_64" else "arm64") + "//:node_bin) $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.node --entitlements $(location Resources/node.entitlements) $@",
+    cmd = "cp $(location @nodejs_darwin_" + ("amd64" if arch == "x86_64" else "arm64") + "//:node_bin) $@ && chmod 755 $@ && /usr/bin/strip -x $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.code.node --entitlements $(location Resources/node.entitlements) $@",
     executable = True,
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
