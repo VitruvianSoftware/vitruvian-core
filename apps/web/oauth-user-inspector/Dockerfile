@@ -24,7 +24,7 @@
 # pipeline. The Node major is NOT hardcoded: it comes from the NODE_VERSION build
 # arg below, which defaults to the repo canonical (the .nvmrc major) and is passed
 # explicitly from .nvmrc by the deploy workflow — so the image always tracks the
-# repo's single canonical Node. pnpm via corepack. The build context is this app
+# repo's single canonical Node. pnpm pinned via npm. The build context is this app
 # directory; deps are resolved from package.json. In the monorepo the pinned
 # versions live in the root pnpm-lock.yaml (used by CI/tests); here we resolve
 # fresh so `docker build oauth-user-inspector/` works in both the monorepo and
@@ -64,7 +64,7 @@ RUN rustc --edition=2021 -C opt-level=3 --crate-type=lib --crate-name=oauth_scri
 # --- Frontend build stage: compile the Vite/React frontend (-> dist)
 FROM node:${NODE_VERSION}-slim AS build
 WORKDIR /app
-RUN npm install -g corepack && corepack enable
+RUN npm install -g pnpm@10.20.0
 COPY package.json ./
 COPY tsconfig.json ./
 COPY frontend/ ./frontend/

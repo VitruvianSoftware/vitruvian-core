@@ -28,7 +28,7 @@
 # than source, so the install layer is cached across source-only rebuilds.
 FROM node:26-alpine AS builder
 WORKDIR /app
-RUN npm install -g corepack && corepack enable
+RUN npm install -g pnpm@10.20.0
 
 # Copy workspace config and lockfile (cached layer)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./

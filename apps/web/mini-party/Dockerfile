@@ -29,7 +29,7 @@
 # external and come from the prod-deps stage.
 FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS build
 WORKDIR /workspace
-RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/mini-party/package.json ./apps/web/mini-party/
 RUN pnpm install --frozen-lockfile --filter=mini-party
@@ -40,7 +40,7 @@ RUN pnpm --filter=mini-party run build:server
 # build platform's install works on both architectures.
 FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS prod-deps
 WORKDIR /workspace
-RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/mini-party/package.json ./apps/web/mini-party/
 RUN pnpm deploy --legacy --prod --frozen-lockfile --filter=mini-party /prod

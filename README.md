@@ -72,7 +72,7 @@ declares a Bazel version range (`bazel_compatibility` in `MODULE.bazel`), so an 
 `bazel` fails fast with a clear message instead of cryptic errors.
 
 ```sh
-nvm use && corepack enable     # Node 26 + pnpm 10.20.0
+nvm use && npm install -g pnpm@10.20.0  # Node 26 + pnpm 10.20.0
 bazel run //:doctor            # verify your toolchain has the right tools & versions
 bazel build //...              # warms the remote cache
 bazel test  //...              # full test sweep — what the merge queue runs

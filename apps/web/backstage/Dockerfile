@@ -25,7 +25,7 @@ FROM node:26-bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends     python3     g++     build-essential     git     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/web/backstage/package.json ./apps/web/backstage/
@@ -72,7 +72,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--no-node-snapshot \
     NODE_PATH=/app/node_modules:/app/apps/web/backstage/packages/backend/node_modules
 
-RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 
 COPY --from=build /app/pnpm-lock.yaml /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=build /app/apps/web/backstage/package.json ./apps/web/backstage/

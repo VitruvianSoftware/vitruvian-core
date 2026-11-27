@@ -35,7 +35,7 @@ git clone <repo-url> vitruvian-core && cd vitruvian-core
 
 # 2. Node toolchain
 nvm install            # reads .nvmrc -> 26.13.1
-corepack enable        # pnpm 10.20.0
+npm install -g pnpm@10.20.0
 
 # 3. Bazelisk — install it AS `bazel` so the `bazel` command honors .bazelversion (-> 9.3.2).
 #    MODULE.bazel also declares a bazel_compatibility range, so an out-of-range or

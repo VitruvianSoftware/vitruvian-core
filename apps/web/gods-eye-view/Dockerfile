@@ -30,7 +30,7 @@ FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS build
 
 WORKDIR /workspace
 
-RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/gods-eye-view/package.json ./apps/web/gods-eye-view/
@@ -45,7 +45,7 @@ ARG TARGETARCH
 
 WORKDIR /workspace
 
-RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/gods-eye-view/package.json ./apps/web/gods-eye-view/

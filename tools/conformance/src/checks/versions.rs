@@ -535,11 +535,13 @@ pub fn doc_sync(ctx: &Context) {
 
 // ---------------------------------------------------------------------------
 // CHECK: pnpm build pin — every Dockerfile that runs pnpm must have a
-// reachable pin (packageManager, corepack prepare, or root package.json COPY)
+// reachable pin (npm install -g pnpm@..., packageManager, corepack prepare,
+// or root package.json COPY)
 // ---------------------------------------------------------------------------
 
 /// Port of `check_pnpm_pin()` (check.sh lines 719-768).
 pub fn check_pnpm_pin(ctx: &Context) {
+    let canon_pnpm = canonical_pnpm(&ctx.root).ok();
     let dockerfiles = ctx.files.discover(&ctx.root, "Dockerfile*");
 
     for dockerfile in &dockerfiles {
@@ -564,7 +566,45 @@ pub fn check_pnpm_pin(ctx: &Context) {
         let pkg = format!("{}/package.json", dir);
         let df_rel = ctx.rel(dockerfile);
 
-        // (1) Co-located manifest carries the pin.
+        let npm_pins = extract_npm_install_pnpm_versions(&content);
+        let corepack_pins = extract_corepack_prepare_pnpm_versions(&content);
+
+        // Enforce parity with root package.json packageManager before any branch
+        // short-circuiting so Dockerfiles with co-located/root package.json also
+        // fail on pin drift.
+        if let Some(ref canon) = canon_pnpm {
+            if let Some(ver) = npm_pins
+                .iter()
+                .chain(corepack_pins.iter())
+                .find(|v| v.as_str() != canon.as_str())
+            {
+                ctx.emit_fail(
+                    "pnpm_pin",
+                    &df_rel,
+                    ver,
+                    canon,
+                    &format!(
+                        "Dockerfile pins pnpm@{ver}, which disagrees with root package.json packageManager (pnpm@{canon})"
+                    ),
+                    &format!("align the Dockerfile pin to pnpm@{canon} to match root package.json"),
+                );
+                continue;
+            }
+        }
+
+        // (1) The Dockerfile installs a pinned pnpm via npm.
+        if !npm_pins.is_empty() {
+            ctx.emit_ok(
+                "pnpm_pin",
+                &df_rel,
+                "pinned",
+                "pinned",
+                "pnpm pinned via npm install -g pnpm@... in the Dockerfile",
+            );
+            continue;
+        }
+
+        // (2) Co-located manifest carries the pin.
         if Path::new(&pkg).is_file() {
             if let Ok(pkg_content) = fs::read_to_string(&pkg) {
                 if pkg_content.contains("\"packageManager\"") {
@@ -580,9 +620,9 @@ pub fn check_pnpm_pin(ctx: &Context) {
             }
         }
 
-        // (2) The Dockerfile pins corepack explicitly.
+        // (3) The Dockerfile pins corepack explicitly.
         // grep -qE 'corepack[[:space:]]+prepare[[:space:]]+["'"'"']?pnpm@'
-        if has_corepack_prepare_pnpm(&content) {
+        if !corepack_pins.is_empty() {
             ctx.emit_ok(
                 "pnpm_pin",
                 &df_rel,
@@ -593,7 +633,7 @@ pub fn check_pnpm_pin(ctx: &Context) {
             continue;
         }
 
-        // (3) The root package.json (repo-wide pin) is copied into the build
+        // (4) The root package.json (repo-wide pin) is copied into the build
         //     context. Check that the Dockerfile COPYs package.json AND the root
         //     package.json has packageManager.
         if copies_package_json(&content) {
@@ -618,8 +658,8 @@ pub fn check_pnpm_pin(ctx: &Context) {
             &df_rel,
             "unpinned",
             "pinned",
-            "Dockerfile runs pnpm with no pin reachable: no packageManager in its dir, no corepack prepare pnpm@..., no root package.json copied in",
-            "pin it: add \"packageManager\" to the co-located package.json, or `corepack prepare pnpm@<root version> --activate` in the Dockerfile",
+            "Dockerfile runs pnpm with no pin reachable: no npm install -g pnpm@..., no packageManager in its dir, no corepack prepare pnpm@..., no root package.json copied in",
+            "pin it: run `npm install -g pnpm@<root version>` in the Dockerfile, or add \"packageManager\" to the co-located package.json",
         );
     }
 }
@@ -651,11 +691,67 @@ fn mentions_pnpm(content: &str) -> bool {
     false
 }
 
-/// Returns true if the content has a `corepack prepare ... pnpm@` pattern.
-/// Matches: `corepack[[:space:]]+prepare[[:space:]]+["']?pnpm@`
-fn has_corepack_prepare_pnpm(content: &str) -> bool {
+/// Extract pinned versions from `npm install -g pnpm@<version>` (or `npm i` /
+/// `--global`, optionally quoted).
+fn extract_npm_install_pnpm_versions(content: &str) -> Vec<String> {
+    let mut versions = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        for seg in trimmed
+            .split("&&")
+            .flat_map(|s| s.split("||"))
+            .flat_map(|s| s.split(';'))
+        {
+            let mut tokens: Vec<&str> = seg.split_whitespace().collect();
+            if tokens
+                .first()
+                .is_some_and(|t| t.eq_ignore_ascii_case("RUN"))
+            {
+                tokens.remove(0);
+            }
+            if tokens.first() != Some(&"npm") || !matches!(tokens.get(1), Some(&"install" | &"i")) {
+                continue;
+            }
+            let rest = &tokens[2..];
+            if !rest.iter().any(|t| *t == "-g" || *t == "--global") {
+                continue;
+            }
+            for tok in rest {
+                let stripped = tok.trim_matches(|c| c == '"' || c == '\'');
+                if let Some(after) = stripped.strip_prefix("pnpm@") {
+                    if after.starts_with(|c: char| c.is_ascii_digit()) {
+                        let ver: String = after
+                            .chars()
+                            .take_while(|c| c.is_ascii_digit() || *c == '.')
+                            .collect();
+                        if !ver.is_empty() {
+                            versions.push(ver);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    versions
+}
+
+/// Returns true if the content has an `npm install -g pnpm@<version>` pattern.
+#[cfg_attr(not(test), allow(dead_code))]
+fn has_npm_install_pnpm(content: &str) -> bool {
+    !extract_npm_install_pnpm_versions(content).is_empty()
+}
+
+/// Extract pinned versions from `corepack prepare ... pnpm@<version>` patterns.
+fn extract_corepack_prepare_pnpm_versions(content: &str) -> Vec<String> {
+    let mut versions = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
         let mut search = trimmed;
         while let Some(pos) = search.find("corepack") {
             let after = search[pos + 8..].trim_start();
@@ -665,14 +761,29 @@ fn has_corepack_prepare_pnpm(content: &str) -> bool {
                     .strip_prefix('"')
                     .or_else(|| rest.strip_prefix('\''))
                     .unwrap_or(rest);
-                if rest.starts_with("pnpm@") {
-                    return true;
+                if let Some(after_at) = rest.strip_prefix("pnpm@") {
+                    if after_at.starts_with(|c: char| c.is_ascii_digit()) {
+                        let ver: String = after_at
+                            .chars()
+                            .take_while(|c| c.is_ascii_digit() || *c == '.')
+                            .collect();
+                        if !ver.is_empty() {
+                            versions.push(ver);
+                        }
+                    }
                 }
             }
             search = &search[pos + 1..];
         }
     }
-    false
+    versions
+}
+
+/// Returns true if the content has a `corepack prepare ... pnpm@` pattern.
+/// Matches: `corepack[[:space:]]+prepare[[:space:]]+["']?pnpm@`
+#[cfg_attr(not(test), allow(dead_code))]
+fn has_corepack_prepare_pnpm(content: &str) -> bool {
+    !extract_corepack_prepare_pnpm_versions(content).is_empty()
 }
 
 /// Returns true if the Dockerfile COPYs `package.json`.
@@ -1343,6 +1454,66 @@ rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n";
             "RUN corepack prepare \"pnpm@9.15.4\" --activate"
         ));
         assert!(!has_corepack_prepare_pnpm("RUN corepack enable"));
+    }
+
+    #[test]
+    fn has_npm_install_pnpm_works() {
+        assert!(has_npm_install_pnpm("RUN npm install -g pnpm@10.20.0"));
+        assert!(has_npm_install_pnpm(
+            "RUN npm install --global \"pnpm@10.20.0\""
+        ));
+        assert!(has_npm_install_pnpm("RUN npm i -g pnpm@10.20.0"));
+        assert!(has_npm_install_pnpm(
+            "RUN echo ok && npm install -g pnpm@10.20.0"
+        ));
+        assert!(!has_npm_install_pnpm("RUN npm install -g pnpm"));
+        assert!(!has_npm_install_pnpm("RUN npm install pnpm@10.20.0"));
+        assert!(!has_npm_install_pnpm("# npm install -g pnpm@10.20.0"));
+    }
+
+    #[test]
+    fn check_pnpm_pin_accepts_matching_npm_install_and_rejects_drift() {
+        let ok_dir = repo(&[
+            ("package.json", "{\"packageManager\":\"pnpm@10.20.0\"}\n"),
+            (
+                "app/Dockerfile",
+                "FROM node:26-slim\nRUN npm install -g pnpm@10.20.0\nRUN pnpm install\n",
+            ),
+        ]);
+        let ok_ctx = Context::for_root(ok_dir.to_str().unwrap());
+        check_pnpm_pin(&ok_ctx);
+        let ok_fail = ok_ctx.fail_count.get();
+        let _ = fs::remove_dir_all(&ok_dir);
+        assert_eq!(ok_fail, 0);
+
+        for extra in [
+            (
+                "app/package.json",
+                "{\"packageManager\":\"pnpm@10.20.0\"}\n",
+            ),
+            ("app/COPY_MARKER", "unused"),
+        ] {
+            let df = if extra.0 == "app/COPY_MARKER" {
+                "FROM node:26-slim\nRUN npm install -g pnpm@9.15.4\nCOPY package.json ./\nRUN pnpm install\n"
+            } else {
+                "FROM node:26-slim\nRUN npm install -g pnpm@9.15.4\nRUN pnpm install\n"
+            };
+            let drift_dir = repo(&[
+                ("package.json", "{\"packageManager\":\"pnpm@10.20.0\"}\n"),
+                ("app/Dockerfile", df),
+                extra,
+            ]);
+            let drift_ctx = Context::for_root(drift_dir.to_str().unwrap());
+            check_pnpm_pin(&drift_ctx);
+            let drift_fail = drift_ctx.fail_count.get();
+            let rows = drift_ctx.rows.get("pnpm_pin");
+            let _ = fs::remove_dir_all(&drift_dir);
+            assert_eq!(drift_fail, 1, "{rows}");
+            assert!(
+                rows.contains("9.15.4") && rows.contains("10.20.0"),
+                "{rows}"
+            );
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@ OAuth User Inspector is a full-stack web application designed to inspect OAuth u
 
 **Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.**
 
-> Design and operations detail live in [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md). The commands below use `npm`, but the repo's package manager is `pnpm` (via `corepack`) — either works locally.
+> Design and operations detail live in [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md). The commands below use `npm`, but the repo's package manager is `pnpm` (`npm install -g pnpm@10.20.0`) — either works locally.
 
 ## Working Effectively
 

@@ -8,7 +8,7 @@ The repo-wide setup (toolchain, worktrees, the merge queue) lives in
 ## Before anything else
 
 ```bash
-nvm use && corepack enable    # Node 26 + pnpm, versions from .nvmrc / packageManager
+nvm use && npm install -g pnpm@10.20.0  # Node 26 + pnpm, versions from .nvmrc / packageManager
 bazel run //:doctor           # core toolchain check
 bazel run //<app>:doctor      # per-app check — //apps/suites/vitruvian-tabs:doctor, //apps/cli/vitruvian-devx:doctor, …
 ```
