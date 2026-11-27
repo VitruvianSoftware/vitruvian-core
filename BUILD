@@ -85,6 +85,12 @@ js_library(
     visibility = ["//apps/desktop/vitruvian-code/macos/claude-helper:__pkg__"],
 )
 
+js_library(
+    name = "module_bazel",
+    srcs = ["MODULE.bazel"],
+    visibility = ["//apps/desktop/vitruvian-code/macos/claude-helper:__pkg__"],
+)
+
 exports_files(
     ["pnpm-lock.yaml"],
     visibility = ["//tools/ci:__pkg__"],

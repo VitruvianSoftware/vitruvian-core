@@ -23,14 +23,14 @@
 # Multi-stage production container for God's Eye View (geospatial intelligence console).
 # Build context is the monorepo root (filtered via Dockerfile.dockerignore) so
 # production dependencies install strictly from pnpm-lock.yaml (--frozen-lockfile).
-# Runs Node 22 slim with a non-root UID 1001 on port 8080 and native health probe.
+# Runs Node 26 slim with a non-root UID 1001 on port 8080 and native health probe.
 
 # --- Build Stage: Compile web assets to dist/ on $BUILDPLATFORM ---------------
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS build
 
 WORKDIR /workspace
 
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/gods-eye-view/package.json ./apps/web/gods-eye-view/
@@ -40,12 +40,12 @@ COPY apps/web/gods-eye-view/ ./apps/web/gods-eye-view/
 RUN pnpm --filter=gods-eye-view build
 
 # --- Production Dependencies Stage: Materialize target-arch prod deps ----------
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS prod-deps
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS prod-deps
 ARG TARGETARCH
 
 WORKDIR /workspace
 
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/gods-eye-view/package.json ./apps/web/gods-eye-view/
@@ -74,7 +74,7 @@ RUN set -eu; \
     echo "verified $checked native ELF module(s) in /prod/node_modules for TARGETARCH=$TARGETARCH (e_machine=$ELF_EM)"
 
 # --- Runtime Stage: Zero-RUN multi-arch runtime image ------------------------
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 
 WORKDIR /app
 

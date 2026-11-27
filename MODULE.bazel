@@ -229,7 +229,7 @@ use_repo(go_deps, "com_github_blang_semver", "com_github_charmbracelet_bubbles",
 
 # Bazel 9: Ensure transitives don't depend on rules_nodejs prior to
 # https://github.com/bazel-contrib/rules_nodejs/commit/1fc6b6b763c4f79994edc9edab10399f7446d8be
-bazel_dep(name = "rules_nodejs", version = "6.7.4")
+bazel_dep(name = "rules_nodejs", version = "6.7.7")
 
 # 3.2.x is required for App Router support in @aspect_rules_js//contrib/nextjs
 # (used by //apps/suites/vitruvian-tabs/web) and the exec-configured npm deps fix for js_image_layer.
@@ -293,8 +293,57 @@ use_repo(playwright, "playwright")
 
 #########################
 # JavaScript and pnpm package manager
+# rules_nodejs 6.7.7's built-in NODE_VERSIONS stops at 24.22.1; pin 26.13.1
+# directly from https://nodejs.org/dist/v26.13.1/SHASUMS256.txt so extension
+# evaluation stays checksummed and offline-reproducible.
+_NODE_26_13_1_REPOSITORIES = {
+    "26.13.1-darwin_amd64": [
+        "node-v26.13.1-darwin-x64.tar.gz",
+        "node-v26.13.1-darwin-x64",
+        "82bb96078a24ca50b9c9a38f2379e6be6d87171fcd400fc14c8934b3bce96e2f",
+    ],
+    "26.13.1-darwin_arm64": [
+        "node-v26.13.1-darwin-arm64.tar.gz",
+        "node-v26.13.1-darwin-arm64",
+        "aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735",
+    ],
+    "26.13.1-linux_amd64": [
+        "node-v26.13.1-linux-x64.tar.xz",
+        "node-v26.13.1-linux-x64",
+        "5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864",
+    ],
+    "26.13.1-linux_arm64": [
+        "node-v26.13.1-linux-arm64.tar.xz",
+        "node-v26.13.1-linux-arm64",
+        "89e1853138db51e8b82d3e98ba9c0d3f2956a28e5e55ea1b7e12d25aae92d5dd",
+    ],
+    "26.13.1-linux_ppc64le": [
+        "node-v26.13.1-linux-ppc64le.tar.xz",
+        "node-v26.13.1-linux-ppc64le",
+        "06d5638602a919cb9a559eb92520862a387b4a0b170fed8883930b1eb392ec73",
+    ],
+    "26.13.1-linux_s390x": [
+        "node-v26.13.1-linux-s390x.tar.xz",
+        "node-v26.13.1-linux-s390x",
+        "2d65ece78005320dd13cccf15eeb30636a7352c18b92727f4b7c079de7d6969f",
+    ],
+    "26.13.1-windows_amd64": [
+        "node-v26.13.1-win-x64.zip",
+        "node-v26.13.1-win-x64",
+        "e2edda75bfb089654705cf65a13b58933bfd5f57148e8ebda916f58a2474f1f7",
+    ],
+    "26.13.1-windows_arm64": [
+        "node-v26.13.1-win-arm64.zip",
+        "node-v26.13.1-win-arm64",
+        "181ebe431b90787113a9e4fc80d38ce86d37888a353a0386de44d2872e48cb97",
+    ],
+}
+
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
-node.toolchain(node_version_from_nvmrc = "//:.nvmrc")
+node.toolchain(
+    node_repositories = _NODE_26_13_1_REPOSITORIES,
+    node_version_from_nvmrc = "//:.nvmrc",
+)
 use_repo(node, "nodejs_darwin_amd64", "nodejs_darwin_arm64", "nodejs_toolchains")
 
 pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm")

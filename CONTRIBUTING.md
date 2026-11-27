@@ -19,7 +19,7 @@ The build graph is **Bazel** (Bzlmod, via Bazelisk) with Aspect rulesets. Almost
 |------|------------------|-----------------|
 | **Bazelisk** (→ Bazel) | Bazel **9.3.2** is pinned by the repo; Bazelisk reads it | The primary build/test/run entrypoint for the whole repo |
 | **pnpm** | **10.20.0** (workspace) | JS/TS workspace package management; not used at build time by Bazel but needed for container builds and local `pnpm dev` |
-| **Node** | **22.21.1**, pinned in `.nvmrc` (and fed into the Bazel node toolchain) | All TS/JS apps. Use `nvm use` (or a manager that reads `.nvmrc`) |
+| **Node** | **26.13.1**, pinned in `.nvmrc` (and fed into the Bazel node toolchain) | All TS/JS apps. Use `nvm use` (or a manager that reads `.nvmrc`) |
 | **Go** | go.work toolchain (currently **1.26.6**); see note below | `devx`, `homelab`, and all `infrastructure/pulumi/*` programs |
 | **gcloud** | latest | Cloud Run deploys (CI does this for you; needed locally only for a per-app GCP dev project) |
 | **devx** | `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx` | Local-dev orchestrator (Lima VMs / devcontainers / ephemeral DBs / local k3s). See Section 3 |
@@ -34,7 +34,7 @@ The build graph is **Bazel** (Bzlmod, via Bazelisk) with Aspect rulesets. Almost
 git clone <repo-url> vitruvian-core && cd vitruvian-core
 
 # 2. Node toolchain
-nvm install            # reads .nvmrc -> 22.21.1
+nvm install            # reads .nvmrc -> 26.13.1
 corepack enable        # pnpm 10.20.0
 
 # 3. Bazelisk — install it AS `bazel` so the `bazel` command honors .bazelversion (-> 9.3.2).

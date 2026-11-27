@@ -99,7 +99,7 @@ Place these in each stage's repository root:
 ```yaml
 steps:
   - id: "install"
-    name: "node:22"
+    name: "node:26"
     entrypoint: "npm"
     args: ["install"]
   - id: "pulumi-preview"
@@ -119,7 +119,7 @@ steps:
 ```yaml
 steps:
   - id: "install"
-    name: "node:22"
+    name: "node:26"
     entrypoint: "npm"
     args: ["install"]
   - id: "pulumi-up"

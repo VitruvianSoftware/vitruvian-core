@@ -68,7 +68,7 @@ jobs:
 
             - uses: actions/setup-node@v7
               with:
-                  node-version: "22"
+                  node-version: "26"
                   registry-url: "https://registry.npmjs.org"
                   scope: "@vitruviansoftware"
 
@@ -91,8 +91,8 @@ jobs:
             - name: Ensure npm can do trusted publishing
               run: |
                   set -euo pipefail
-                  # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1.
-                  # Upgrade and then ASSERT: an npm too old does not say so, it
+                  # Trusted publishing needs npm >= 11.5.1; upgrade if needed
+                  # and then ASSERT: an npm too old does not say so, it
                   # quietly looks for a token that is no longer there.
                   npm install -g npm@latest >/dev/null
                   have="$(npm --version)"

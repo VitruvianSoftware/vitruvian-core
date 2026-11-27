@@ -254,7 +254,7 @@ The `Dockerfile` is multi-stage:
   Rust server (`dist-server/oauth-user-inspector-server`) and the `start`
   entrypoint. `RUST_VERSION` defaults to the Rust that Bazel builds and tests
   the server with (`MODULE.bazel`); `:dockerfile_test` fails if they drift.
-- **build stage** (`node:${NODE_VERSION}-slim`, default 22): `corepack enable`,
+- **build stage** (`node:${NODE_VERSION}-slim`, default 26): `corepack enable`,
   `pnpm install`, `pnpm run build:frontend` (Vite → `dist/`). A `sed`
   neutralizes the monorepo's pnpm `catalog:` version refs so the image builds
   standalone. Node is used only here.

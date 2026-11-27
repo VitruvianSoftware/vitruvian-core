@@ -2020,7 +2020,7 @@ fn render_build_job(b: &mut String, job: &str, u: &Unit, opts: &Opts) -> R {
         "          IMAGE=\"${{GCP_REGION}}-docker.pkg.dev/${{GCP_PROJECT_ID}}/{}\"\n",
         u.image_repository_path
     );
-    b.push_str("          NODE_VERSION=\"$(cut -d. -f1 .nvmrc 2>/dev/null || echo 22)\"\n");
+    b.push_str("          NODE_VERSION=\"$(cut -d. -f1 .nvmrc 2>/dev/null || echo 26)\"\n");
     b.push_str("          docker buildx build --push \\\n");
     b.push_str("            --build-arg NODE_VERSION=\"${NODE_VERSION}\" \\\n");
     b.push_str("            --tag \"${IMAGE}:${GITHUB_SHA}\" \\\n");

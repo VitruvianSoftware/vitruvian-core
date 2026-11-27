@@ -27,9 +27,9 @@
 
 # Bundle server.ts (and server/) into one ES module. Dependencies stay
 # external and come from the prod-deps stage.
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS build
 WORKDIR /workspace
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/mini-party/package.json ./apps/web/mini-party/
 RUN pnpm install --frozen-lockfile --filter=mini-party
@@ -38,14 +38,14 @@ RUN pnpm --filter=mini-party run build:server
 
 # Only the runtime dependencies (express, socket.io): pure JavaScript, so the
 # build platform's install works on both architectures.
-FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS prod-deps
+FROM --platform=$BUILDPLATFORM node:26-bookworm-slim AS prod-deps
 WORKDIR /workspace
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g corepack && corepack enable && corepack prepare pnpm@10.20.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/mini-party/package.json ./apps/web/mini-party/
 RUN pnpm deploy --legacy --prod --frozen-lockfile --filter=mini-party /prod
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080

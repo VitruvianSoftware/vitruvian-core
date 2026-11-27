@@ -34,7 +34,7 @@
 # --build-arg sourced from .nvmrc. //tools/conformance:check enforces that this
 # default equals canonical, so it cannot silently drift. Node is used only to
 # BUILD the frontend; the runtime image ships none.
-ARG NODE_VERSION=22
+ARG NODE_VERSION=26
 # The Rust that compiles the server: the SAME release Bazel builds and tests it
 # with (MODULE.bazel, rust.toolchain(versions = [...])), so the image runs the
 # code the tests ran. //apps/web/oauth-user-inspector:dockerfile_test fails if
@@ -64,7 +64,7 @@ RUN rustc --edition=2021 -C opt-level=3 --crate-type=lib --crate-name=oauth_scri
 # --- Frontend build stage: compile the Vite/React frontend (-> dist)
 FROM node:${NODE_VERSION}-slim AS build
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g corepack && corepack enable
 COPY package.json ./
 COPY tsconfig.json ./
 COPY frontend/ ./frontend/

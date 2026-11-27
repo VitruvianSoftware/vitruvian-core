@@ -37,10 +37,8 @@ not delete the check.
 
 load("@rules_nodejs//nodejs/private:node_versions.bzl", "NODE_VERSIONS")
 
-def _rules_nodejs_darwin_sums_impl(ctx):
-    arm64 = {}
-    amd64 = {}
-    for key, val in NODE_VERSIONS.items():
+def _collect_darwin_sums(entries, arm64, amd64):
+    for key, val in entries.items():
         if key.endswith("-darwin_arm64") or key.endswith("-darwin_amd64"):
             # ("node-v<ver>-darwin-<arch>.tar.gz", "node-v<ver>-darwin-<arch>", "<sha256>")
             if type(val) != "tuple" or len(val) != 3 or len(val[2]) != 64:
@@ -54,6 +52,15 @@ def _rules_nodejs_darwin_sums_impl(ctx):
         elif key.endswith("-darwin_amd64"):
             ver = key[:-len("-darwin_amd64")]
             amd64[ver] = val[2]
+
+def _rules_nodejs_darwin_sums_impl(ctx):
+    arm64 = {}
+    amd64 = {}
+    for ver_key, entries in NODE_VERSIONS.items():
+        if type(entries) == "dict":
+            _collect_darwin_sums(entries, arm64, amd64)
+        else:
+            _collect_darwin_sums({ver_key: entries}, arm64, amd64)
 
     out = {}
     for ver in sorted(arm64.keys()):
