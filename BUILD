@@ -119,6 +119,12 @@ exports_files(
     visibility = ["//.github/actions/setup-bazel:__pkg__"],
 )
 
+# Exported so android-emulator's tests verify android-emulator-cache.yaml parity.
+exports_files(
+    [".github/workflows/android-emulator-cache.yaml"],
+    visibility = ["//.github/actions/android-emulator:__pkg__"],
+)
+
 # Exported so setup-go's tests verify go-cache.yaml and go.mod.
 exports_files(
     [
@@ -304,6 +310,7 @@ filegroup(
     srcs = glob([".github/actions/*/action.yml"]),
     visibility = [
         "//tools/ci:__pkg__",
+        "//tools/conformance:__pkg__",
         "//tools/delivery/gen:__pkg__",
     ],
 )
@@ -349,7 +356,10 @@ exports_files(
 # The rehearsal of the standalone Vitruvian Code's release, read by the test that
 # keeps it running the same steps as the release workflow the mirror runs.
 exports_files(
-    [".github/workflows/vitruvian-code-mirror-toolchain.yaml"],
+    [
+        ".github/actions/rust-cache-dir/action.yml",
+        ".github/workflows/vitruvian-code-mirror-toolchain.yaml",
+    ],
     visibility = ["//tools/ci:__pkg__"],
 )
 

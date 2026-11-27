@@ -1,0 +1,97 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Node Toolcache
+
+# Main-only Node toolcache warmer.
+#
+# backstage-image.yaml and storybook-image.yaml run on push to main only when
+# their own path filters match, so a .nvmrc change or 7-day cache eviction
+# would leave PRs downloading Node from GitHub. This workflow warms and saves
+# the node-toolcache-v1 entry on main without building container images.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.nvmrc'
+      - '.github/actions/node-toolcache/**'
+      - '.github/workflows/node-toolcache.yaml'
+  schedule:
+    # Every 5 days, off the hour: GitHub evicts Actions cache entries after 7
+    # idle days, each restore refreshes last-access, and a restore is ~50 MB.
+    - cron: '41 7 */5 * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-toolcache-warm
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    name: warm-node-toolcache
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/node-toolcache
+            .nvmrc
+          sparse-checkout-cone-mode: false
+
+      - name: Read Node version from .nvmrc
+        id: nvmrc
+        run: |
+          set -euo pipefail
+          raw="$(tr -d '[:space:]' < .nvmrc)"
+          version="${raw#v}"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::.nvmrc must contain an exact X.Y.Z Node version (optional single leading v), got '${raw}'" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Node toolcache
+        uses: ./.github/actions/node-toolcache
+        with:
+          version: ${{ steps.nvmrc.outputs.version }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Verify Node version matches .nvmrc
+        env:
+          NODE_VERSION: ${{ steps.nvmrc.outputs.version }}
+        run: |
+          set -euo pipefail
+          want="v${NODE_VERSION}"
+          got="$(node --version)"
+          if [ "${got}" != "${want}" ]; then
+            echo "::error::Expected Node ${want} from .nvmrc, got ${got}"
+            exit 1
+          fi

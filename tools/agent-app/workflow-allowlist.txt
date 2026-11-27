@@ -108,3 +108,10 @@ delivery-oauth-user-inspector.yaml unit environment
 # workflow-run also enforces --ref main. Added so an agent can trigger a warm save
 # after cache eviction without waiting for the daily 07:23 UTC schedule.
 bazel-repo-cache.yaml
+
+# Warms and saves the Android emulator SDK package cache on main (Linux x64).
+# No inputs. Its warm job holds actions: write and is gated to refs/heads/main;
+# workflow-run also enforces --ref main. Added so an agent can refresh the SDK
+# cache after an upstream package update or cache eviction without waiting for
+# the daily 07:47 UTC schedule.
+android-emulator-cache.yaml

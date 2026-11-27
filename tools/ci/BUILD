@@ -133,8 +133,10 @@ rust_test(
     args = [
         "$(rootpath //apps/desktop/vitruvian-code:release_workflow)",
         "$(rootpath //:.github/workflows/vitruvian-code-mirror-toolchain.yaml)",
+        "$(rootpath //:.github/actions/rust-cache-dir/action.yml)",
     ],
     data = [
+        "//:.github/actions/rust-cache-dir/action.yml",
         "//:.github/workflows/vitruvian-code-mirror-toolchain.yaml",
         "//apps/desktop/vitruvian-code:release_workflow",
     ],

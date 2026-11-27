@@ -79,6 +79,45 @@ pub fn canonical_node(root: &str) -> Result<String, String> {
     Ok(major.to_string())
 }
 
+/// Read the exact `X.Y.Z` Node version from `.nvmrc`.
+///
+/// Strips leading whitespace / `'v'` and trailing whitespace / `'\r'` from the
+/// first non-empty line and verifies the value has three numeric components.
+pub fn canonical_node_exact(root: &str) -> Result<String, String> {
+    let path = Path::new(root).join(".nvmrc");
+    let content =
+        fs::read_to_string(&path).map_err(|_| "canonical source missing: .nvmrc".to_string())?;
+
+    let first_line = content
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .ok_or_else(|| ".nvmrc is empty".to_string())?;
+
+    // Strip at most one leading 'v' so 'v22.21.1' normalizes to '22.21.1'
+    // while 'vv22.21.1' is rejected.
+    let trimmed = first_line.strip_prefix('v').unwrap_or(first_line);
+
+    let mut parts = trimmed.split('.');
+    let valid = matches!(
+        (parts.next(), parts.next(), parts.next(), parts.next()),
+        (Some(a), Some(b), Some(c), None)
+            if !a.is_empty()
+                && !b.is_empty()
+                && !c.is_empty()
+                && a.chars().all(|ch| ch.is_ascii_digit())
+                && b.chars().all(|ch| ch.is_ascii_digit())
+                && c.chars().all(|ch| ch.is_ascii_digit())
+    );
+    if !valid {
+        return Err(format!(
+            ".nvmrc must contain an exact X.Y.Z Node version, got '{first_line}'"
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
 /// Read the canonical Rust version from `MODULE.bazel`: the first entry of
 /// `versions = [...]` in the `<ext>.toolchain(...)` call, where `<ext>` is
 /// whatever variable `use_extension("@rules_rust//rust:extensions.bzl",
@@ -782,5 +821,30 @@ catalogs:
         // Missing patch treated as 0.
         assert!(go_is_newer("1.24", "1.23.4"));
         assert!(!go_is_newer("1.23", "1.23.4"));
+    }
+
+    #[test]
+    fn canonical_node_exact_normalizes_and_rejects() {
+        let dir_plain = temp_dir_with_file(".nvmrc", "22.21.1\n");
+        assert_eq!(
+            canonical_node_exact(dir_plain.to_str().unwrap()).unwrap(),
+            "22.21.1"
+        );
+        let _ = fs::remove_dir_all(&dir_plain);
+
+        let dir_v = temp_dir_with_file(".nvmrc", "v22.21.1\n");
+        assert_eq!(
+            canonical_node_exact(dir_v.to_str().unwrap()).unwrap(),
+            "22.21.1"
+        );
+        let _ = fs::remove_dir_all(&dir_v);
+
+        let dir_vv = temp_dir_with_file(".nvmrc", "vv22.21.1\n");
+        assert!(canonical_node_exact(dir_vv.to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&dir_vv);
+
+        let dir_major = temp_dir_with_file(".nvmrc", "22\n");
+        assert!(canonical_node_exact(dir_major.to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&dir_major);
     }
 }
