@@ -103,7 +103,7 @@ The following are outputs from frequently run commands. Reference them instead o
 ### Technology Stack
 
 - **Frontend**: React 18 + Vite 6 + Tailwind CSS 3 + TypeScript
-- **Backend**: Express 4 + Node.js 20 + TypeScript + Winston logging
+- **Backend**: Express 4 + Node.js 26 + TypeScript + Winston logging
 - **Testing**: Jest 30 + ts-jest + MSW (Mock Service Worker) + Supertest
 - **Build**: Vite (frontend), TypeScript compiler (backend)
 - **Deployment**: Docker + Google Cloud Run + Google Cloud Build

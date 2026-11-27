@@ -18,7 +18,7 @@ stages:
   - deploy
 
 .pulumi_base:
-  image: node:18
+  image: node:26
   # CI_JOB_JWT_V2 was removed in GitLab 16.0; obtain the OIDC token via id_tokens.
   # The aud must match the audience configured on the WIF provider.
   id_tokens:

@@ -4,8 +4,8 @@ Thanks for being here. God's Eye View is an open foundation for live spatial int
 
 ## Getting set up
 
-Use Node.js 24 (24.14.0 or later) or 26.x (also enforced by `package.json`).
-Prefer 24.22.1 or later: earlier releases lack the October 21, 2026 security
+Use Node.js 26 (26.13.1 or later, also enforced by `package.json`).
+Earlier 26.x releases before 26.12.1 lack the October 21, 2026 security
 fixes, including CVE-2026-111497 (a Brotli decoder flaw).
 
 ```bash

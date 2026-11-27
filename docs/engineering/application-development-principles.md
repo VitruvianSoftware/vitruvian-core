@@ -219,7 +219,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 
 | Aspect | Standard |
 |---|---|
-| **Tech stack & build** | Node 22 + TypeScript, pnpm workspace. **One canonical container front-door (target):** a `node:22-slim` + pnpm, non-root, healthchecked Dockerfile **or** a Bazel `oci` image — converged, not per-app. The frontend (Vite/Next/webpack) is **not** bazel-built; Bazel runs its `jest_test`, the production bundle is built inside the Dockerfile or a publish workflow. |
+| **Tech stack & build** | Node 26 + TypeScript, pnpm workspace. **One canonical container front-door (target):** a `node:26-slim` + pnpm, non-root, healthchecked Dockerfile **or** a Bazel `oci` image — converged, not per-app. The frontend (Vite/Next/webpack) is **not** bazel-built; Bazel runs its `jest_test`, the production bundle is built inside the Dockerfile or a publish workflow. |
 | **Local dev** | `devx up` brings up backing services (Postgres/Redis) with `.env` injection; the app process runs via its own `pnpm dev`. A committed `devx.yaml` declares the local topology. **(target):** no first-party app dogfoods `devx.yaml` yet — adopt it. |
 | **Hosting & runtime** | **GCP Cloud Run**, per-app GCP project, image in per-app Artifact Registry, deployed by Pulumi `cloudrunv2`. |
 | **Deploy / CI** | One environment-keyed GitHub Actions workflow: WIF auth → ensure Artifact Registry repo → build/push image (`:${SHA}` + `:latest`) → `pulumi up` (pins `imageTag=SHA`) → curl smoke. **(target):** a shared `_cloud-run-deploy.yaml` reusable workflow so a new app is one thin caller; blue-green (no-traffic candidate → smoke → promote) is the standard rollout primitive and migrations run before the shift. |

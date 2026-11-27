@@ -28,7 +28,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use crate::canonical::{canonical_go, canonical_node, canonical_pnpm, canonical_rust, go_is_newer};
+use crate::canonical::{
+    canonical_go, canonical_node, canonical_node_exact, canonical_pnpm, canonical_rust, go_is_newer,
+};
 use crate::emit::GLYPH_PIN;
 use crate::Context;
 
@@ -183,16 +185,96 @@ pub fn check_go(ctx: &Context) {
 }
 
 // ---------------------------------------------------------------------------
-// CHECK: Node — every Dockerfile's effective node major vs .nvmrc's
+// CHECK: Node — every Dockerfile & workflow Node version vs .nvmrc
 // ---------------------------------------------------------------------------
 
-/// Extract the effective node major(s) a Dockerfile pins, in first-seen order.
+/// Return true when `s` is an exact `major.minor.patch` numeric triplet.
+fn is_full_semver(s: &str) -> bool {
+    let mut parts = s.split('.');
+    matches!(
+        (parts.next(), parts.next(), parts.next(), parts.next()),
+        (Some(a), Some(b), Some(c), None)
+            if !a.is_empty()
+                && !b.is_empty()
+                && !c.is_empty()
+                && a.chars().all(|ch| ch.is_ascii_digit())
+                && b.chars().all(|ch| ch.is_ascii_digit())
+                && c.chars().all(|ch| ch.is_ascii_digit())
+    )
+}
+
+/// Extract leading digits from a string, stopping at the first non-digit.
+/// Mirrors awk's `split(tag, p, /[^0-9]/)` which puts leading digits in p[1].
+fn extract_leading_digits(s: &str) -> String {
+    s.chars().take_while(|c| c.is_ascii_digit()).collect()
+}
+
+/// Parse a Node version token (e.g. `"26.13.1"`, `"v26.13.1"`, `"26.13.1-slim"`,
+/// `"26-bookworm-slim"`, `"26.x"`) into either an exact `X.Y.Z` semver string or
+/// a major version string. Returns `None` if no leading numeric version exists.
+fn parse_node_version_token(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let s = if let Some(rest) = s.strip_prefix('v') {
+        if rest.starts_with(|c: char| c.is_ascii_digit()) {
+            rest
+        } else {
+            s
+        }
+    } else {
+        s
+    };
+
+    let numeric: String = s
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    let numeric = numeric.trim_end_matches('.');
+    if is_full_semver(numeric) {
+        return Some(numeric.to_string());
+    }
+
+    let major = extract_leading_digits(numeric);
+    if major.is_empty() {
+        None
+    } else {
+        Some(major)
+    }
+}
+
+fn strip_yaml_comment(s: &str) -> &str {
+    let (mut single, mut double) = (false, false);
+    let bytes = s.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        match b {
+            b'\'' if !double => single = !single,
+            b'"' if !single => double = !double,
+            b'#' if !single && !double && (i == 0 || bytes[i - 1] == b' ') => {
+                return s[..i].trim_end();
+            }
+            _ => {}
+        }
+    }
+    s.trim_end()
+}
+
+fn unquote_yaml(s: &str) -> &str {
+    let s = s.trim();
+    if s.len() >= 2
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
+    {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    }
+}
+
+/// Extract the effective node version(s) a Dockerfile pins, in first-seen order.
 ///
-/// Port of `df_node_majors()` (check.sh lines 361-394). Handles both hardcoded
-/// `FROM node:<major>...` and parameterized `FROM node:${NODE_VERSION}...`
-/// resolved through its `ARG NODE_VERSION=<default>`. A parameterized FROM
-/// whose ARG has no default emits nothing.
-fn df_node_majors(content: &str) -> Vec<String> {
+/// Handles both hardcoded `FROM node:<tag>...` and parameterized
+/// `FROM node:${NODE_VERSION}...` resolved through its `ARG NODE_VERSION=<default>`.
+/// Preserves exact `X.Y.Z` versions when written, and otherwise returns the
+/// major version. A parameterized FROM whose ARG has no default emits nothing.
+fn df_node_versions(content: &str) -> Vec<String> {
     let mut arg_defaults: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
     let mut seen = HashSet::new();
@@ -227,10 +309,9 @@ fn df_node_majors(content: &str) -> Vec<String> {
                 .find(|tok| !tok.starts_with("--"))
                 .unwrap_or("");
             if let Some(tag) = img.strip_prefix("node:") {
-                if tag.starts_with('$') {
+                let raw = if tag.starts_with('$') {
                     // Parameterized: ${NAME}... or $NAME...
                     let mut name = tag.to_string();
-                    // Strip leading $ or ${
                     if name.starts_with("${") {
                         name = name[2..].to_string();
                     } else {
@@ -241,21 +322,13 @@ fn df_node_majors(content: &str) -> Vec<String> {
                         .find(|c: char| c == '-' || c == '}' || c == ':')
                         .unwrap_or(name.len());
                     name.truncate(end);
-
-                    if let Some(val) = arg_defaults.get(&name) {
-                        if !val.is_empty() {
-                            // split on non-digit, take first part
-                            let major = extract_leading_digits(val);
-                            if !major.is_empty() && seen.insert(major.clone()) {
-                                result.push(major);
-                            }
-                        }
-                    }
+                    arg_defaults.get(&name).map(|s| s.as_str()).unwrap_or("")
                 } else {
-                    // Hardcoded major: split on non-digit, take first part
-                    let major = extract_leading_digits(tag);
-                    if !major.is_empty() && seen.insert(major.clone()) {
-                        result.push(major);
+                    tag
+                };
+                if let Some(ver) = parse_node_version_token(raw) {
+                    if seen.insert(ver.clone()) {
+                        result.push(ver);
                     }
                 }
             }
@@ -264,18 +337,149 @@ fn df_node_majors(content: &str) -> Vec<String> {
     result
 }
 
-/// Extract leading digits from a string, stopping at the first non-digit.
-/// Mirrors awk's `split(tag, p, /[^0-9]/)` which puts leading digits in p[1].
-fn extract_leading_digits(s: &str) -> String {
-    s.chars().take_while(|c| c.is_ascii_digit()).collect()
+/// Extract `matrix.<key>` identifiers from an expression like `${{ matrix.node }}`.
+fn extract_matrix_keys(expr: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut rest = expr;
+    while let Some(idx) = rest.find("matrix.") {
+        let after = &rest[idx + "matrix.".len()..];
+        let key: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        if !key.is_empty() {
+            keys.push(key);
+        }
+        rest = after;
+    }
+    keys
 }
 
-/// Port of `check_node()` (check.sh lines 574-594).
+/// Extract pinned Node versions from a GitHub Actions workflow (`node-version:`
+/// literals and `matrix.<key>` values referenced by `node-version:`).
+fn wf_node_versions(content: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    let mut matrix_keys: HashSet<String> = HashSet::new();
+
+    let push_ver = |raw: &str, seen: &mut HashSet<String>, result: &mut Vec<String>| {
+        if let Some(ver) = parse_node_version_token(unquote_yaml(raw)) {
+            if seen.insert(ver.clone()) {
+                result.push(ver);
+            }
+        }
+    };
+
+    // Pass 1: find literal `node-version:` values and any `matrix.<key>` references.
+    for raw_line in content.lines() {
+        let line = strip_yaml_comment(raw_line.trim_end_matches('\r'));
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let after_dash = trimmed.strip_prefix("- ").unwrap_or(trimmed).trim_start();
+        if let Some(rest) = after_dash.strip_prefix("node-version:") {
+            let val = unquote_yaml(rest);
+            if val.contains("${{") {
+                for key in extract_matrix_keys(val) {
+                    matrix_keys.insert(key);
+                }
+            } else if !val.is_empty() {
+                push_ver(val, &mut seen, &mut result);
+            }
+        }
+    }
+
+    // Pass 2: if any `node-version` references `matrix.<key>`, extract values from `matrix:`.
+    if !matrix_keys.is_empty() {
+        let mut matrix_indent: Option<usize> = None;
+        let mut active_seq_indent: Option<usize> = None;
+
+        for raw_line in content.lines() {
+            let line = strip_yaml_comment(raw_line.trim_end_matches('\r'));
+            let trimmed = line.trim_start();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let ind = line.len() - trimmed.len();
+
+            if let Some(mi) = matrix_indent {
+                if ind <= mi {
+                    matrix_indent = None;
+                    active_seq_indent = None;
+                }
+            }
+
+            if matrix_indent.is_none() {
+                if trimmed == "matrix:" || trimmed.starts_with("matrix: ") {
+                    matrix_indent = Some(ind);
+                }
+                continue;
+            }
+
+            if let Some(si) = active_seq_indent {
+                if ind < si || (ind == si && !trimmed.starts_with("- ") && trimmed != "-") {
+                    active_seq_indent = None;
+                } else if let Some(item) = trimmed.strip_prefix("- ") {
+                    let item = unquote_yaml(item);
+                    if !item.is_empty() && !item.contains("${{") {
+                        push_ver(item, &mut seen, &mut result);
+                    }
+                    continue;
+                }
+            }
+
+            if let Some((key, rest)) = trimmed.split_once(':') {
+                let key = key.trim();
+                if matrix_keys.contains(key) {
+                    let val = rest.trim();
+                    if val.is_empty() {
+                        active_seq_indent = Some(ind);
+                    } else if val.starts_with('[') && val.ends_with(']') {
+                        let inner = &val[1..val.len() - 1];
+                        for elem in inner.split(',') {
+                            let elem = unquote_yaml(elem);
+                            if !elem.is_empty() && !elem.contains("${{") {
+                                push_ver(elem, &mut seen, &mut result);
+                            }
+                        }
+                    } else if !val.contains("${{") {
+                        push_ver(val, &mut seen, &mut result);
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+fn check_node_extracted(
+    ctx: &Context,
+    rel: &str,
+    versions: &[String],
+    canon_major: &str,
+    canon_exact: Option<&str>,
+) {
+    for v in versions {
+        let expected = if is_full_semver(v) {
+            canon_exact.unwrap_or(canon_major)
+        } else {
+            canon_major
+        };
+        verdict(ctx, "node", rel, "node", v, expected, false);
+    }
+}
+
+/// Port of `check_node()` (check.sh lines 574-594), extended to compare exact
+/// `major.minor.patch` versions in Dockerfiles and `.github/workflows/` files
+/// against `.nvmrc`.
 pub fn check_node(ctx: &Context) {
-    let canon = match canonical_node(&ctx.root) {
+    let canon_major = match canonical_node(&ctx.root) {
         Ok(v) => v,
         Err(_) => return,
     };
+    let canon_exact = canonical_node_exact(&ctx.root).ok();
 
     let dockerfiles = ctx.files.discover(&ctx.root, "Dockerfile*");
     for dockerfile in &dockerfiles {
@@ -287,15 +491,38 @@ pub fn check_node(ctx: &Context) {
             Err(_) => continue,
         };
 
-        let majors = df_node_majors(&content);
-        if majors.is_empty() {
+        let versions = df_node_versions(&content);
+        if versions.is_empty() {
             continue;
         }
 
         let df_rel = ctx.rel(dockerfile);
-        for maj in &majors {
-            verdict(ctx, "node", &df_rel, "node", maj, &canon, false);
+        check_node_extracted(
+            ctx,
+            &df_rel,
+            &versions,
+            &canon_major,
+            canon_exact.as_deref(),
+        );
+    }
+
+    let mut workflows = ctx.files.discover(&ctx.root, "*.yml");
+    workflows.extend(ctx.files.discover(&ctx.root, "*.yaml"));
+    workflows.sort();
+    for wf in &workflows {
+        let rel = ctx.rel(wf);
+        if !(rel.starts_with(".github/workflows/") || rel.contains("/.github/workflows/")) {
+            continue;
         }
+        let content = match fs::read_to_string(wf) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let versions = wf_node_versions(&content);
+        if versions.is_empty() {
+            continue;
+        }
+        check_node_extracted(ctx, &rel, &versions, &canon_major, canon_exact.as_deref());
     }
 }
 
@@ -430,6 +657,7 @@ pub fn stale_sweep(ctx: &Context) {
 
     let c_go = canonical_go(&ctx.root).unwrap_or_default();
     let c_node = canonical_node(&ctx.root).unwrap_or_default();
+    let c_node_exact = canonical_node_exact(&ctx.root).ok();
     let c_pnpm = canonical_pnpm(&ctx.root).unwrap_or_default();
 
     for pin in &ctx.registry.rows {
@@ -468,8 +696,19 @@ pub fn stale_sweep(ctx: &Context) {
             }
             "node" => {
                 let content = fs::read_to_string(&fpath).unwrap_or_default();
-                let majors = df_node_majors(&content);
-                (c_node.clone(), majors.into_iter().next())
+                let versions = if pin.file.ends_with(".yml") || pin.file.ends_with(".yaml") {
+                    wf_node_versions(&content)
+                } else {
+                    df_node_versions(&content)
+                };
+                let cur = versions.into_iter().next();
+                let canon = match cur.as_deref() {
+                    Some(v) if is_full_semver(v) => {
+                        c_node_exact.clone().unwrap_or_else(|| c_node.clone())
+                    }
+                    _ => c_node.clone(),
+                };
+                (canon, cur)
             }
             "pnpm" => {
                 let content = fs::read_to_string(&fpath).unwrap_or_default();
@@ -1359,48 +1598,144 @@ rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n";
     }
 
     #[test]
-    fn df_node_majors_hardcoded() {
+    fn df_node_versions_hardcoded() {
         let content = "FROM node:22-slim AS build\nRUN npm install\n";
-        assert_eq!(df_node_majors(content), vec!["22"]);
+        assert_eq!(df_node_versions(content), vec!["22"]);
     }
 
     #[test]
-    fn df_node_majors_parameterized() {
+    fn df_node_versions_exact_semver() {
+        let content = "FROM node:26.13.1-bookworm-slim AS build\n";
+        assert_eq!(df_node_versions(content), vec!["26.13.1"]);
+    }
+
+    #[test]
+    fn df_node_versions_parameterized() {
         let content = "ARG NODE_VERSION=22\nFROM node:${NODE_VERSION}-slim AS build\n";
-        assert_eq!(df_node_majors(content), vec!["22"]);
+        assert_eq!(df_node_versions(content), vec!["22"]);
+        let exact = "ARG NODE_VERSION=26.12.0\nFROM node:${NODE_VERSION}-slim AS build\n";
+        assert_eq!(df_node_versions(exact), vec!["26.12.0"]);
     }
 
     #[test]
-    fn df_node_majors_no_default() {
+    fn df_node_versions_no_default() {
         // Parameterized FROM with no ARG default — emits nothing.
         let content = "ARG NODE_VERSION\nFROM node:${NODE_VERSION}-slim AS build\n";
-        assert!(df_node_majors(content).is_empty());
+        assert!(df_node_versions(content).is_empty());
     }
 
     #[test]
-    fn df_node_majors_no_node() {
+    fn df_node_versions_no_node() {
         let content = "FROM python:3.12-slim\nRUN pip install flask\n";
-        assert!(df_node_majors(content).is_empty());
+        assert!(df_node_versions(content).is_empty());
     }
 
     #[test]
-    fn df_node_majors_multi_stage_dedup() {
+    fn df_node_versions_multi_stage_dedup() {
         let content = "FROM node:22-slim AS deps\nFROM node:22-slim AS build\n";
-        // Same major appears once.
-        assert_eq!(df_node_majors(content), vec!["22"]);
+        // Same version appears once.
+        assert_eq!(df_node_versions(content), vec!["22"]);
     }
 
     #[test]
-    fn df_node_majors_multi_stage_distinct() {
+    fn df_node_versions_multi_stage_distinct() {
         let content = "FROM node:20-slim AS deps\nFROM node:22-slim AS build\n";
-        assert_eq!(df_node_majors(content), vec!["20", "22"]);
+        assert_eq!(df_node_versions(content), vec!["20", "22"]);
     }
 
     #[test]
-    fn df_node_majors_skips_platform_flag() {
+    fn df_node_versions_skips_platform_flag() {
         let content =
             "FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS build\nFROM node:22-bookworm-slim AS runtime\n";
-        assert_eq!(df_node_majors(content), vec!["22"]);
+        assert_eq!(df_node_versions(content), vec!["22"]);
+    }
+
+    #[test]
+    fn wf_node_versions_extracts_literals_and_matrices() {
+        let wf = r#"
+jobs:
+  a:
+    strategy:
+      matrix:
+        node: [26.13.1, "26"]
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+  b:
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 'v26.12.0'
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # node-version: 18
+  c:
+    strategy:
+      matrix:
+        runtime:
+          - 26.13.1
+          - 24.22.2
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.runtime }}
+"#;
+        assert_eq!(
+            wf_node_versions(wf),
+            vec!["26.12.0", "26.13.1", "26", "24.22.2"]
+        );
+    }
+
+    #[test]
+    fn check_node_compares_exact_semver_in_dockerfiles_and_workflows() {
+        let ok_dir = repo(&[
+            (".nvmrc", "26.13.1\n"),
+            (
+                "app/Dockerfile",
+                "ARG NODE_VERSION=26.13.1\nFROM node:${NODE_VERSION}-slim AS deps\nFROM node:26-bookworm-slim AS runtime\n",
+            ),
+            (
+                "app/.github/workflows/ci.yml",
+                "jobs:\n  test:\n    strategy:\n      matrix:\n        node: [26.13.1]\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n          node-version: ${{ matrix.node }}\n      - uses: actions/setup-node@v7\n        with:\n          node-version: 26.13.1\n      - uses: actions/setup-node@v7\n        with:\n          node-version: \"26\"\n",
+            ),
+        ]);
+        let ok_ctx = Context::for_root(ok_dir.to_str().unwrap());
+        check_node(&ok_ctx);
+        let ok_fail = ok_ctx.fail_count.get();
+        let ok_rows = ok_ctx.rows.get("node");
+        let _ = fs::remove_dir_all(&ok_dir);
+        assert_eq!(ok_fail, 0, "{ok_rows}");
+
+        let bad_dir = repo(&[
+            (".nvmrc", "26.13.1\n"),
+            ("app/Dockerfile", "FROM node:26.12.0-bookworm-slim AS build\n"),
+            (
+                "app/Dockerfile.param",
+                "ARG NODE_VERSION=26.12.0\nFROM node:${NODE_VERSION}-slim\n",
+            ),
+            (
+                ".github/workflows/ci.yml",
+                "jobs:\n  test:\n    strategy:\n      matrix:\n        node: [26.11.0]\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n          node-version: ${{ matrix.node }}\n      - uses: actions/setup-node@v7\n        with:\n          node-version: 26.12.0\n",
+            ),
+            (
+                "other/.github/workflows/release.yml",
+                "jobs:\n  rel:\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n          node-version: 24\n",
+            ),
+        ]);
+        let bad_ctx = Context::for_root(bad_dir.to_str().unwrap());
+        check_node(&bad_ctx);
+        let bad_fail = bad_ctx.fail_count.get();
+        let bad_rows = bad_ctx.rows.get("node");
+        let _ = fs::remove_dir_all(&bad_dir);
+        assert_eq!(bad_fail, 5, "{bad_rows}");
+        assert!(
+            bad_rows.contains("26.11.0")
+                && bad_rows.contains("26.12.0")
+                && bad_rows.contains("26.13.1"),
+            "{bad_rows}"
+        );
     }
 
     #[test]
