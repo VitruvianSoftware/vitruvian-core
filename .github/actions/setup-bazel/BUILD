@@ -6,6 +6,14 @@ load("//tools/pytest:defs.bzl", "py_test")
 
 # gazelle:ignore
 
+exports_files(
+    [
+        "cache_capacity_guard.py",
+        "cache_prune.py",
+    ],
+    visibility = ["//.github/actions/android-emulator:__pkg__"],
+)
+
 # runner_cache_check.py runs under the runner's own python3 before Bazel
 # starts (action.yml), so it is standard library only and has no py_binary.
 py_test(
