@@ -660,9 +660,15 @@ jobs:
             /bin/mkdir -p "$stage"
             /usr/bin/ditto "/tmp/dist-${arch}/Vitruvian Code.app" "$stage/Vitruvian Code.app"
             /bin/ln -s /Applications "$stage/Applications"
+            # Size the volume explicitly (+25% + 32 MiB) so hdiutil's automatic
+            # -srcfolder estimate cannot undersize it on macos-15; UDZO compresses
+            # unused space away.
+            stage_kb="$(/usr/bin/du -sk "$stage" | /usr/bin/awk '{print $1}')"
+            dmg_mb=$(( (stage_kb * 125 / 100 + 1023) / 1024 + 32 ))
             /usr/bin/hdiutil create \
               -volname "Vitruvian Code" \
               -srcfolder "$stage" \
+              -size "${dmg_mb}m" \
               -ov \
               -format UDZO \
               "VitruvianCode-${VERSION}-${name}.dmg"
