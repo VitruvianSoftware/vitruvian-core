@@ -81,8 +81,8 @@ jobs:
         if: steps.detect.outputs.version
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+          V: ${{ steps.detect.outputs.version }}
         run: |
-          V="${{ steps.detect.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$V" -m "Release v$V"
@@ -102,12 +102,116 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build for ${{ matrix.arch }}
+      - name: Compute Rust 1.98.1 cache key and path
+        id: rust-cache-key
+        env:
+          ARCH: ${{ matrix.arch }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
         run: |
+          set -euo pipefail
+          case "${ARCH}" in
+            arm64) rust_target="aarch64-apple-darwin" ;;
+            x86_64) rust_target="x86_64-apple-darwin" ;;
+            *) echo "::error::Unsupported arch ${ARCH}" >&2; exit 1 ;;
+          esac
+          rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+          host_triple="$({ rustc -vV 2>/dev/null || true; } | awk '/^host:/ { print $2 }')"
+          if [ -z "$host_triple" ]; then
+            case "${RUNNER_OS}:${RUNNER_ARCH}" in
+              macOS:ARM64) host_triple="aarch64-apple-darwin" ;;
+              macOS:X64) host_triple="x86_64-apple-darwin" ;;
+              *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+            esac
+          fi
+          {
+            echo "rust-target=${rust_target}"
+            echo "path=${rustup_home}/toolchains/1.98.1-${host_triple}"
+            # Bump the v1 segment to drop a bad cache entry.
+            if [ "${rust_target}" = "${host_triple}" ]; then
+              echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal"
+            else
+              echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal-${rust_target}"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore Rust 1.98.1 toolchain cache (read-only)
+        id: rust-cache-restore
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Restore and save Rust 1.98.1 toolchain cache (main only)
+        id: rust-cache-save
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Check the restored Rust 1.98.1 toolchain
+        id: rust-cache-verify
+        env:
+          CACHE_HIT: ${{ steps.rust-cache-restore.outputs.cache-hit == 'true' || steps.rust-cache-save.outputs.cache-hit == 'true' }}
+          TOOLCHAIN_DIR: ${{ steps.rust-cache-key.outputs.path }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
+          verify_toolchain() {
+            if [ -z "${RUST_TARGET}" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/cargo" ]; then
+              return 1
+            fi
+            local probe_dir rc=0
+            probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/rust-probe.XXXXXX")" || return 1
+            if [ -z "${probe_dir}" ] || [ ! -d "${probe_dir}" ]; then
+              return 1
+            fi
+            if ! printf 'fn main(){}\n' > "${probe_dir}/probe.rs"; then
+              rm -rf "${probe_dir}" || true
+              return 1
+            fi
+            if ! "${TOOLCHAIN_DIR}/bin/rustc" --edition 2021 --target "${RUST_TARGET}" "${probe_dir}/probe.rs" -o "${probe_dir}/probe" >/dev/null 2>&1; then
+              rc=1
+            elif ! "${TOOLCHAIN_DIR}/bin/cargo" --version >/dev/null 2>&1; then
+              rc=1
+            fi
+            rm -rf "${probe_dir}" || return 1
+            return "${rc}"
+          }
+
+          usable=false
+          if [ "${CACHE_HIT}" = "true" ]; then
+            if verify_toolchain; then
+              usable=true
+            else
+              echo "::warning::Cached Rust toolchain at ${TOOLCHAIN_DIR} failed its check; deleting it so the workflow installs"
+              rm -rf "${TOOLCHAIN_DIR}"
+            fi
+          fi
+          echo "usable=${usable}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust 1.98.1 toolchain
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache-verify.outputs.usable }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal --target "${RUST_TARGET}"
+          fi
+          rustup default 1.98.1
+          rustc --version
+
+      - name: Build for ${{ matrix.arch }}
+        env:
+          ARCH: ${{ matrix.arch }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
           cd macos
-          swift build -c release --arch ${{ matrix.arch }}
-          RUST_TARGET=$([ "${{ matrix.arch }}" = "arm64" ] && echo "aarch64-apple-darwin" || echo "x86_64-apple-darwin")
-          rustup target add "$RUST_TARGET"
+          swift build -c release --arch "$ARCH"
           rustc --edition 2021 -O --target "$RUST_TARGET" --crate-type lib --crate-name vitruvian_code_src_lib ../src/rs/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_src_lib.rlib"
           rustc --edition 2021 -O --target "$RUST_TARGET" ../src/rs/main.rs -L "$RUNNER_TEMP" --extern vitruvian_code_src_lib="$RUNNER_TEMP/libvitruvian_code_src_lib.rlib" -o .build/release/bot-engine
 
@@ -136,6 +240,7 @@ jobs:
       contents: write
     env:
       SIGNING: developer-id
+      VERSION: ${{ needs.detect.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -153,7 +258,38 @@ jobs:
           name: VitruvianCode-x86_64
           path: /tmp/x86_64
 
+      - name: Compute bundled Node cache key
+        id: node-cache-key
+        run: |
+          set -euo pipefail
+          lock_file="macos/claude-helper/node.lock"
+          NODE_VERSION="$(awk -F= '$1 == "version" { print $2; exit }' "$lock_file")"
+          ARM64_SHA="$(awk -F= '$1 == "darwin-arm64" { print $2; exit }' "$lock_file")"
+          X64_SHA="$(awk -F= '$1 == "darwin-x64" { print $2; exit }' "$lock_file")"
+          test -n "$NODE_VERSION" && test -n "$ARM64_SHA" && test -n "$X64_SHA"
+          {
+            echo "path=${RUNNER_TEMP}/node-tarballs"
+            # Bump the v1 segment to drop a bad cache entry.
+            echo "key=vitruvian-code-node-v1-${NODE_VERSION}-${ARM64_SHA}-${X64_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore bundled Node cache (read-only)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.node-cache-key.outputs.path }}
+          key: ${{ steps.node-cache-key.outputs.key }}
+
+      - name: Restore and save bundled Node cache (main only)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.node-cache-key.outputs.path }}
+          key: ${{ steps.node-cache-key.outputs.key }}
+
       - name: Fetch and verify bundled Node
+        env:
+          NODE_CACHE_DIR: ${{ steps.node-cache-key.outputs.path }}
         run: |
           set -euo pipefail
           lock_file="macos/claude-helper/node.lock"
@@ -164,15 +300,26 @@ jobs:
 
           fetch_dir="$RUNNER_TEMP/node-fetch"
           rm -rf "$fetch_dir"
-          mkdir -p "$fetch_dir" /tmp/arm64/claude-helper /tmp/x86_64/claude-helper
+          mkdir -p "$NODE_CACHE_DIR" "$fetch_dir" /tmp/arm64/claude-helper /tmp/x86_64/claude-helper
 
           for spec in "darwin-arm64:${ARM64_SHA}:arm64" "darwin-x64:${X64_SHA}:x86_64"; do
             IFS=: read -r node_arch want_sha out_arch <<< "$spec"
             name="node-v${NODE_VERSION}-${node_arch}"
-            tarball="${fetch_dir}/${name}.tar.gz"
-            curl -fsSL --retry 3 --retry-all-errors \
-              "https://nodejs.org/dist/v${NODE_VERSION}/${name}.tar.gz" \
-              -o "$tarball"
+            tarball="${NODE_CACHE_DIR}/${name}.tar.gz"
+            if [ -f "$tarball" ]; then
+              if ! printf '%s  %s\n' "$want_sha" "$tarball" | shasum -a 256 -c -; then
+                echo "::warning::Cached ${name}.tar.gz failed sha256 check; re-downloading"
+                rm -f "$tarball"
+              fi
+            fi
+            if [ ! -f "$tarball" ]; then
+              tmp_tarball="${fetch_dir}/${name}.tar.gz"
+              curl -fsSL --retry 3 --retry-all-errors \
+                "https://nodejs.org/dist/v${NODE_VERSION}/${name}.tar.gz" \
+                -o "$tmp_tarball"
+              printf '%s  %s\n' "$want_sha" "$tmp_tarball" | shasum -a 256 -c -
+              mv "$tmp_tarball" "$tarball"
+            fi
             printf '%s  %s\n' "$want_sha" "$tarball" | shasum -a 256 -c -
             tar -xzf "$tarball" -C "$fetch_dir" "${name}/bin/node"
             cp "${fetch_dir}/${name}/bin/node" "/tmp/${out_arch}/node"
@@ -226,11 +373,100 @@ jobs:
           # The Claude helper is one JS file for both.
           cp /tmp/arm64/claude-helper/claude-helper.mjs /tmp/universal/claude-helper/claude-helper.mjs
 
+      - name: Compute Rust 1.98.1 cache key and path
+        id: rust-cache-key
+        env:
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+          host_triple="$({ rustc -vV 2>/dev/null || true; } | awk '/^host:/ { print $2 }')"
+          if [ -z "$host_triple" ]; then
+            case "${RUNNER_OS}:${RUNNER_ARCH}" in
+              macOS:ARM64) host_triple="aarch64-apple-darwin" ;;
+              macOS:X64) host_triple="x86_64-apple-darwin" ;;
+              *) echo "::error::Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+            esac
+          fi
+          {
+            echo "rust-target=${host_triple}"
+            echo "path=${rustup_home}/toolchains/1.98.1-${host_triple}"
+            # Bump the v1 segment to drop a bad cache entry.
+            echo "key=rustup-toolchain-v1-${RUNNER_OS}-${RUNNER_ARCH}-1.98.1-minimal"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore Rust 1.98.1 toolchain cache (read-only)
+        id: rust-cache-restore
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Restore and save Rust 1.98.1 toolchain cache (main only)
+        id: rust-cache-save
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ steps.rust-cache-key.outputs.path }}
+          key: ${{ steps.rust-cache-key.outputs.key }}
+
+      - name: Check the restored Rust 1.98.1 toolchain
+        id: rust-cache-verify
+        env:
+          CACHE_HIT: ${{ steps.rust-cache-restore.outputs.cache-hit == 'true' || steps.rust-cache-save.outputs.cache-hit == 'true' }}
+          TOOLCHAIN_DIR: ${{ steps.rust-cache-key.outputs.path }}
+          RUST_TARGET: ${{ steps.rust-cache-key.outputs.rust-target }}
+        run: |
+          set -euo pipefail
+          verify_toolchain() {
+            if [ -z "${RUST_TARGET}" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/rustc" ] || [ ! -x "${TOOLCHAIN_DIR}/bin/cargo" ]; then
+              return 1
+            fi
+            local probe_dir rc=0
+            probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/rust-probe.XXXXXX")" || return 1
+            if [ -z "${probe_dir}" ] || [ ! -d "${probe_dir}" ]; then
+              return 1
+            fi
+            if ! printf 'fn main(){}\n' > "${probe_dir}/probe.rs"; then
+              rm -rf "${probe_dir}" || true
+              return 1
+            fi
+            if ! "${TOOLCHAIN_DIR}/bin/rustc" --edition 2021 --target "${RUST_TARGET}" "${probe_dir}/probe.rs" -o "${probe_dir}/probe" >/dev/null 2>&1; then
+              rc=1
+            elif ! "${TOOLCHAIN_DIR}/bin/cargo" --version >/dev/null 2>&1; then
+              rc=1
+            fi
+            rm -rf "${probe_dir}" || return 1
+            return "${rc}"
+          }
+
+          usable=false
+          if [ "${CACHE_HIT}" = "true" ]; then
+            if verify_toolchain; then
+              usable=true
+            else
+              echo "::warning::Cached Rust toolchain at ${TOOLCHAIN_DIR} failed its check; deleting it so the workflow installs"
+              rm -rf "${TOOLCHAIN_DIR}"
+            fi
+          fi
+          echo "usable=${usable}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust 1.98.1 toolchain
+        env:
+          CACHED_TOOLCHAIN_USABLE: ${{ steps.rust-cache-verify.outputs.usable }}
+        run: |
+          set -euo pipefail
+          if [ "${CACHED_TOOLCHAIN_USABLE}" != "true" ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
+          rustc +1.98.1 --version
+
       - name: Assemble .app bundles
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
-          rustc --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
-          rustc --edition 2021 macos/scripts/src/bin/bundle.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/bundle-app"
+          rustc +1.98.1 --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
+          rustc +1.98.1 --edition 2021 macos/scripts/src/bin/bundle.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/bundle-app"
 
           # Universal
           mkdir -p /tmp/dist-universal
@@ -266,8 +502,8 @@ jobs:
           if [ "${SIGNING:-developer-id}" != "adhoc" ]; then
             export CHECK_NOTARIZED=1
           fi
-          rustc --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
-          rustc --edition 2021 macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
+          rustc +1.98.1 --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
+          rustc +1.98.1 --edition 2021 macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-universal/Vitruvian Code.app" arm64 x86_64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-arm64/Vitruvian Code.app" arm64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-x86_64/Vitruvian Code.app" x86_64
@@ -294,7 +530,6 @@ jobs:
       - name: Create DMGs
         run: |
           set -euo pipefail
-          VERSION="${{ needs.detect.outputs.version }}"
 
           for arch in universal arm64 x86_64; do
             # The build for every Mac is the "macos" one.
@@ -326,7 +561,6 @@ jobs:
           VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
           VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
           scripts/sign-and-notarize.sh dmgs \
             "VitruvianCode-${VERSION}-macos.dmg" \
             "VitruvianCode-${VERSION}-arm64.dmg" \
@@ -334,7 +568,6 @@ jobs:
 
       - name: Create ZIP for auto-updater
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
           ditto -c -k --keepParent "/tmp/dist-universal/Vitruvian Code.app" "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip"
           cd "${GITHUB_WORKSPACE}"
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"
@@ -349,7 +582,6 @@ jobs:
       # its size and checksum, which the sidecar and the release notes carry.
       - name: Zip the tool's folder
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
           folder="/tmp/tool/vitruvian-code"
           mkdir -p "$folder/bin/claude-helper"
           cp macos/atrium-extension/vitruvian-tool.json "$folder/"
@@ -373,7 +605,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
           TAG="v${VERSION}"
 
           for f in *.dmg *.zip *.sha256; do
@@ -388,7 +619,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
           TAG="v${VERSION}"
           asset="vitruvian-code-tool-${VERSION}.zip"
           size="$(stat -f %z "$asset")"
@@ -401,7 +631,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
-          VERSION="${{ needs.detect.outputs.version }}"
           DMG_FILE="VitruvianCode-${VERSION}-macos.dmg"
 
           # Calculate SHA256 of the macOS (all Macs) dmg
