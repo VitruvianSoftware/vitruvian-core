@@ -628,9 +628,10 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
     );
     let dmgs = body("Create DMGs");
     expect(
-        "DMGs built with `/usr/bin/hdiutil create` in UDZO format with an /Applications symlink",
+        "DMGs built with `until /usr/bin/hdiutil create` (retried on \"Resource busy\") in UDZO format with an /Applications symlink",
         dmgs.iter()
-            .any(|l| l.starts_with("/usr/bin/hdiutil create"))
+            .any(|l| l.starts_with("until /usr/bin/hdiutil create"))
+            && dmgs.iter().any(|l| l.contains("hdiutil detach -force"))
             && dmgs.iter().any(|l| l.contains("-format UDZO"))
             && dmgs.iter().any(|l| l.contains("/Applications")),
     );

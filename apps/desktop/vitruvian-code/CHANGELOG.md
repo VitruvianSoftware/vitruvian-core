@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.51.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.50.0...vitruvian-code-v1.51.0) (2026-11-28)
+
+
+### Features
+
+* **vitruvian-code:** run agy on ACP and Claude on the Agent SDK by default ([#5570](https://github.com/VitruvianSoftware/vitruvian-core/issues/5570)) ([4ffb644](https://github.com/VitruvianSoftware/vitruvian-core/commit/4ffb644d14e383c443a99c464e1fe72b7e0d6591))
+
 ## [1.50.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.49.2...vitruvian-code-v1.50.0) (2026-11-26)
 
 

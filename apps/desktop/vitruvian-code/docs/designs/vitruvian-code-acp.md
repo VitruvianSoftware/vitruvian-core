@@ -1,7 +1,7 @@
 # Vitruvian Code: live agent connections (ACP and the Claude Agent SDK)
 
 *   **Author:** James Nguyen (drafted with Claude)
-*   **Status:** Proposed
+*   **Status:** Implemented (steps 1 to 6, November 2026)
 *   **Date:** 2026-11-11
 
 --------------------------------------------------------------------------------
@@ -701,6 +701,26 @@ is: where T3 Code has solved the same question, copy T3 Code.
 | Reopening agy sessions | `session/resume`, not `session/load` (load replays every tool call) | `resumeMethod: "resume"` in `AntigravityAcpSupport.ts` |
 | Claude terms risk | Accepted; see Risks & Mitigations | `docs/user/providers-claude.md` |
 | Gemini CLI | Out of scope (deprecated in favour of agy) | — |
+
+## Where the shipped app differs
+
+Recorded when step 6 landed:
+
+*   **Ollama (claude)** can run on the Agent SDK, but its default stays the
+    command line. Section 9 lists the Agent SDK for it; the default switch
+    covered agy and Claude only.
+*   **Scheduled runs** stay on the command line unless a connection is chosen.
+    The unattended-run rules in section 8 apply when one is. Moving their
+    default is a follow-up.
+*   **Registry agents' modes:** the app sends a mode only for the plan switch
+    (the agent's own `plan` or `architect` mode, and back), as T3 Code's shared
+    adapter does. The approval mode only decides how permission requests are
+    answered.
+*   **Open question, the Agent SDK's licence:** the helper bundles
+    `@anthropic-ai/claude-agent-sdk`, which is not open source. Anthropic's
+    terms say the SDK is governed by its Commercial Terms, but they do not
+    explicitly address shipping the SDK's code inside another app. See
+    `THIRD_PARTY_NOTICES.md`.
 
 ## References
 
