@@ -427,3 +427,91 @@ fn test_user_configurations_define_all_chronograph_options_and_launch_targets() 
         .collect();
     assert_eq!(launches, expected_launches);
 }
+
+#[test]
+fn test_every_slot_has_a_default_data_source_on_pixel_and_samsung() {
+    // Without a default, a slot shows nothing until someone picks a source by hand.
+    // Pixel/Fitbit sources come first; Samsung's are the fallback on Galaxy watches,
+    // which do not have the Pixel ones.
+    let root = parse_xml_file(&base_dir().join("res/raw/watchface.xml"));
+    let slots = root.findall_descendants("ComplicationSlot");
+    assert_eq!(slots.len(), 5, "expected 5 complication slots");
+    for slot in slots {
+        let id = slot.attr("slotId").unwrap_or("?");
+        let policy = slot
+            .find("DefaultProviderPolicy")
+            .unwrap_or_else(|| panic!("slot {id} has no DefaultProviderPolicy"));
+        let supported: Vec<&str> = slot
+            .attr("supportedTypes")
+            .unwrap_or("")
+            .split(' ')
+            .collect();
+        for (provider, kind) in [
+            ("primaryProvider", "primaryProviderType"),
+            ("secondaryProvider", "secondaryProviderType"),
+        ] {
+            let component = policy
+                .attr(provider)
+                .unwrap_or_else(|| panic!("slot {id} has no {provider}"));
+            assert!(
+                component.contains('/'),
+                "slot {id} {provider} is not pkg/class: {component}"
+            );
+            let t = policy.attr(kind).unwrap_or("");
+            assert!(
+                supported.contains(&t),
+                "slot {id} {kind}={t} is not in supportedTypes"
+            );
+        }
+        assert!(
+            policy
+                .attr("secondaryProvider")
+                .unwrap_or("")
+                .starts_with("com.samsung."),
+            "slot {id} secondary provider should be Samsung's"
+        );
+        assert!(
+            policy.attr("defaultSystemProvider").is_some(),
+            "slot {id} has no system fallback"
+        );
+    }
+}
+
+#[test]
+fn test_world_clock_falls_back_to_utc_when_no_city_is_named() {
+    // Samsung World Clock sends only "Worldclock" until a city is picked in it, so the
+    // world-clock box must work out UTC itself rather than print the placeholder.
+    let root = parse_xml_file(&base_dir().join("res/raw/watchface.xml"));
+    let slot = root
+        .findall_descendants("ComplicationSlot")
+        .into_iter()
+        .find(|s| s.attr("slotId") == Some("1"))
+        .expect("world clock slot 1");
+    let condition = slot
+        .findall_descendants("Condition")
+        .into_iter()
+        .next()
+        .expect("slot 1 has a Condition");
+    let compare = condition
+        .find("Compare")
+        .expect("Compare branch for a named city");
+    assert_eq!(compare.attr("expression"), Some("has_city"));
+    let default = condition
+        .find("Default")
+        .expect("Default branch for no city");
+    let utc_params: Vec<&str> = default
+        .findall_descendants("Parameter")
+        .into_iter()
+        .filter_map(|p| p.attr("expression"))
+        .collect();
+    // One text per bezel/font combination, each built from the UTC clock.
+    assert_eq!(default.findall_descendants("Template").len(), 6);
+    assert!(
+        utc_params.iter().all(|e| e.contains("[UTC_TIMESTAMP]")),
+        "{utc_params:?}"
+    );
+    assert!(
+        utc_params.iter().all(|e| !e.contains("COMPLICATION")),
+        "the UTC fallback must not print the source's placeholder text"
+    );
+}

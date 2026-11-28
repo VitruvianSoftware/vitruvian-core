@@ -25,7 +25,24 @@ bazel test //apps/mobile/vitruvian-watch/faces/daytona-platinum:watchface_test
 # Connect to Pixel Watch 4 over Wireless ADB and install the WFF APK:
 bazel run //tools/adb-connect -- --device watch
 bazel run //apps/mobile/vitruvian-watch/faces/daytona-platinum:install
+
+# Pick the watch, start on a theme and text size, and reinstall from scratch
+# (a watch that already has the face keeps its saved settings otherwise):
+ANDROID_SERIAL=<ip:port> bazel run //apps/mobile/vitruvian-watch/faces/daytona-platinum:install -- \
+  --fresh --default theme_style=theme_lemans --default font_scale=font_xlarge
 ```
+
+`--default <setting>=<option>` works for any setting in the face's
+`<UserConfigurations>`; an unknown setting or option is refused.
+
+## Samsung Galaxy Watch
+
+The same face runs on Galaxy Watches (tested on an SM-L500, Wear OS on Android 16). Each
+subdial asks for the Pixel/Fitbit data source first and falls back to Samsung's: Samsung
+Health for heart rate and steps, Samsung Weather for weather and sunrise/sunset, and Samsung
+World Clock for the world clock. Samsung World Clock sends only "Worldclock" until a city is
+picked in it, so the face shows UTC time, worked out on the watch, whenever a source names no
+city.
 
 ## Subdirectories & Boundaries
 - [scripts](./scripts/README.md): Subsystem blueprint grouping child modules under apps/mobile/vitruvian-watch/faces/daytona-plati...
