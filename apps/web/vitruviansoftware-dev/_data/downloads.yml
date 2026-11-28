@@ -28,7 +28,7 @@ categories:
     items:
       - id: vitruvian-code
         name: Vitruvian Code
-        version: "1.50.0"
+        version: "1.53.0"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
@@ -38,20 +38,20 @@ categories:
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-macos.dmg
-            size: 96.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.53.0/VitruvianCode-1.53.0-macos.dmg
+            size: 102.7 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-arm64.dmg
-            size: 49.4 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.53.0/VitruvianCode-1.53.0-arm64.dmg
+            size: 52.8 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-x86_64.dmg
-            size: 51.2 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.53.0/VitruvianCode-1.53.0-x86_64.dmg
+            size: 55.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/VitruvianCode-1.50.0-macos.zip
-            size: 85.1 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.53.0/VitruvianCode-1.53.0-macos.zip
+            size: 91.9 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
@@ -60,7 +60,7 @@ categories:
 
       - id: vitruvian-atrium
         name: Vitruvian Atrium
-        version: "3.104.0"
+        version: "3.105.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -68,19 +68,19 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-atrium
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.104.0/VitruvianAtrium-3.104.0-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.105.0/VitruvianAtrium-3.105.0-universal.dmg
             size: 86.4 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.104.0/VitruvianAtrium-3.104.0-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.105.0/VitruvianAtrium-3.105.0-arm64.dmg
             size: 45.5 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.104.0/VitruvianAtrium-3.104.0-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.105.0/VitruvianAtrium-3.105.0-x86_64.dmg
             size: 47.0 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.104.0/VitruvianAtrium-3.104.0-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.105.0/VitruvianAtrium-3.105.0-universal.zip
             size: 86.5 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
