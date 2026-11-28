@@ -607,6 +607,44 @@ final class UnattendedRunTests: XCTestCase {
         }
     }
 
+    /// A scheduled run gets the connection a chat gets: with no choice saved, agy and
+    /// registry agents run over ACP and Claude on the Agent SDK; the others, and any
+    /// provider with a saved choice, keep theirs.
+    func testARunUsesTheSameDefaultConnectionAsAChat() async throws {
+        let registryAgent = VitruvianCodeCLIProvider(
+            id: UUID(), name: "OpenCode (ACP)", commandTemplate: "", isBuiltIn: false, connection: nil,
+            registryAgent: .init(agentID: "opencode", version: "2.4.2"))
+        var chosen = VitruvianCodeCLIProvider.antigravity
+        chosen.connection = .commandLine
+        let cases: [(VitruvianCodeCLIProvider, AgentConnectionKind, String, String)] = [
+            (.antigravity, .acp, "AntigravityACPConnection", "agy"),
+            (.claude, .claudeSDK, "ClaudeSDKConnection", "Claude Code"),
+            (.ollama, .commandLine, "CommandLineConnection", "Ollama (claude)"),
+            (.opencode, .commandLine, "CommandLineConnection", "OpenCode"),
+            (registryAgent, .acp, "", "a registry agent"),
+            (chosen, .commandLine, "CommandLineConnection", "agy with the command line chosen"),
+        ]
+        // The app's own factory, which only builds the object; nothing is started.
+        let realFactory = VitruvianCodeEngine.Environment.live(stateDirectoryOverride: nil).makeConnection
+        for (provider, expected, realType, name) in cases {
+            let fresh = World()
+            defer { fresh.cleanUp() }
+            fresh.provider = provider
+            let task = fresh.addTask()
+            _ = await fresh.runner(mode: .yolo).run(taskID: task.id)
+            let connection = try XCTUnwrap(fresh.connections.first, name)
+            XCTAssertEqual(connection.spec.kind, expected, name)
+            XCTAssertEqual(connection.spec.provider.connection, expected,
+                           "\(name): the app's connection factory reads the provider's own connection")
+            let built = String(describing: type(of: realFactory(connection.spec)))
+            if realType.isEmpty {
+                XCTAssertNotEqual(built, "CommandLineConnection", name)
+            } else {
+                XCTAssertEqual(built, realType, name)
+            }
+        }
+    }
+
     func testAPlanSwitchOnlyLowersTheModeAndTheTaskModelDoesNotChangeIt() async throws {
         let task = world.addTask()
         var changed = task

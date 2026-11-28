@@ -386,9 +386,14 @@ public final class VitruvianCodeAutomationRunner {
         if !task.model.isEmpty { turnConfiguration.model = task.model }
         if planSwitch { turnConfiguration.approvalMode = .plan }
         let plan = planSwitch
+        // The same default a chat gets: agy and registry agents on ACP, Claude on the
+        // Agent SDK, the rest on the command line, unless the provider saved a choice.
+        // The connection factory reads the provider's own `connection`, so the provider
+        // itself carries the default, as the engine does for a chat.
+        let resolved = provider.withDefaultConnection
         let spec = AgentConnectionSpec(
-            kind: provider.connection ?? .commandLine,
-            provider: provider,
+            kind: resolved.resolvedConnection,
+            provider: resolved,
             configuration: turnConfiguration,
             agentPath: program,
             workingDirectory: directory,
