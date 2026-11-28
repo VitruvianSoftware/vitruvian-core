@@ -146,6 +146,7 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
             "Sign and notarize DMGs",
             "Create ZIP for auto-updater",
             "Zip the tool's folder",
+            "Zip the per-Mac tool folders",
         ],
         _ => &[],
     }
@@ -667,6 +668,132 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
                 .iter()
                 .any(|l| l.contains("$folder/bin/claude-helper/claude-helper.mjs")),
     );
+    let catalog_pins = body("Say what the catalog entry pins");
+    expect(
+        "Say what the catalog entry pins lists the all-Macs, arm64, and x86_64 tool zips",
+        catalog_pins
+            .iter()
+            .any(|l| l.contains("vitruvian-code-tool-${VERSION}.zip"))
+            && catalog_pins
+                .iter()
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-arm64.zip"))
+            && catalog_pins
+                .iter()
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-x86_64.zip")),
+    );
+    problems
+}
+
+/// Ensures `job` in `text` builds per-Mac (`arm64` and `x86_64`) thin tool zips
+/// after signing and disk cleanup, using `lipo -thin` from the signed universal
+/// binaries, verifying each with `check-packaged-app`, writing `.sha256` sidecars,
+/// and enforcing the 268435456-byte cap.
+pub fn per_mac_tool_zips_ok(text: &str, label: &str, job: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Some(lines) = job_lines(text, job) else {
+        problems.push(format!("{}: has no job `{}`", label, job));
+        return problems;
+    };
+    let (_, steps) = split_job(&lines);
+    let step_idx = |name: &str| -> Option<usize> { steps.iter().position(|(t, _)| t == name) };
+
+    let per_mac_idx = step_idx("Zip the per-Mac tool folders");
+    let Some(idx) = per_mac_idx else {
+        problems.push(format!(
+            "{}, job `{}`: missing step `Zip the per-Mac tool folders`",
+            label, job
+        ));
+        return problems;
+    };
+
+    for prior in [
+        "Sign and notarize apps and tool",
+        "Free disk space before the DMGs",
+        "Zip the tool's folder",
+    ] {
+        match step_idx(prior) {
+            None => problems.push(format!(
+                "{}, job `{}`: missing prerequisite step `{}`",
+                label, job, prior
+            )),
+            Some(p_idx) if idx <= p_idx => problems.push(format!(
+                "{}, job `{}`: `Zip the per-Mac tool folders` must run after `{}`",
+                label, job, prior
+            )),
+            _ => {}
+        }
+    }
+
+    if let Some(clean_idx) = step_idx("Free disk space before the DMGs") {
+        let clean_body = &steps[clean_idx].1;
+        for kept in [
+            "/tmp/universal/tool-node",
+            "/tmp/universal/vitruvian-code-tool",
+        ] {
+            if clean_body.iter().any(|l| l.contains(kept)) {
+                problems.push(format!(
+                    "{}, job `{}`, step `Free disk space before the DMGs`: must not remove `{}` before per-Mac zips are built",
+                    label, job, kept
+                ));
+            }
+        }
+    }
+
+    let body = &steps[idx].1;
+    let checks: &[(&str, bool)] = &[
+        (
+            "iterates `arm64` and `x86_64`",
+            body.iter()
+                .any(|l| l.contains("arm64") && l.contains("x86_64")),
+        ),
+        (
+            "extracts thin `bin/node` with `lipo /tmp/universal/tool-node -thin \"$arch\" -output \"$folder/bin/node\"`",
+            body.iter().any(|l| {
+                l.contains("lipo /tmp/universal/tool-node -thin \"$arch\" -output \"$folder/bin/node\"")
+            }),
+        ),
+        (
+            "extracts thin `bin/tool` with `lipo /tmp/universal/vitruvian-code-tool -thin \"$arch\" -output \"$folder/bin/tool\"`",
+            body.iter().any(|l| {
+                l.contains(
+                    "lipo /tmp/universal/vitruvian-code-tool -thin \"$arch\" -output \"$folder/bin/tool\"",
+                )
+            }),
+        ),
+        (
+            "runs `\"$RUNNER_TEMP/check-packaged-app\" --tool-folder \"$folder\" \"$arch\"`",
+            body.iter().any(|l| {
+                l.contains("\"$RUNNER_TEMP/check-packaged-app\" --tool-folder \"$folder\" \"$arch\"")
+            }),
+        ),
+        (
+            "creates `vitruvian-code-tool-${VERSION}-${arch}.zip`",
+            body.iter()
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-${arch}.zip"))
+                && body
+                    .iter()
+                    .any(|l| l.starts_with("(cd \"$folder\" && zip -r -X \"${GITHUB_WORKSPACE}/${asset}\" .)")),
+        ),
+        (
+            "writes `shasum -a 256 \"$asset\" > \"$asset.sha256\"`",
+            body.iter()
+                .any(|l| l.contains("shasum -a 256 \"$asset\" > \"$asset.sha256\"")),
+        ),
+        (
+            "enforces the 268435456-byte size cap",
+            body.iter().any(|l| l.contains("268435456")),
+        ),
+    ];
+
+    for (desc, ok) in checks {
+        if !ok {
+            problems.push(format!(
+                "{}, job `{}`, step `Zip the per-Mac tool folders`: missing {}",
+                label, job, desc
+            ));
+        }
+    }
+
     problems
 }
 
@@ -1362,6 +1489,70 @@ jobs:
         verify_toolchain_in_sync(canonical_fn, &tweaked, &two_copies).len(),
         1
     );
+
+    // 7. per_mac_tool_zips_ok fails when missing step or lipo -thin, passes when complete
+    let missing_per_mac_wf = "\
+jobs:
+  package:
+    steps:
+      - name: Sign and notarize apps and tool
+        run: echo sign
+      - name: Free disk space before the DMGs
+        run: rm -rf /tmp/arm64
+      - name: Zip the tool's folder
+        run: echo zip
+";
+    assert_eq!(
+        per_mac_tool_zips_ok(missing_per_mac_wf, "test", "package").len(),
+        1
+    );
+
+    let bad_per_mac_wf = "\
+jobs:
+  package:
+    steps:
+      - name: Sign and notarize apps and tool
+        run: echo sign
+      - name: Free disk space before the DMGs
+        run: rm -rf /tmp/arm64
+      - name: Zip the tool's folder
+        run: echo zip
+      - name: Zip the per-Mac tool folders
+        run: |
+          for arch in arm64 x86_64; do
+            echo \"$arch\"
+          done
+";
+    assert!(!per_mac_tool_zips_ok(bad_per_mac_wf, "test", "package").is_empty());
+
+    let good_per_mac_wf = "\
+jobs:
+  package:
+    steps:
+      - name: Sign and notarize apps and tool
+        run: echo sign
+      - name: Free disk space before the DMGs
+        run: rm -rf /tmp/arm64
+      - name: Zip the tool's folder
+        run: echo zip
+      - name: Zip the per-Mac tool folders
+        run: |
+          max_bytes=268435456
+          for arch in arm64 x86_64; do
+            folder=\"/tmp/tool-${arch}/vitruvian-code\"
+            lipo /tmp/universal/vitruvian-code-tool -thin \"$arch\" -output \"$folder/bin/tool\"
+            lipo /tmp/universal/tool-node -thin \"$arch\" -output \"$folder/bin/node\"
+            \"$RUNNER_TEMP/check-packaged-app\" --tool-folder \"$folder\" \"$arch\"
+            asset=\"vitruvian-code-tool-${VERSION}-${arch}.zip\"
+            (cd \"$folder\" && zip -r -X \"${GITHUB_WORKSPACE}/${asset}\" .)
+            shasum -a 256 \"$asset\" > \"$asset.sha256\"
+          done
+";
+    assert!(
+        per_mac_tool_zips_ok(good_per_mac_wf, "test", "package").is_empty(),
+        "unexpected problems: {:?}",
+        per_mac_tool_zips_ok(good_per_mac_wf, "test", "package")
+    );
 }
 
 fn main() -> ExitCode {
@@ -1381,6 +1572,16 @@ fn main() -> ExitCode {
 
     let mut problems = Vec::new();
     problems.extend(looked_at_what_matters(&release_text));
+    problems.extend(per_mac_tool_zips_ok(
+        &release_text,
+        "release.yml",
+        "package",
+    ));
+    problems.extend(per_mac_tool_zips_ok(
+        &rehearsal_text,
+        "the rehearsal",
+        "package",
+    ));
     problems.extend(workflow_hardened(&release_text, &rehearsal_text));
     problems.extend(signing_secrets_scoped(&release_text, &rehearsal_text));
     problems.extend(compare(&release_text, &rehearsal_text));

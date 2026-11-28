@@ -626,6 +626,38 @@ jobs:
           cat "$asset.sha256"
           ls -l "$asset"
 
+      - name: Zip the per-Mac tool folders
+        run: |
+          set -euo pipefail
+          max_bytes=268435456
+          for arch in arm64 x86_64; do
+            folder="/tmp/tool-${arch}/vitruvian-code"
+            rm -rf "$folder"
+            mkdir -p "$folder/bin/claude-helper"
+            cp macos/atrium-extension/vitruvian-tool.json "$folder/"
+            lipo /tmp/universal/vitruvian-code-tool -thin "$arch" -output "$folder/bin/tool"
+            chmod 755 "$folder/bin/tool"
+            codesign --verify --strict "$folder/bin/tool"
+            cp macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
+            lipo /tmp/universal/tool-node -thin "$arch" -output "$folder/bin/node"
+            chmod 755 "$folder/bin/node"
+            cp macos/claude-helper/bundle/claude-helper.mjs "$folder/bin/claude-helper/claude-helper.mjs"
+            "$RUNNER_TEMP/check-packaged-app" --tool-folder "$folder" "$arch"
+            asset="vitruvian-code-tool-${VERSION}-${arch}.zip"
+            (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
+            cd "${GITHUB_WORKSPACE}"
+            shasum -a 256 "$asset" > "$asset.sha256"
+            cat "$asset.sha256"
+            ls -l "$asset"
+            size="$(stat -f %z "$asset")"
+            echo "${asset}: ${size} bytes"
+            if [ "$size" -gt "$max_bytes" ]; then
+              echo "::error::${asset} is ${size} bytes, exceeding the ${max_bytes}-byte cap" >&2
+              exit 1
+            fi
+            rm -rf "/tmp/tool-${arch}"
+          done
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
@@ -644,12 +676,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="v${VERSION}"
-          asset="vitruvian-code-tool-${VERSION}.zip"
-          size="$(stat -f %z "$asset")"
-          sha256="$(cut -d' ' -f1 "$asset.sha256")"
           notes="$(gh release view "$TAG" --json body -q .body)"
-          printf '%s\n\n## The tool for the Vitruvian app\n\n`%s`: `size`: %s, `sha256`: %s\n' "$notes" "$asset" "$size" "$sha256" > /tmp/notes.md
+          {
+            printf '%s\n\n## The tool for the Vitruvian app\n\n' "$notes"
+            for asset in \
+              "vitruvian-code-tool-${VERSION}.zip" \
+              "vitruvian-code-tool-${VERSION}-arm64.zip" \
+              "vitruvian-code-tool-${VERSION}-x86_64.zip"; do
+              size="$(stat -f %z "$asset")"
+              sha256="$(cut -d' ' -f1 "$asset.sha256")"
+              printf '`%s`: `size`: %s, `sha256`: %s\n' "$asset" "$size" "$sha256"
+            done
+          } > /tmp/notes.md
           gh release edit "$TAG" --notes-file /tmp/notes.md
 
       - name: Update Homebrew Cask

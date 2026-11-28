@@ -739,6 +739,38 @@ jobs:
           cat "$asset.sha256"
           ls -l "$asset"
 
+      - name: Zip the per-Mac tool folders
+        run: |
+          set -euo pipefail
+          max_bytes=268435456
+          for arch in arm64 x86_64; do
+            folder="/tmp/tool-${arch}/vitruvian-code"
+            rm -rf "$folder"
+            mkdir -p "$folder/bin/claude-helper"
+            cp apps/desktop/vitruvian-code/macos/atrium-extension/vitruvian-tool.json "$folder/"
+            lipo /tmp/universal/vitruvian-code-tool -thin "$arch" -output "$folder/bin/tool"
+            chmod 755 "$folder/bin/tool"
+            codesign --verify --strict "$folder/bin/tool"
+            cp apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
+            lipo /tmp/universal/tool-node -thin "$arch" -output "$folder/bin/node"
+            chmod 755 "$folder/bin/node"
+            cp apps/desktop/vitruvian-code/macos/claude-helper/bundle/claude-helper.mjs "$folder/bin/claude-helper/claude-helper.mjs"
+            "$RUNNER_TEMP/check-packaged-app" --tool-folder "$folder" "$arch"
+            asset="vitruvian-code-tool-${VERSION}-${arch}.zip"
+            (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
+            cd "${GITHUB_WORKSPACE}"
+            shasum -a 256 "$asset" > "$asset.sha256"
+            cat "$asset.sha256"
+            ls -l "$asset"
+            size="$(stat -f %z "$asset")"
+            echo "${asset}: ${size} bytes"
+            if [ "$size" -gt "$max_bytes" ]; then
+              echo "::error::${asset} is ${size} bytes, exceeding the ${max_bytes}-byte cap" >&2
+              exit 1
+            fi
+            rm -rf "/tmp/tool-${arch}"
+          done
+
       # What the Vitruvian app does with the zip, on a Mac with nothing of
       # ours on it: unpack it, judge the folder with `vitruvian-tool
       # validate`, built from the kit SwiftPM resolved, and play the app to
