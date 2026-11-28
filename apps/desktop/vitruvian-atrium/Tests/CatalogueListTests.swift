@@ -13,6 +13,7 @@ enum CatalogueListTests {
         signing(suite)
         theAppsKey(suite)
         reading(suite)
+        perMacDownloads(suite)
         installable(suite)
         sources(suite)
         requests(suite)
@@ -120,6 +121,97 @@ enum CatalogueListTests {
                          && Catalogue.read(CatalogueFixtures.list([], generated: "yesterday"), permits: permits) == nil
                          && Catalogue.read(Data(repeating: 0x20, count: Catalogue.mostBytes + 1), permits: permits) == nil,
                      "a list of another version, with no date, or over a megabyte is no list")
+    }
+
+    static func perMacDownloads(_ suite: TestSuite) {
+        let permits = CatalogueFixtures.source.permits
+        let universalSha = String(repeating: "0", count: 64)
+        let armSha = String(repeating: "a", count: 64)
+        let x86Sha = String(repeating: "b", count: 64)
+        let armDownload: [String: Any] = ["url": "https://catalog.test/deploys-1.2.0-arm64.zip",
+                                          "sha256": armSha, "size": 1024]
+        let x86Download: [String: Any] = ["url": "https://catalog.test/deploys-1.2.0-x86_64.zip",
+                                          "sha256": x86Sha, "size": 2048]
+
+        let both = CatalogueFixtures.list([
+            CatalogueFixtures.entry(["downloads": ["arm64": armDownload, "x86_64": x86Download]]),
+        ])
+        let armEntry = Catalogue.read(both, permits: permits, architecture: "arm64")?.tools.first
+        let x86Entry = Catalogue.read(both, permits: permits, architecture: "x86_64")?.tools.first
+        let defaultEntry = Catalogue.read(both, permits: permits)?.tools.first
+        #if arch(arm64)
+        let expectedDefaultSha = armSha
+        #else
+        let expectedDefaultSha = x86Sha
+        #endif
+        suite.expect(armEntry?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0-arm64.zip"
+                         && armEntry?.download.sha256 == armSha && armEntry?.download.size == 1024
+                         && x86Entry?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0-x86_64.zip"
+                         && x86Entry?.download.sha256 == x86Sha && x86Entry?.download.size == 2048
+                         && defaultEntry?.download.sha256 == expectedDefaultSha,
+                     "an entry with downloads picks the architecture's download when present")
+
+        let onlyX86 = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": ["x86_64": x86Download]])])
+        let onlyArm = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": ["arm64": armDownload]])])
+        let fallbackOnArm = Catalogue.read(onlyX86, permits: permits, architecture: "arm64")?.tools.first
+        let fallbackOnX86 = Catalogue.read(onlyArm, permits: permits, architecture: "x86_64")?.tools.first
+        suite.expect(fallbackOnArm?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                         && fallbackOnArm?.download.sha256 == universalSha && fallbackOnArm?.download.size == 4096
+                         && fallbackOnX86?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                         && fallbackOnX86?.download.sha256 == universalSha && fallbackOnX86?.download.size == 4096,
+                     "downloads with only the other architecture falls back to universal download")
+
+        let withoutDownloads = CatalogueFixtures.list([CatalogueFixtures.entry()])
+        let plainArm = Catalogue.read(withoutDownloads, permits: permits, architecture: "arm64")?.tools.first
+        let plainX86 = Catalogue.read(withoutDownloads, permits: permits, architecture: "x86_64")?.tools.first
+        suite.expect(plainArm?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                         && plainArm?.download.size == 4096
+                         && plainX86?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                         && plainX86?.download.size == 4096,
+                     "a catalog without downloads behaves as before on every architecture")
+
+        let badDownloads: [(String, [String: Any])] = [
+            ("bad sha in arm64", ["arm64": ["url": "https://catalog.test/a.zip",
+                                            "sha256": String(repeating: "A", count: 64), "size": 1024],
+                                  "x86_64": x86Download]),
+            ("short sha in x86_64", ["arm64": armDownload,
+                                     "x86_64": ["url": "https://catalog.test/b.zip",
+                                                "sha256": "abc", "size": 2048]]),
+            ("over-cap size in x86_64", ["arm64": armDownload,
+                                         "x86_64": ["url": "https://catalog.test/b.zip",
+                                                    "sha256": x86Sha,
+                                                    "size": ToolLimits.standard.folderBytes + 1]]),
+            ("zero size in arm64", ["arm64": ["url": "https://catalog.test/a.zip",
+                                              "sha256": armSha, "size": 0],
+                                    "x86_64": x86Download]),
+            ("http url in x86_64", ["arm64": armDownload,
+                                    "x86_64": ["url": "http://catalog.test/b.zip",
+                                               "sha256": x86Sha, "size": 2048]]),
+        ]
+        let keptBad = badDownloads.filter { _, downloads in
+            let list = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": downloads]),
+                                               CatalogueFixtures.entry(["id": "com.acme.other"])])
+            return Catalogue.read(list, permits: permits, architecture: "arm64")?.tools.map(\.id.rawValue) != ["com.acme.other"]
+                || Catalogue.read(list, permits: permits, architecture: "x86_64")?.tools.map(\.id.rawValue) != ["com.acme.other"]
+        }.map(\.0)
+        suite.expect(keptBad.isEmpty, "any bad value in downloads drops the entry on both architectures (\(keptBad))")
+
+        let unknownWithArm = CatalogueFixtures.list([
+            CatalogueFixtures.entry(["downloads": [
+                "arm64": armDownload,
+                "riscv64": ["url": "http://bad.example/riscv.zip", "sha256": "bad", "size": 0],
+            ]]),
+        ])
+        let unknownOnly = CatalogueFixtures.list([
+            CatalogueFixtures.entry(["downloads": ["ppc64": "ignored"]]),
+        ])
+        let unknownArm = Catalogue.read(unknownWithArm, permits: permits, architecture: "arm64")?.tools.first
+        let unknownFallback = Catalogue.read(unknownWithArm, permits: permits, architecture: "x86_64")?.tools.first
+        let unknownOnlyEntry = Catalogue.read(unknownOnly, permits: permits, architecture: "arm64")?.tools.first
+        suite.expect(unknownArm?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0-arm64.zip"
+                         && unknownFallback?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                         && unknownOnlyEntry?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip",
+                     "an unknown key inside downloads is ignored")
     }
 
     static func installable(_ suite: TestSuite) {

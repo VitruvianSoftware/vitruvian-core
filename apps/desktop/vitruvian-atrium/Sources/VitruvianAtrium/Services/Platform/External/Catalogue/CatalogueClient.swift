@@ -7,7 +7,7 @@ import VitruvianToolProtocol
 
 /// One tool the catalog lists, as `catalog/catalog.schema.json` describes
 /// it: what its manifest says, copied so the list can be shown without
-/// downloading anything, and the one download it is pinned to.
+/// downloading anything, and the download chosen for this Mac.
 package struct CatalogueEntry: Equatable, Sendable {
     package struct Download: Equatable, Sendable {
         package let url: URL
@@ -31,6 +31,8 @@ package struct CatalogueEntry: Equatable, Sendable {
     package let minimumAppVersion: String
     /// Where the tool's source is.
     package let source: URL
+    /// The download chosen for this Mac: `downloads[<arch>]` when present,
+    /// else `download`.
     package let download: Download
     /// The services its manifest names in `uses`, as the manifest spells them.
     package let uses: [String]
@@ -70,6 +72,13 @@ package struct Catalogue: Equatable, Sendable {
     package static let version = 1
     /// The most bytes of the list the app reads.
     package static let mostBytes = 1_048_576
+    #if arch(arm64)
+    /// The architecture this app runs as, matching `downloads` keys in `tools.json`.
+    package static let currentArchitecture = "arm64"
+    #else
+    /// The architecture this app runs as, matching `downloads` keys in `tools.json`.
+    package static let currentArchitecture = "x86_64"
+    #endif
 
     /// When the list was last changed. The app refuses a list older than one
     /// it has accepted before.
@@ -90,6 +99,11 @@ package struct Catalogue: Equatable, Sendable {
                 let size: Int
             }
 
+            struct Downloads: Decodable {
+                let arm64: Download?
+                let x86_64: Download?
+            }
+
             struct Command: Decodable {
                 let id: String
                 let title: LocalizedText
@@ -104,6 +118,7 @@ package struct Catalogue: Equatable, Sendable {
             let minimumAppVersion: String
             let source: String
             let download: Download
+            let downloads: Downloads?
             let uses: [String]
             let commands: [Command]
             let panels: [String]?
@@ -128,9 +143,12 @@ package struct Catalogue: Equatable, Sendable {
     /// Reads a list. Nil when it is not version 1 or not a list at all. An
     /// entry that breaks a rule is left out: a version that is not semver, a
     /// checksum that is not 64 lower-case hex digits, a size that is no size,
-    /// an address `permits` refuses, an id that is not an outside tool's, or
-    /// an id listed before it.
-    package static func read(_ data: Data, permits: (URL) -> Bool) -> Catalogue? {
+    /// an address `permits` refuses (checked on `download` and every entry in
+    /// `downloads`), an id that is not an outside tool's, or an id listed
+    /// before it. Each kept entry's `download` is `downloads[architecture]`
+    /// when present, else `download`.
+    package static func read(_ data: Data, permits: (URL) -> Bool,
+                             architecture: String = Self.currentArchitecture) -> Catalogue? {
         guard data.count <= mostBytes, let file = try? JSONDecoder().decode(File.self, from: data),
               file.version == version, let generated = ISO8601DateFormatter().date(from: file.generated) else {
             return nil
@@ -140,17 +158,34 @@ package struct Catalogue: Equatable, Sendable {
         for case let tool? in file.tools.map(\.value) {
             guard let id = ToolID(tool.id), !id.isBundledForm, !seen.contains(id),
                   isVersion(tool.version), isVersion(tool.minimumAppVersion),
-                  tool.download.sha256.count == 64,
-                  tool.download.sha256.allSatisfy({ "0123456789abcdef".contains($0) }),
-                  (1...ToolLimits.standard.folderBytes).contains(tool.download.size),
-                  let url = URL(string: tool.download.url), permits(url),
+                  let universal = checkedDownload(tool.download, permits: permits),
                   let source = URL(string: tool.source), source.scheme == "https",
                   tool.name.english != nil, tool.summary.english != nil else { continue }
+            let arm64: CatalogueEntry.Download?
+            if let raw = tool.downloads?.arm64 {
+                guard let checked = checkedDownload(raw, permits: permits) else { continue }
+                arm64 = checked
+            } else {
+                arm64 = nil
+            }
+            let x86_64: CatalogueEntry.Download?
+            if let raw = tool.downloads?.x86_64 {
+                guard let checked = checkedDownload(raw, permits: permits) else { continue }
+                x86_64 = checked
+            } else {
+                x86_64 = nil
+            }
+            let chosen: CatalogueEntry.Download
+            switch architecture {
+            case "arm64": chosen = arm64 ?? universal
+            case "x86_64": chosen = x86_64 ?? universal
+            default: chosen = universal
+            }
             seen.insert(id)
             tools.append(CatalogueEntry(
                 id: id, name: tool.name, publisher: tool.publisher, summary: tool.summary, version: tool.version,
                 protocolVersion: tool.protocol, minimumAppVersion: tool.minimumAppVersion, source: source,
-                download: .init(url: url, sha256: tool.download.sha256, size: tool.download.size),
+                download: chosen,
                 uses: tool.uses, commands: tool.commands.map { .init(id: $0.id, title: $0.title) },
                 panels: tool.panels, replaces: Self.formerIDs(tool.replaces ?? [], of: id)))
         }
@@ -167,6 +202,15 @@ package struct Catalogue: Equatable, Sendable {
                 uses: entry.uses, commands: entry.commands, panels: entry.panels, replaces: kept)
         }
         return Catalogue(generated: generated, tools: tools)
+    }
+
+    /// Validates one raw download entry against checksum, size, and URL rules.
+    private static func checkedDownload(_ raw: File.Tool.Download, permits: (URL) -> Bool) -> CatalogueEntry.Download? {
+        guard raw.sha256.count == 64,
+              raw.sha256.allSatisfy({ "0123456789abcdef".contains($0) }),
+              (1...ToolLimits.standard.folderBytes).contains(raw.size),
+              let url = URL(string: raw.url), permits(url) else { return nil }
+        return CatalogueEntry.Download(url: url, sha256: raw.sha256, size: raw.size)
     }
 
     /// The former ids an entry names that can be former ids: an outside
