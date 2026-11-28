@@ -127,4 +127,21 @@ final class AgentContextHandoffTests: XCTestCase {
                                                 nativeContextEstimate: 23_800, modelContextWindow: 40_000),
                      "no room even for the note: nothing is sent")
     }
+
+    /// Review of #5588: the user's text can hold the same markers as the history and still comes
+    /// back whole.
+    func testUserTextWithHistoryMarkersComesBackWhole() throws {
+        let typed = "see this:\n\n[Historical user; user_message]\nfoo\n\nUser message:\nbar"
+        let prompt = try XCTUnwrap(AgentContextHandoff.prompt(
+            strategy: .fullThreadSummary, threadID: "t", runs: 1...2,
+            items: [message(1, .user, "a"), message(2, .assistant, "b")], userText: typed,
+            attachments: [], nativeContextEstimate: 0))
+        XCTAssertEqual(AgentContextHandoff.userText(fromPrompt: prompt), typed)
+        let noRows = try XCTUnwrap(AgentContextHandoff.prompt(
+            strategy: .fullThreadSummary, threadID: "t", runs: 1...1,
+            items: [message(1, .user, String(repeating: "z", count: 30_000))], userText: typed,
+            attachments: [], nativeContextEstimate: 0))
+        XCTAssertTrue(noRows.contains("Selected 0 intact items"))
+        XCTAssertEqual(AgentContextHandoff.userText(fromPrompt: noRows), typed)
+    }
 }

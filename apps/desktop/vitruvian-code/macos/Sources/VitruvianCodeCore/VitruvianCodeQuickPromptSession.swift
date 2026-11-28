@@ -2515,6 +2515,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// taken, and keeps it owed when the prompt is refused).
     private func markHandoffRunReachedAgent() {
         guard let index = handoffRuns.indices.last, !handoffRuns[index].reachedAgent else { return }
+        // A live connection's events are not tied to a turn: one that arrives before this turn's
+        // prompt went out belongs to an earlier prompt, not to this one.
+        if lastTurnWasPersistent && !turnStartedPrompt { return }
         handoffRuns[index].reachedAgent = true
         if handoffRuns[index].carriedContext, pendingHandoff?.providerID == handoffRuns[index].providerID {
             pendingHandoff = nil

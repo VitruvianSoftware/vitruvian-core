@@ -801,6 +801,65 @@ final class AgentConnectionTests: XCTestCase {
         XCTAssertTrue(prompt(next).hasSuffix("User message:\ngo on"), prompt(next))
     }
 
+    /// Review of #5588: a live connection's event that arrives before this turn's prompt went out
+    /// (left over from an earlier prompt) does not count as the agent answering this turn.
+    func testAnEventBeforeThePromptDoesNotDeliverTheHandoff() async throws {
+        let rig = ComposerRig()
+        var created: [FakeAgentConnection] = []
+        var failNext = false
+        var env = rig.environment
+        env.makeConnection = { _ in
+            let fake = failNext ? FakePersistentAgentConnection() : FakeAgentConnection()
+            if failNext {
+                fake.newSessionID = "agy-1"
+                fake.promptError = AgentConnectionError.notSupportedYet
+                fake.holdStart = true
+                failNext = false
+            }
+            created.append(fake)
+            return fake
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+        func config(_ provider: VitruvianCodeCLIProvider) -> VitruvianCodeConfiguration {
+            VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: provider)
+        }
+        func prompt(_ fake: FakeAgentConnection) -> String {
+            for block in (fake.promptBlocks.first ?? []).reversed() {
+                if case .text(let text) = block { return text }
+            }
+            return ""
+        }
+        var claude = VitruvianCodeCLIProvider.claude
+        claude.connection = .claudeSDK
+
+        session.send("remember PELICAN-42", configuration: config(claude), agentPath: "/fake/agent")
+        let first = created[0]
+        for _ in 0..<1000 where first.promptBlocks.isEmpty { await Task.yield() }
+        first.emit(.started(conversationID: "claude-1"))
+        first.emit(.finished(status: "end_turn", response: "OK", error: nil, conversationID: "claude-1"))
+        first.finishPrompt(with: .endTurn)
+        for _ in 0..<1000 where session.isRunning { await Task.yield() }
+
+        failNext = true
+        session.send("the word?", configuration: config(.antigravity), agentPath: "/fake/agent")
+        let stale = created[1]
+        // The connection is still starting, so the prompt has not gone out when this arrives.
+        for _ in 0..<200 where stale.startRequests.isEmpty { await Task.yield() }
+        stale.emit(.text("left over from before"))
+        for _ in 0..<200 { await Task.yield() }
+        XCTAssertTrue(stale.promptBlocks.isEmpty)
+        stale.releaseStart()
+        for _ in 0..<1000 where stale.promptBlocks.isEmpty { await Task.yield() }
+        for _ in 0..<1000 where session.isRunning { await Task.yield() }
+
+        session.send("the word?", configuration: config(.antigravity), agentPath: "/fake/agent")
+        let retry = created[2]
+        for _ in 0..<1000 where retry.promptBlocks.isEmpty { await Task.yield() }
+        XCTAssertTrue(prompt(retry).hasPrefix("Context handoff (full_thread_summary)"),
+                      "an event from before the prompt did not deliver the history: \(prompt(retry))")
+    }
+
     func testSessionDrivesFakeAgentConnectionThroughMakeConnection() async throws {
         let rig = ComposerRig()
         var capturedSpecs: [AgentConnectionSpec] = []
@@ -1272,7 +1331,7 @@ private final class LaunchCaptureRig {
 }
 
 @MainActor
-private final class FakeAgentConnection: AgentConnection {
+private class FakeAgentConnection: AgentConnection {
     let capabilities = AgentCapabilities(resumeSession: true, images: true)
     let events: AsyncStream<AgentEvent>
     private let eventContinuation: AsyncStream<AgentEvent>.Continuation
@@ -1294,9 +1353,20 @@ private final class FakeAgentConnection: AgentConnection {
     /// The session ID `start` reports when it is not resuming one; nil reports none.
     var newSessionID: String?
 
+    /// When true, `start` waits for `releaseStart()`.
+    var holdStart = false
+    private var startGate: CheckedContinuation<Void, Never>?
+
     func start(_ request: AgentSessionRequest) async throws -> String {
         startRequests.append(request)
+        if holdStart { await withCheckedContinuation { startGate = $0 } }
         return request.resumeSessionID ?? newSessionID ?? ""
+    }
+
+    func releaseStart() {
+        holdStart = false
+        startGate?.resume()
+        startGate = nil
     }
 
     func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {
@@ -1351,4 +1421,9 @@ private final class FakeAgentConnection: AgentConnection {
         promptContinuation?.resume(returning: reason)
         promptContinuation = nil
     }
+}
+
+/// The fake as a live connection held across turns, whose events are not tied to a turn.
+private final class FakePersistentAgentConnection: FakeAgentConnection, PersistentAgentConnection {
+    func syncPlanMode(_ planSwitch: Bool) async throws {}
 }

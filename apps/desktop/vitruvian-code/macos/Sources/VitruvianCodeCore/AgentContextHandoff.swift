@@ -151,11 +151,21 @@ public enum AgentContextHandoff {
     }
 
     /// The user's own text from a prompt `withInlineContext` built, for showing a prompt read back
-    /// from an agent's transcript: what follows the "User message:" line after the last history
-    /// row. Any other text comes back as it is.
+    /// from an agent's transcript. The note says how many rows it kept, so the history ends after
+    /// that many row headers, and the user's text follows the first "User message:" line after
+    /// them; what the user typed cannot move that point. Any other text comes back as it is.
     public static func userText(fromPrompt prompt: String) -> String {
         guard prompt.hasPrefix("Context handoff (") else { return prompt }
-        let rowsEnd = prompt.range(of: "\n\n[Historical ", options: .backwards)?.upperBound ?? prompt.startIndex
+        var rowsEnd = prompt.startIndex
+        if let count = prompt.range(of: #"Selected (\d+) intact items"#, options: .regularExpression)
+            .flatMap({ Int(prompt[$0].split(separator: " ")[1]) }) {
+            for _ in 0..<count {
+                guard let header = prompt.range(of: "\n\n[Historical ", range: rowsEnd..<prompt.endIndex) else {
+                    return prompt
+                }
+                rowsEnd = header.upperBound
+            }
+        }
         guard let marker = prompt.range(of: "\n\nUser message:\n", range: rowsEnd..<prompt.endIndex) else { return prompt }
         return String(prompt[marker.upperBound...])
     }
