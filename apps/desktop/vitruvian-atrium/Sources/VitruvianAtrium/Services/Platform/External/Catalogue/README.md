@@ -3,6 +3,8 @@
 ## Overview
 Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Platform/External/Catalogue`.
 
+Each catalog entry carries a universal `download` and may also include an optional `downloads` map keyed by architecture (`arm64`, `x86_64`; unknown keys are ignored). `Catalogue.read` checks checksum, size, and URL rules on `download` and every present `downloads` entry—dropping the tool if any fails—and sets `CatalogueEntry.download` to `downloads[<architecture>]` (defaulting to `Catalogue.currentArchitecture`, compile-time `#if arch(arm64)`) when present, else `download`.
+
 ## Interface
 - Internal implementation components
 

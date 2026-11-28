@@ -17,6 +17,7 @@ enum CatalogueInstallerTests {
         aStoreRefusal(suite)
         anUpdate(suite)
         fromAFolderOntoTheCatalog(suite)
+        perMacDownload(suite)
         onlyItsOwn(suite)
     }
 
@@ -342,6 +343,69 @@ enum CatalogueInstallerTests {
         suite.expect(next.movesFromFolder == nil && next.replaces?.version == "1.3.0",
                      "its next update from the catalog is the usual one")
         rig.installer.finished(with: next)
+    }
+
+    static func perMacDownload(_ suite: TestSuite) {
+        let universalBytes = Data("universal-build-padding".utf8)
+        let armBytes = Data("arm64".utf8)
+        let x86Bytes = Data("x86_64-build".utf8)
+        let universalZip = TestZip.tool(extra: [Item("README", universalBytes)])
+        let armZip = TestZip.tool(extra: [Item("README", armBytes)])
+        let x86Zip = TestZip.tool(extra: [Item("README", x86Bytes)])
+
+        let universalURL = URL(string: "https://catalog.test/deploys-1.2.0.zip")!
+        let armURL = URL(string: "https://catalog.test/deploys-1.2.0-arm64.zip")!
+        let x86URL = URL(string: "https://catalog.test/deploys-1.2.0-x86_64.zip")!
+        let list = CatalogueFixtures.list([
+            CatalogueFixtures.entry(
+                ["downloads": [
+                    "arm64": ["url": armURL.absoluteString, "sha256": TestZip.sha256(armZip), "size": armZip.count],
+                    "x86_64": ["url": x86URL.absoluteString, "sha256": TestZip.sha256(x86Zip), "size": x86Zip.count],
+                ]],
+                download: ["url": universalURL.absoluteString, "sha256": TestZip.sha256(universalZip),
+                           "size": universalZip.count]),
+        ])
+
+        for (arch, expectedURL, expectedZip, expectedReadme) in [
+            ("arm64", armURL, armZip, armBytes),
+            ("x86_64", x86URL, x86Zip, x86Bytes),
+        ] {
+            let rig = Rig()
+            rig.fetcher.answers[universalURL] = .body(universalZip, etag: nil)
+            rig.fetcher.answers[armURL] = .body(armZip, etag: nil)
+            rig.fetcher.answers[x86URL] = .body(x86Zip, etag: nil)
+            let entry = Catalogue.read(list, permits: CatalogueFixtures.source.permits, architecture: arch)!.tools[0]
+            let result = rig.prepare(entry)
+            guard case .success(let offer)? = result else {
+                suite.expect(false, "the installer prepares \(arch)'s download (\(String(describing: result)))")
+                rig.close()
+                continue
+            }
+            let readme = try? Data(contentsOf: offer.folder.appendingPathComponent("README"))
+            suite.expect(rig.fetcher.asked.map(\.url) == [expectedURL]
+                             && rig.fetcher.asked.map(\.limit) == [expectedZip.count]
+                             && offer.catalogue?.download == expectedURL.absoluteString
+                             && readme == expectedReadme,
+                         "the installer fetches and unpacks \(arch)'s chosen zip and checks its size")
+            rig.installer.finished(with: offer)
+            suite.expect(rig.leftover.isEmpty, "cleaning up \(arch)'s offer deletes its folder")
+            rig.close()
+        }
+
+        // Verify the installer checks the chosen download's sha256 and size.
+        let armEntry = Catalogue.read(list, permits: CatalogueFixtures.source.permits, architecture: "arm64")!.tools[0]
+        let badShaRig = Rig()
+        let wrongSameSize = TestZip.tool(extra: [Item("README", Data("ARM64".utf8))])
+        badShaRig.fetcher.answers[armURL] = .body(wrongSameSize, etag: nil)
+        suite.expect(badShaRig.prepare(armEntry) == .failure(.mismatch) && badShaRig.leftover.isEmpty,
+                     "a chosen download with a wrong checksum is refused")
+        badShaRig.close()
+
+        let oversizedRig = Rig()
+        oversizedRig.fetcher.answers[armURL] = .body(armZip + Data(repeating: 0, count: 64), etag: nil)
+        suite.expect(oversizedRig.prepare(armEntry) == .failure(.mismatch) && oversizedRig.leftover.isEmpty,
+                     "a chosen download larger than its pinned size is refused")
+        oversizedRig.close()
     }
 
     static func onlyItsOwn(_ suite: TestSuite) {
