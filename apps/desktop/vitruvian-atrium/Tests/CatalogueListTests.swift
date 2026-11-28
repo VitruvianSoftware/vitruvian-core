@@ -188,13 +188,52 @@ enum CatalogueListTests {
                                     "x86_64": ["url": "http://catalog.test/b.zip",
                                                "sha256": x86Sha, "size": 2048]]),
         ]
-        let keptBad = badDownloads.filter { _, downloads in
+        let notDropped = badDownloads.filter { _, downloads in
             let list = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": downloads]),
                                                CatalogueFixtures.entry(["id": "com.acme.other"])])
             return Catalogue.read(list, permits: permits, architecture: "arm64")?.tools.map(\.id.rawValue) != ["com.acme.other"]
                 || Catalogue.read(list, permits: permits, architecture: "x86_64")?.tools.map(\.id.rawValue) != ["com.acme.other"]
         }.map(\.0)
-        suite.expect(keptBad.isEmpty, "any bad value in downloads drops the entry on both architectures (\(keptBad))")
+        suite.expect(notDropped.isEmpty, "any bad value in downloads drops the entry on both architectures (\(notDropped))")
+
+        let nullDownloads = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": NSNull()]),
+                                                    CatalogueFixtures.entry(["id": "com.acme.other"])])
+        for architecture in ["arm64", "x86_64"] {
+            let catalogue = Catalogue.read(nullDownloads, permits: permits, architecture: architecture)
+            let primary = catalogue?.tools.first
+            let sibling = catalogue?.tools.dropFirst().first
+            suite.expect(catalogue?.tools.map(\.id.rawValue) == ["com.acme.deploys", "com.acme.other"]
+                             && primary?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                             && primary?.download.sha256 == universalSha && primary?.download.size == 4096
+                             && sibling?.id == ToolID("com.acme.other") && sibling?.version == "1.2.0"
+                             && sibling?.download.url.absoluteString == "https://catalog.test/deploys-1.2.0.zip"
+                             && sibling?.download.sha256 == universalSha && sibling?.download.size == 4096,
+                         "downloads: null keeps the entry on its universal download (\(architecture))")
+        }
+
+        let malformedDownloads: [(String, Any)] = [
+            ("downloads is an array", [] as [Any]),
+            ("downloads is a string", "x"),
+            ("arm64 missing sha256", ["arm64": ["url": "https://catalog.test/a.zip", "size": 1024]]),
+            ("arm64 missing url", ["arm64": ["sha256": armSha, "size": 1024]]),
+        ]
+        let malformedNotDropped = malformedDownloads.filter { _, downloads in
+            let list = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": downloads]),
+                                               CatalogueFixtures.entry(["id": "com.acme.other"])])
+            return ["arm64", "x86_64"].contains { architecture in
+                guard let catalogue = Catalogue.read(list, permits: permits, architecture: architecture),
+                      catalogue.tools.count == 1,
+                      !catalogue.tools.contains(where: { $0.id == ToolID("com.acme.deploys") }),
+                      let sibling = catalogue.tools.first else { return true }
+                return sibling.id != ToolID("com.acme.other")
+                    || sibling.version != "1.2.0"
+                    || sibling.download.url.absoluteString != "https://catalog.test/deploys-1.2.0.zip"
+                    || sibling.download.sha256 != universalSha
+                    || sibling.download.size != 4096
+            }
+        }.map(\.0)
+        suite.expect(malformedNotDropped.isEmpty,
+                     "malformed downloads drop only that entry while keeping siblings (\(malformedNotDropped))")
 
         let unknownWithArm = CatalogueFixtures.list([
             CatalogueFixtures.entry(["downloads": [
