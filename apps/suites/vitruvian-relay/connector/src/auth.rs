@@ -273,6 +273,9 @@ fn poll_token(agent: &ureq::Agent, url: &str, params: &[(&str, &str)]) -> PollAn
     if status == 429 || status >= 500 {
         return PollAnswer::Trouble {
             why: format!("HTTP {status}"),
+            // Delay-seconds only; an HTTP-date `Retry-After` is ignored and the
+            // usual backoff applies. Any size is safe: the pacer saturates and
+            // never sleeps past the code's expiry.
             retry_after: r.header("Retry-After").and_then(|v| v.trim().parse().ok()),
         };
     }
@@ -319,7 +322,9 @@ impl PollPacer {
     }
 
     fn trouble(&mut self, why: String, retry_after: Option<u64>) {
-        let backoff = (self.interval * 2)
+        let backoff = self
+            .interval
+            .saturating_mul(2)
             .min(MAX_POLL_BACKOFF_SECS)
             .max(self.base);
         self.interval = backoff.max(retry_after.unwrap_or(0));
@@ -1156,6 +1161,17 @@ mod tests {
             p.interval, 30,
             "a short Retry-After does not undo the backoff"
         );
+    }
+
+    /// A hostile or broken `Retry-After` must not overflow the wait.
+    #[test]
+    fn pacer_survives_a_huge_retry_after() {
+        let mut p = PollPacer::new(5);
+        p.trouble("HTTP 503".into(), Some(u64::MAX));
+        assert_eq!(p.sleep_secs(600), 600, "capped at the time left");
+        // Doubling u64::MAX would overflow; it saturates, then the cap applies.
+        p.trouble("HTTP 503".into(), None);
+        assert_eq!(p.interval, MAX_POLL_BACKOFF_SECS);
     }
 
     #[test]
