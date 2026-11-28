@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.0...vitruvian-code-v1.52.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** stop and retry a notarization that hangs ([#5582](https://github.com/VitruvianSoftware/vitruvian-core/issues/5582)) ([c8bd2ee](https://github.com/VitruvianSoftware/vitruvian-core/commit/c8bd2ee268680e4c97e1a535649f2a8e10857e3f))
+
 ## [1.52.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.51.0...vitruvian-code-v1.52.0) (2026-11-28)
 
 
