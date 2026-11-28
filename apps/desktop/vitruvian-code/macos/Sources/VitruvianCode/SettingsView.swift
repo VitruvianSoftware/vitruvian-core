@@ -571,7 +571,7 @@ struct ProviderRow: View {
 
     /// The actual command Vitruvian Code runs for built-in providers (not the stored template).
     private var actualCommand: String {
-        if let agent = provider.registryAgent {
+        if let agent = provider.shared.shownRegistryAgent {
             return "ACP registry: \(agent.agentID) \(agent.version)"
         }
         if provider.id == CLIProvider.antigravity.id {
@@ -658,7 +658,7 @@ struct ProviderRow: View {
             }
 
             // On its own line: in the header row the picker squeezed the name to one letter per line.
-            if provider.registryAgent == nil && provider.shared.availableConnections.count > 1 {
+            if provider.shared.showsConnectionPicker {
                 HStack(spacing: 6) {
                     Text(strings.connectionPreviewLabel)
                         .font(.caption)
