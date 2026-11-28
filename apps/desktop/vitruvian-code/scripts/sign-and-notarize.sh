@@ -453,13 +453,14 @@ run_with_watchdog() {
 				/bin/sleep 1
 				grace=$((grace + 1))
 			done
+			waited=$((waited + grace))
 			# shellcheck disable=SC2086
 			/bin/kill -KILL ${kids} "${pid}" 2>/dev/null || true
 			break
 		fi
 		/bin/sleep 1
 		waited=$((waited + 1))
-		if [ $((waited % NOTARY_HEARTBEAT_SECONDS)) -eq 0 ]; then
+		if [ "${NOTARY_HEARTBEAT_SECONDS}" -gt 0 ] && [ $((waited % NOTARY_HEARTBEAT_SECONDS)) -eq 0 ]; then
 			echo "==> Still waiting on the notary service (${waited}s)..."
 		fi
 	done
@@ -520,7 +521,12 @@ notary_submit() {
 			return 1
 		fi
 		echo "::warning::Notarization of $(/usr/bin/basename "${upload}") got no verdict (attempt ${attempt}/${NOTARY_ATTEMPTS}); trying again."
-		/bin/sleep $((NOTARY_RETRY_PAUSE * attempt))
+		# The pause counts against the budget too, and never outlasts it.
+		local pause=$((NOTARY_RETRY_PAUSE * attempt))
+		left=$((NOTARY_BUDGET_SECONDS - NOTARY_SPENT_SECONDS))
+		[ "${pause}" -gt "${left}" ] && pause="${left}"
+		[ "${pause}" -gt 0 ] && /bin/sleep "${pause}"
+		NOTARY_SPENT_SECONDS=$((NOTARY_SPENT_SECONDS + pause))
 		attempt=$((attempt + 1))
 	done
 }

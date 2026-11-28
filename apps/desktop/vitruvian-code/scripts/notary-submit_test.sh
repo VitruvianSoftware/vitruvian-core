@@ -130,6 +130,31 @@ else
 fi
 NOTARY_SPENT_SECONDS=0
 
+# Pauses between attempts count against the budget, so the run's wall time
+# stays within it: budget 6s, pause 3s, a hang then network errors.
+: >"${work}/calls"; printf 'hang\nneterr\nneterr\naccept\n' >"${work}/plan"
+NOTARY_SPENT_SECONDS=0
+start=$(date +%s); rc=0
+NOTARY_BUDGET_SECONDS=6 NOTARY_RETRY_PAUSE=3 notary_submit app.zip "${work}/out" >"${work}/log" 2>&1 || rc=$?
+took=$(( $(date +%s) - start ))
+if [ "${rc}" -eq 0 ] || [ "${took}" -gt 9 ]; then
+	echo "FAIL pauses escape the budget: rc=${rc} took=${took}s (want failure within ~6s)"; failures=$((failures + 1))
+else
+	echo "ok   pauses count against the budget (${took}s)"
+fi
+NOTARY_SPENT_SECONDS=0
+
+# A heartbeat of 0 turns the heartbeat off instead of dividing by zero.
+: >"${work}/calls"; printf 'accept\n' >"${work}/plan"
+rc=0
+NOTARY_HEARTBEAT_SECONDS=0 notary_submit app.zip "${work}/out" >"${work}/log" 2>&1 || rc=$?
+if [ "${rc}" -ne 0 ]; then
+	echo "FAIL a heartbeat of 0 breaks the submit (rc=${rc})"; failures=$((failures + 1))
+else
+	echo "ok   a heartbeat of 0 is allowed"
+fi
+NOTARY_SPENT_SECONDS=0
+
 # The id of the accepted submission is handed back.
 : >"${work}/calls"
 printf 'accept\n' >"${work}/plan"
