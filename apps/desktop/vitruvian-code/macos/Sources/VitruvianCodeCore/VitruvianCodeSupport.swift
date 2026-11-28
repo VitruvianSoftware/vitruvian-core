@@ -285,6 +285,21 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         return resolved
     }
 
+    /// Whether Settings offers this provider a Connection choice. An agent added from the
+    /// registry runs only over ACP. The built-in Claude Code provider also keeps a registry
+    /// record (the Claude ACP adapter's version) and still gets the choice, so it can move off
+    /// Claude ACP again.
+    public var showsConnectionPicker: Bool {
+        route != .registry && availableConnections.count > 1
+    }
+
+    /// The installed registry agent Settings names in place of the command: always for an agent
+    /// added from the registry, and for Claude Code only while it runs on Claude ACP.
+    public var shownRegistryAgent: VitruvianCodeRegistryAgent? {
+        guard let registryAgent else { return nil }
+        return route == .registry || connection == .claudeACP ? registryAgent : nil
+    }
+
     /// The connection choices offered in Settings for this provider, starting
     /// with Default (`nil`) and Command line. ACP is offered only for agy;
     /// Claude SDK and Claude ACP for Claude; Claude SDK, with Ollama's

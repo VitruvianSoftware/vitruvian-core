@@ -244,6 +244,19 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         func entries(kind: String) -> [[String: Any]] {
             entries().filter { $0["kind"] as? String == kind }
         }
+
+        /// The fake's first start record, waited for. The helper answers `session/new` once
+        /// Claude's model list arrives or its wait for that list runs out, so on a slow runner
+        /// the session can open before the fake has written this line (a merge-queue run of
+        /// #5587 read nothing). The fake writes it as it starts, before reading any input.
+        func startEntry(timeout: TimeInterval = 15) async -> [String: Any]? {
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if let first = entries(kind: "start").first { return first }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            return entries(kind: "start").first
+        }
     }
 
     /// Writes an executable `claude` that runs the fake on the bundled Node.
@@ -543,7 +556,9 @@ final class ClaudeSDKConnectionTests: XCTestCase {
             return false
         }
 
-        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let startRecord = await claude.startEntry()
+
+        let start = try XCTUnwrap(startRecord)
         let claudePID = try XCTUnwrap(start["pid"] as? Int)
         let helperPID = try XCTUnwrap(start["ppid"] as? Int)
         XCTAssertTrue(alive(claudePID) && alive(helperPID), "both run before the stop")
@@ -598,7 +613,8 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         _ = try await connection.prompt([.text("hi")])
 
         // They reached the helper: Claude's own process got the environment ones...
-        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let startRecord = await claude.startEntry()
+        let start = try XCTUnwrap(startRecord)
         let claudeEnvironment = start["env"] as? [String: Any]
         XCTAssertEqual(claudeEnvironment?["ANTHROPIC_API_KEY"] as? String, apiKey)
         XCTAssertEqual(claudeEnvironment?["CUSTOM_GATEWAY_TOKEN"] as? String, gatewayToken)
@@ -657,7 +673,9 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         let connection = makeConnection(claude: claude.path, bundled: bundled)
         _ = try await connection.start(request())
 
-        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let startRecord = await claude.startEntry()
+
+        let start = try XCTUnwrap(startRecord)
         let seen = start["env"] as? [String: Any]
         XCTAssertEqual(seen?["CLAUDE_CONFIG_DIR"] as? String, configDirectory.path)
         XCTAssertEqual(seen?["HOME"] as? String, root.path)
@@ -679,7 +697,8 @@ final class ClaudeSDKConnectionTests: XCTestCase {
             let claude = try makeFakeClaude(bundled, name: "mode-\(expected)-\(plan)")
             let connection = makeConnection(claude: claude.path, bundled: bundled, approval: mode, plan: plan)
             _ = try await connection.start(request())
-            let args = try XCTUnwrap(claude.entries(kind: "start").first?["args"] as? [String])
+            let startRecord = await claude.startEntry()
+            let args = try XCTUnwrap(startRecord?["args"] as? [String])
             XCTAssertTrue(args.contains("--permission-mode=\(expected)"), "\(mode) plan=\(plan): \(args)")
             XCTAssertEqual(
                 args.contains("--allow-dangerously-skip-permissions"),
@@ -729,7 +748,8 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         XCTAssertEqual(launch["NODE_EXTRA_CA_CERTS"], "/etc/ssl/corporate-ca.pem", "corporate proxies need it")
 
         // As the system sees the running helper, and as claude, its child, sees it.
-        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let startRecord = await claude.startEntry()
+        let start = try XCTUnwrap(startRecord)
         let seen = start["parentEnvironment"] as? String ?? ""
         XCTAssertTrue(seen.contains("NODE_EXTRA_CA_CERTS=/etc/ssl/corporate-ca.pem"), "ps shows the helper's environment")
         let claudeEnvironment = start["env"] as? [String: Any]
@@ -755,7 +775,9 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         _ = try await connection.prompt([.text("hi")])
         await connection.stop()
 
-        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let startRecord = await claude.startEntry()
+
+        let start = try XCTUnwrap(startRecord)
         XCTAssertTrue((start["env"] as? [String: Any])?["ANTHROPIC_API_KEY"] is NSNull, "no secret was sent")
         let log = (try? String(contentsOfFile: root.appendingPathComponent("logs/chat-\(sessionID).log").path, encoding: .utf8)) ?? ""
         XCTAssertTrue(log.contains("Not using stored secrets: agent-secrets.json: its permissions (644) let others read it"), log)
@@ -852,7 +874,8 @@ final class ClaudeSDKConnectionTests: XCTestCase {
         let connection = makeConnection(claude: claude.path, bundled: bundled)
         let recorder = ClaudeEventRecorder(connection.events)
         _ = try await connection.start(request())
-        let start = try XCTUnwrap(claude.entries(kind: "start").first)
+        let startRecord = await claude.startEntry()
+        let start = try XCTUnwrap(startRecord)
         let claudePID = try XCTUnwrap(start["pid"] as? Int)
         let helperPID = try XCTUnwrap(start["ppid"] as? Int)
 
