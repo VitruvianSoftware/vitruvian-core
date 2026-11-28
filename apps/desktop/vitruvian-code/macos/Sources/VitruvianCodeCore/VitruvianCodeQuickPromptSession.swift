@@ -273,6 +273,33 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     public private(set) var liveWorktreePath: String?
     private var awaitingWorktree = false
     private var lastTurnProviderID: UUID?
+    /// One app turn, for the context a chat hands another agent (T3 Code's runs): which agent
+    /// it went to, the user message that started it, the session it ran in, and whether the
+    /// agent answered it. A turn whose session started but whose prompt never got an answer is
+    /// not counted as seen, so context it carried is still owed.
+    private struct HandoffRun {
+        let ordinal: Int
+        let providerID: UUID
+        let userMessageID: UUID?
+        var sessionID: String?
+        var carriedContext = false
+        var reachedAgent = false
+        var seen: Bool { sessionID != nil && reachedAgent }
+    }
+    private var handoffRuns: [HandoffRun] = []
+    /// Context owed to an agent the chat switched to, kept until a turn carrying it reaches the
+    /// agent (T3 Code keeps an unsent handoff for the next turn).
+    private struct PendingHandoff {
+        let providerID: UUID
+        var strategy: AgentContextHandoff.Strategy
+        /// For `deltaSinceTargetLastSeen`, the agent's last answered turn.
+        var sinceOrdinal: Int
+    }
+    private var pendingHandoff: PendingHandoff?
+    /// The chat's thread name in a handoff: the first session the chat had.
+    private var handoffThreadID: String?
+    /// Notices the app put in the chat, which are not part of the conversation.
+    private var handoffNoticeIDs: Set<UUID> = []
     private var lastTurnConnectionKind: AgentConnectionKind?
     private var lastTurnWasPersistent = false
     private var lastRestartFailureMessage: String?
@@ -825,12 +852,14 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
         lastTurnWasPersistent = false
+        resetHandoffHistory()
         diffReviewGeneration &+= 1
         diffReviewTask?.cancel()
         diffReviewTask = nil
         // The last conversation's subagents are not this one's.
         activeSubagents = []
         conversationID = summary.id
+        handoffThreadID = summary.id
         let folder = summary.workspace.trimmingCharacters(in: .whitespaces)
         resumedDirectory = !folder.isEmpty && environment.fileExists(folder)
             ? (folder, configuration.workingDirectory)
@@ -965,6 +994,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private func assignConversationID(_ id: String) {
         guard !id.isEmpty else { return }
         conversationID = id
+        recordHandoffSession(id)
         if chatApprovalMode != nil || chatPlanMode != nil {
             persistCurrentChatMode()
         }
@@ -1352,6 +1382,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         turn current: Int
     ) {
         if !isCustomCommand, isConnectionLockedAfterFailures {
+            // The refused prompt is still a turn of the chat, so later turns keep their numbers.
+            _ = beginHandoffRun(providerID: effectiveProvider(for: configuration.activeProvider).id)
             let lockReason = strings.connectionLocked(count: Self.maxConsecutiveRestartFailures)
             let lockMessage = lastRestartFailureMessage.map { "\(lockReason) (\($0))" } ?? lockReason
             reportedError = true
@@ -1385,6 +1417,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         let effectiveProv = effectiveProvider(for: configuration.activeProvider)
         let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
         let directory = workingDirectory(for: configuration)
+        let agentSwitchStartsFresh = isCustomCommand ? false : beginHandoffRun(providerID: effectiveProv.id)
         let usesDefaultCommandLine = (effectiveProv.connection ?? .commandLine) == .commandLine
             && !environment.hasCustomMakeConnection
         let wantsWorktree = !isCustomCommand
@@ -1408,7 +1441,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             lastTurnWasPersistent = true
             hasReceivedTurnFinishedEvent = false
             let mentionDirectory = liveWorktreePath ?? directory
-            let baseBlocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+            let baseBlocks = Self.promptBlocks(
+                text: handoffPrompt(text, attachments: modes.attachments, freshSession: false).text,
+                attachments: modes.attachments)
             let hasMentionCandidates = !VitruvianCodeMention.extractCandidates(
                 in: text,
                 pickedMentions: pickedMentions
@@ -1546,6 +1581,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                     isCustomCommand: false,
                     fullPromptForFailure: fullPromptForFailure,
                     forceFreshSession: shouldStartFresh,
+                    agentSwitchStartsFresh: agentSwitchStartsFresh,
                     turn: current
                 )
             }
@@ -1565,6 +1601,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             isCustomCommand: isCustomCommand,
             fullPromptForFailure: fullPromptForFailure,
             forceFreshSession: forceFreshSession,
+            agentSwitchStartsFresh: agentSwitchStartsFresh,
             turn: current
         )
     }
@@ -1581,6 +1618,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         isCustomCommand: Bool,
         fullPromptForFailure: String?,
         forceFreshSession: Bool = false,
+        agentSwitchStartsFresh: Bool = false,
         turn current: Int
     ) {
         let effectiveProv = effectiveProvider(for: configuration.activeProvider)
@@ -1592,20 +1630,22 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             rememberedConfigChoices = [:]
         }
         // A session belongs to the agent that made it: another agent cannot resume it (agy
-        // answered Claude's ID with "Failed to read session"). As in T3 Code, a switch to a
-        // different agent starts a new session; the same agent on another connection resumes
-        // (`ProviderSessionTransitionPolicy.ts`, `decideProviderSessionTransition`).
-        var forceFreshSession = forceFreshSession
-        if let previous = lastTurnProviderID, previous != effectiveProv.id,
-           conversationID?.isEmpty == false {
-            forceFreshSession = true
-        }
+        // answered Claude's ID with "Failed to read session"). As in T3 Code, a switch to an
+        // agent new to the chat starts a new session that is handed the chat so far
+        // (`beginHandoffRun`); the same agent on another connection resumes.
+        let forceFreshSession = forceFreshSession || agentSwitchStartsFresh
         lastTurnProviderID = effectiveProv.id
         lastTurnConnectionKind = effectiveProv.connection
         if !isCustomCommand, forceFreshSession {
             conversationID = nil
             liveState.reset()
-            insertFreshSessionNotice(strings.worktreeFreshSessionNotice)
+        }
+        let handoff = isCustomCommand ? (text: text, delivery: HandoffDelivery.none)
+            : handoffPrompt(text, attachments: modes.attachments, freshSession: forceFreshSession)
+        if !isCustomCommand, forceFreshSession {
+            // The chat promises a summary only when one goes with this prompt or the next.
+            insertFreshSessionNotice(handoff.delivery == .none
+                ? strings.worktreeFreshSessionNotice : strings.agentSwitchHandoffNotice)
         }
         let spec = AgentConnectionSpec(
             kind: effectiveProv.connection ?? .commandLine,
@@ -1626,7 +1666,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         if !isCustomCommand { pendingSignInMethodID = nil }
         let turnConnection = environment.makeConnection(spec)
         connection = turnConnection
-        let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+        let blocks = Self.promptBlocks(text: handoff.text, attachments: modes.attachments)
         let sessionRequest = AgentSessionRequest(
             workingDirectory: resolvedDirectory,
             resumeSessionID: isCustomCommand ? nil : conversationID
@@ -2265,6 +2305,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         lastTurnProviderID = nil
         lastTurnConnectionKind = nil
         lastTurnWasPersistent = false
+        resetHandoffHistory()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         elapsedSeconds = 0
@@ -2362,10 +2403,132 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         lastRestartFailureMessage = nil
     }
 
+    private func resetHandoffHistory() {
+        handoffRuns = []
+        pendingHandoff = nil
+        handoffThreadID = nil
+        handoffNoticeIDs = []
+    }
+
+    /// Records this turn and plans a switch of agent the way T3 Code's `Orchestrator.ts` does:
+    /// an agent that has answered in this chat before resumes its own session and is owed the
+    /// turns since (`delta_since_target_last_seen`); one new to the chat starts a new session
+    /// and is owed every earlier turn (`full_thread_summary`). True when a new session starts.
+    private func beginHandoffRun(providerID: UUID) -> Bool {
+        var startsFresh = false
+        if let lastSeen = handoffRuns.last(where: \.seen), lastSeen.providerID != providerID {
+            if let target = handoffRuns.last(where: { $0.providerID == providerID && $0.seen }),
+               let session = target.sessionID {
+                pendingHandoff = PendingHandoff(providerID: providerID, strategy: .deltaSinceTargetLastSeen,
+                                                sinceOrdinal: target.ordinal)
+                conversationID = session
+                liveState.reset()
+            } else {
+                pendingHandoff = PendingHandoff(providerID: providerID, strategy: .fullThreadSummary, sinceOrdinal: 0)
+                startsFresh = true
+            }
+        } else if pendingHandoff?.providerID != providerID {
+            pendingHandoff = nil
+        }
+        handoffRuns.append(HandoffRun(ordinal: (handoffRuns.last?.ordinal ?? 0) + 1, providerID: providerID,
+                                      userMessageID: messages.last(where: { $0.role == .user })?.id))
+        return startsFresh
+    }
+
+    /// What `handoffPrompt` did with the context owed to this turn's agent.
+    private enum HandoffDelivery { case none, carried, deferred }
+
+    /// The prompt this turn sends: the user's text, with the context owed to its agent ahead of it
+    /// (`withInlineContext`). An agent command (`/…`) goes as typed and the context waits for the
+    /// next prompt, as T3 Code defers it for compaction and goal commands. History that would not
+    /// fit this turn's budget stays owed (T3 Code's `ContextHandoffBudgetError`).
+    private func handoffPrompt(_ text: String, attachments: [VitruvianCodeAttachment],
+                               freshSession: Bool) -> (text: String, delivery: HandoffDelivery) {
+        guard var pending = pendingHandoff, let index = handoffRuns.indices.last,
+              handoffRuns[index].providerID == pending.providerID else { return (text, .none) }
+        if text.hasPrefix("/") { return (text, .deferred) }
+        // A new session remembers nothing, so it gets the whole chat whatever was planned.
+        if freshSession { pending = PendingHandoff(providerID: pending.providerID, strategy: .fullThreadSummary, sinceOrdinal: 0) }
+        let run = handoffRuns[index]
+        let rows = handoffSourceRows(before: run)
+        let owed = pending.strategy == .fullThreadSummary ? rows : rows.filter { ($0.runOrdinal ?? 0) > pending.sinceOrdinal }
+        let threadID = handoffThreadID ?? conversationID ?? "chat"
+        let items = AgentContextHandoff.historicalMessages(owed, threadID: threadID)
+        guard !items.isEmpty else {
+            pendingHandoff = nil
+            return (text, .none)
+        }
+        // A returning agent's own session already holds its earlier turns: T3 Code takes the
+        // session's reported usage, else counts the rows it accepted (`nativeContextEstimate`).
+        var nativeEstimate = 0
+        var window: Int?
+        if pending.strategy == .deltaSinceTargetLastSeen {
+            let agentRuns = Set(handoffRuns.filter { $0.providerID == run.providerID }.map(\.ordinal))
+            let agentRows = rows.filter { $0.runOrdinal.map(agentRuns.contains) ?? false }
+            if let usage = agentRows.last(where: { $0.message.contextUsage != nil })?.message.contextUsage {
+                nativeEstimate = usage.inputTokens + usage.cachedTokens + usage.outputTokens
+                window = usage.contextWindow > 0 ? usage.contextWindow : nil
+            } else {
+                nativeEstimate = AgentContextHandoff.historicalMessages(agentRows, threadID: threadID)
+                    .reduce(0) { $0 + $1.text.utf8.count }
+            }
+        }
+        let ordinals = items.compactMap(\.runOrdinal)
+        let covered = (ordinals.min() ?? 1)...max(ordinals.max() ?? 1, ordinals.min() ?? 1)
+        guard let prompt = AgentContextHandoff.prompt(
+            strategy: pending.strategy, threadID: threadID, runs: covered, items: items, userText: text,
+            attachments: attachments, nativeContextEstimate: nativeEstimate,
+            modelContextWindow: window) else { return (text, .none) }
+        handoffRuns[index].carriedContext = true
+        return (prompt, .carried)
+    }
+
+    /// The chat's rows before `run`'s own prompt, each with the turn it belongs to; the app's
+    /// notices are left out, and rows from before the first recorded turn (a reopened chat's
+    /// transcript) have no turn.
+    private func handoffSourceRows(before run: HandoffRun) -> [AgentContextHandoff.SourceRow] {
+        var runByMessage: [UUID: HandoffRun] = [:]
+        for candidate in handoffRuns where candidate.ordinal < run.ordinal {
+            if let id = candidate.userMessageID { runByMessage[id] = candidate }
+        }
+        var current: HandoffRun?
+        var rows: [AgentContextHandoff.SourceRow] = []
+        for message in messages {
+            if let id = run.userMessageID, message.id == id { break }
+            if let owner = runByMessage[message.id] { current = owner }
+            if handoffNoticeIDs.contains(message.id) { continue }
+            rows.append(AgentContextHandoff.SourceRow(message: message, runOrdinal: current?.ordinal,
+                                                      agentSessionID: current?.sessionID))
+        }
+        return rows
+    }
+
+    /// The current turn runs in the agent's session `id`.
+    private func recordHandoffSession(_ id: String) {
+        guard let index = handoffRuns.indices.last else { return }
+        if handoffRuns[index].sessionID == nil { handoffRuns[index].sessionID = id }
+        if handoffThreadID == nil { handoffThreadID = id }
+    }
+
+    /// The agent answered the current turn's prompt: it has now seen the chat, and context the
+    /// prompt carried is delivered (T3 Code marks a handoff delivered only once the prompt is
+    /// taken, and keeps it owed when the prompt is refused).
+    private func markHandoffRunReachedAgent() {
+        guard let index = handoffRuns.indices.last, !handoffRuns[index].reachedAgent else { return }
+        // A live connection's events are not tied to a turn: one that arrives before this turn's
+        // prompt went out belongs to an earlier prompt, not to this one.
+        if lastTurnWasPersistent && !turnStartedPrompt { return }
+        handoffRuns[index].reachedAgent = true
+        if handoffRuns[index].carriedContext, pendingHandoff?.providerID == handoffRuns[index].providerID {
+            pendingHandoff = nil
+        }
+    }
+
     private func insertFreshSessionNotice(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let notice = VitruvianCodeChatMessage(role: .agent, text: trimmed, createdAt: Date())
+        handoffNoticeIDs.insert(notice.id)
         if let replyID, let replyIdx = messages.firstIndex(where: { $0.id == replyID }) {
             let insertIndex = (replyIdx > 0 && messages[replyIdx - 1].role == .user) ? replyIdx - 1 : replyIdx
             messages.insert(notice, at: insertIndex)
@@ -2526,6 +2689,12 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     private func handle(event: AgentEvent) {
         switch event {
+        case .text, .tool, .toolStep, .thinking, .approval, .question, .planReplaced:
+            markHandoffRunReachedAgent()
+        default:
+            break
+        }
+        switch event {
         case .started(let id):
             if let id { assignConversationID(id) }
         case .text(let delta):
@@ -2660,6 +2829,8 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             awaitingAnswers = []
             expirePendingQuestionCards()
             if let id { assignConversationID(id) }
+            if let conversationID { recordHandoffSession(conversationID) }
+            if error == nil { markHandoffRunReachedAgent() }
             if let response, currentReplyText.isEmpty { appendToReply(response) }
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
                 if let metrics {
