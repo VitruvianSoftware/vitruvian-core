@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.1...vitruvian-code-v1.52.2) (2026-11-28)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** keep Claude Code's Connection picker after choosing Claude ACP ([#5586](https://github.com/VitruvianSoftware/vitruvian-core/issues/5586)) ([9e2dc21](https://github.com/VitruvianSoftware/vitruvian-core/commit/9e2dc219a3bd6f16c7a2a2059b4ec2dc3203283e))
+
 ## [1.52.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.0...vitruvian-code-v1.52.1) (2026-11-28)
 
 
