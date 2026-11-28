@@ -515,4 +515,216 @@ mod tests {
             probs
         );
     }
+
+    fn patch_cd_file_size(zip_bytes: &mut [u8], member: &str, new_size: u32) {
+        let sig = b"PK\x01\x02";
+        let member_bytes = member.as_bytes();
+        let mut patched = false;
+        let mut i = 0;
+        while i + 46 + member_bytes.len() <= zip_bytes.len() {
+            if &zip_bytes[i..i + 4] == sig
+                && &zip_bytes[i + 46..i + 46 + member_bytes.len()] == member_bytes
+            {
+                zip_bytes[i + 24..i + 28].copy_from_slice(&new_size.to_le_bytes());
+                patched = true;
+            }
+            i += 1;
+        }
+        assert!(patched, "central directory entry not found for {}", member);
+        let zf = crate::zip::ZipFile::new(zip_bytes.to_vec()).unwrap();
+        assert_eq!(zf.getinfo(member).unwrap().file_size, new_size as u64);
+    }
+
+    #[test]
+    fn check_downloads_flags_per_arch_zip_over_folder_bytes() {
+        let manifest = r#"{
+            "id": "dev.vitruvian.reference",
+            "name": {"en": "Reference tool"},
+            "publisher": "VitruvianSoftware",
+            "description": {"en": "Says hello."},
+            "version": "0.1.0",
+            "protocol": "1",
+            "uses": ["notify"],
+            "contributes": {"commands": [{"id": "hello", "title": {"en": "Say hello"}}]}
+        }"#;
+        let main_zip = make_zip(&[("vitruvian-tool.json", manifest.as_bytes())]);
+        let mut arm_zip = make_zip(&[
+            ("vitruvian-tool.json", manifest.as_bytes()),
+            ("bin/big", b"x"),
+        ]);
+        patch_cd_file_size(&mut arm_zip, "bin/big", (rules::FOLDER_BYTES + 1) as u32);
+        let x86_zip = make_zip(&[
+            ("vitruvian-tool.json", manifest.as_bytes()),
+            ("bin/tool", b"x86_64"),
+        ]);
+        let main_url =
+            "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref.zip";
+        let arm_url = "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref-arm64.zip";
+        let x86_url = "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref-x86_64.zip";
+        let entry_json = format!(
+            r#"{{
+                "id": "dev.vitruvian.reference",
+                "name": {{"en": "Reference tool"}},
+                "publisher": "VitruvianSoftware",
+                "summary": {{"en": "Says hello."}},
+                "version": "0.1.0",
+                "protocol": "1",
+                "minimumAppVersion": "3.43.0",
+                "source": "https://github.com/VitruvianSoftware/vitruvian-sdk",
+                "download": {{
+                    "url": "{main_url}",
+                    "sha256": "{main_sha}",
+                    "size": {main_size}
+                }},
+                "downloads": {{
+                    "arm64": {{
+                        "url": "{arm_url}",
+                        "sha256": "{arm_sha}",
+                        "size": {arm_size}
+                    }},
+                    "x86_64": {{
+                        "url": "{x86_url}",
+                        "sha256": "{x86_sha}",
+                        "size": {x86_size}
+                    }}
+                }},
+                "uses": ["notify"],
+                "commands": [{{"id": "hello", "title": {{"en": "Say hello"}}}}]
+            }}"#,
+            main_sha = sha256::hexdigest(&main_zip),
+            main_size = main_zip.len(),
+            arm_sha = sha256::hexdigest(&arm_zip),
+            arm_size = arm_zip.len(),
+            x86_sha = sha256::hexdigest(&x86_zip),
+            x86_size = x86_zip.len(),
+        );
+        let entry = json::loads(&entry_json).unwrap();
+        let base =
+            json::loads(r#"{"version": 1, "generated": "2026-10-12T00:00:00Z", "tools": []}"#)
+                .unwrap();
+        let head = json::dict(vec![
+            ("version", json::int(1)),
+            ("generated", py::s("2026-10-12T00:00:01Z")),
+            ("tools", Value::Arr(vec![entry])),
+        ]);
+        let fetch_map = |url: &Value, _size: &Value| -> Res<Option<Vec<u8>>> {
+            let bytes = match url.py_str().as_str() {
+                u if u == main_url => main_zip.clone(),
+                u if u == arm_url => arm_zip.clone(),
+                u if u == x86_url => x86_zip.clone(),
+                _ => return Ok(None),
+            };
+            Ok(Some(bytes))
+        };
+        let validate_ok = |_folder: &Path| -> Res<(i32, String)> { Ok((0, String::new())) };
+        let probs = check(&base, &head, &fetch_map, &validate_ok).unwrap();
+        let limit = format!("more than {}", rules::FOLDER_BYTES);
+        assert!(
+            probs
+                .iter()
+                .any(|p| p.contains("downloads.arm64") && p.contains(&limit)),
+            "expected downloads.arm64 over FOLDER_BYTES in {:?}",
+            probs
+        );
+    }
+
+    #[test]
+    fn check_downloads_flags_per_arch_zip_over_folder_items() {
+        let manifest = r#"{
+            "id": "dev.vitruvian.reference",
+            "name": {"en": "Reference tool"},
+            "publisher": "VitruvianSoftware",
+            "description": {"en": "Says hello."},
+            "version": "0.1.0",
+            "protocol": "1",
+            "uses": ["notify"],
+            "contributes": {"commands": [{"id": "hello", "title": {"en": "Say hello"}}]}
+        }"#;
+        let main_zip = make_zip(&[("vitruvian-tool.json", manifest.as_bytes())]);
+        let arm_zip = make_zip(&[
+            ("vitruvian-tool.json", manifest.as_bytes()),
+            ("bin/tool", b"arm64"),
+        ]);
+        let mut z = ZipWriter::new(false);
+        z.writestr(
+            "vitruvian-tool.json",
+            manifest.as_bytes(),
+            3,
+            0o100644 << 16,
+        );
+        for i in 0..rules::FOLDER_ITEMS {
+            let name = format!("f/{}", i);
+            z.writestr(&name, b"", 3, 0o100644 << 16);
+        }
+        let x86_zip = z.finish();
+        let main_url =
+            "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref.zip";
+        let arm_url = "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref-arm64.zip";
+        let x86_url = "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref-x86_64.zip";
+        let entry_json = format!(
+            r#"{{
+                "id": "dev.vitruvian.reference",
+                "name": {{"en": "Reference tool"}},
+                "publisher": "VitruvianSoftware",
+                "summary": {{"en": "Says hello."}},
+                "version": "0.1.0",
+                "protocol": "1",
+                "minimumAppVersion": "3.43.0",
+                "source": "https://github.com/VitruvianSoftware/vitruvian-sdk",
+                "download": {{
+                    "url": "{main_url}",
+                    "sha256": "{main_sha}",
+                    "size": {main_size}
+                }},
+                "downloads": {{
+                    "arm64": {{
+                        "url": "{arm_url}",
+                        "sha256": "{arm_sha}",
+                        "size": {arm_size}
+                    }},
+                    "x86_64": {{
+                        "url": "{x86_url}",
+                        "sha256": "{x86_sha}",
+                        "size": {x86_size}
+                    }}
+                }},
+                "uses": ["notify"],
+                "commands": [{{"id": "hello", "title": {{"en": "Say hello"}}}}]
+            }}"#,
+            main_sha = sha256::hexdigest(&main_zip),
+            main_size = main_zip.len(),
+            arm_sha = sha256::hexdigest(&arm_zip),
+            arm_size = arm_zip.len(),
+            x86_sha = sha256::hexdigest(&x86_zip),
+            x86_size = x86_zip.len(),
+        );
+        let entry = json::loads(&entry_json).unwrap();
+        let base =
+            json::loads(r#"{"version": 1, "generated": "2026-10-12T00:00:00Z", "tools": []}"#)
+                .unwrap();
+        let head = json::dict(vec![
+            ("version", json::int(1)),
+            ("generated", py::s("2026-10-12T00:00:01Z")),
+            ("tools", Value::Arr(vec![entry])),
+        ]);
+        let fetch_map = |url: &Value, _size: &Value| -> Res<Option<Vec<u8>>> {
+            let bytes = match url.py_str().as_str() {
+                u if u == main_url => main_zip.clone(),
+                u if u == arm_url => arm_zip.clone(),
+                u if u == x86_url => x86_zip.clone(),
+                _ => return Ok(None),
+            };
+            Ok(Some(bytes))
+        };
+        let validate_ok = |_folder: &Path| -> Res<(i32, String)> { Ok((0, String::new())) };
+        let probs = check(&base, &head, &fetch_map, &validate_ok).unwrap();
+        let limit = format!("more than {}", rules::FOLDER_ITEMS);
+        assert!(
+            probs
+                .iter()
+                .any(|p| p.contains("downloads.x86_64") && p.contains(&limit)),
+            "expected downloads.x86_64 over FOLDER_ITEMS in {:?}",
+            probs
+        );
+    }
 }

@@ -355,10 +355,11 @@ fn test_downloads_schema_rejects_invalid_entries() {
             )]),
         ),
     ];
+    let validator = Validator::new(&schema);
     for (reason, tool) in cases {
         assert!(
-            !refused(&schema, &catalog_with(vec![tool])).is_empty(),
-            "{}",
+            !validator.iter_errors(&catalog_with(vec![tool])).is_empty(),
+            "schema validator should reject: {}",
             reason
         );
     }

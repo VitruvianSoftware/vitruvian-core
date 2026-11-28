@@ -155,10 +155,13 @@ changes `minimumAppVersion`: when the manifest declares something only newer
 apps draw, the pull request says so.
 
 When a row in `sources.json` also lists `architectures` (keys `arm64`,
-`x86_64` with `{version}` asset patterns), the command checks each
+`x86_64` with `{version}` asset patterns), the command checks each present
 per-architecture zip the same way, requiring every Mach-O in it to contain that
-architecture. If every per-architecture zip is present and passes, it writes
-`downloads`; otherwise it removes any existing `downloads` key.
+architecture. If any present per-architecture zip fails a check, the command
+refuses the release and writes nothing. If every listed per-architecture zip is
+present and passes, it writes `downloads`; if any listed per-architecture asset
+is missing (or the row has no `architectures`), it removes any existing
+`downloads` key and proceeds.
 
 **Who merges it.** When nothing changed in what the tool asks for (`uses`),
 its commands, its panels, its protocol or its publisher, the pull request may

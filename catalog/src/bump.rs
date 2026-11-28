@@ -2921,4 +2921,439 @@ mod tests {
             other => panic!("expected Stop::Refused, got {:?}", other),
         }
     }
+
+    #[test]
+    fn bump_refuses_per_arch_wrong_uploader() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        for asset in &mut assets {
+            if asset.field("name") == Some(&json::s("vitruvian-code-tool-1.52.0-arm64.zip")) {
+                if let Value::Obj(d) = asset {
+                    d.dict_insert("uploader", json::dict(vec![("login", json::s("intruder"))]));
+                }
+            }
+        }
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons.iter().any(|r| {
+                        r.contains("vitruvian-code-tool-1.52.0-arm64.zip") && r.contains("intruder")
+                    }),
+                    "expected wrong uploader refusal, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        assert_eq!(
+            written.at("tools").unwrap().as_list().unwrap()[0]
+                .at("version")
+                .unwrap()
+                .py_str(),
+            "1.50.0"
+        );
+    }
+
+    #[test]
+    fn bump_refuses_per_arch_sidecar_sha_mismatch() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        let bad_sidecar = format!("{}  vitruvian-code-tool-1.52.0-arm64.zip\n", "0".repeat(64));
+        std::fs::write(
+            rel_dir.join("vitruvian-code-tool-1.52.0-arm64.zip.sha256"),
+            bad_sidecar.as_bytes(),
+        )
+        .unwrap();
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons
+                        .iter()
+                        .any(|r| r.contains("vitruvian-code-tool-1.52.0-arm64.zip.sha256 says")),
+                    "expected sidecar sha mismatch refusal, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        assert_eq!(
+            written.at("tools").unwrap().as_list().unwrap()[0]
+                .at("version")
+                .unwrap()
+                .py_str(),
+            "1.50.0"
+        );
+    }
+
+    #[test]
+    fn bump_refuses_per_arch_sidecar_wrong_filename() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        let bad_sidecar = format!("{}  wrong-name.zip\n", sha256::hexdigest(&arm_zip));
+        std::fs::write(
+            rel_dir.join("vitruvian-code-tool-1.52.0-arm64.zip.sha256"),
+            bad_sidecar.as_bytes(),
+        )
+        .unwrap();
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons
+                        .iter()
+                        .any(|r| r.contains("is the checksum of wrong-name.zip")),
+                    "expected sidecar wrong filename refusal, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        assert_eq!(
+            written.at("tools").unwrap().as_list().unwrap()[0]
+                .at("version")
+                .unwrap()
+                .py_str(),
+            "1.50.0"
+        );
+    }
+
+    #[test]
+    fn bump_refuses_per_arch_github_digest_mismatch() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        for asset in &mut assets {
+            if asset.field("name") == Some(&json::s("vitruvian-code-tool-1.52.0-arm64.zip")) {
+                if let Value::Obj(d) = asset {
+                    d.dict_insert("digest", json::s(&format!("sha256:{}", "f".repeat(64))));
+                }
+            }
+        }
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons.iter().any(|r| {
+                        r.contains("vitruvian-code-tool-1.52.0-arm64.zip's SHA-256 is")
+                            && r.contains("GitHub says")
+                    }),
+                    "expected GitHub digest mismatch refusal, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        assert_eq!(
+            written.at("tools").unwrap().as_list().unwrap()[0]
+                .at("version")
+                .unwrap()
+                .py_str(),
+            "1.50.0"
+        );
+    }
+
+    #[test]
+    fn bump_removes_downloads_when_all_per_arch_assets_absent() {
+        let stale = r#",
+      "downloads": {
+        "arm64": {
+          "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/vitruvian-code-tool-1.50.0-arm64.zip",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "size": 100
+        }
+      }"#;
+        let (ws, sources) = setup_bump_workspace(stale);
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let assets =
+            write_release_asset(&rel_dir, "vitruvian-code-tool-1.52.0.zip", &main_zip, true);
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let res = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap();
+        assert_eq!(res.at("status").unwrap().py_str(), "bumped");
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        let entry = &written.at("tools").unwrap().as_list().unwrap()[0];
+        assert_eq!(entry.at("version").unwrap().py_str(), "1.52.0");
+        assert!(entry.field("downloads").is_none());
+    }
+
+    #[test]
+    fn bump_refuses_missing_per_arch_sidecar_before_fetch() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            false,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+        // Remove the arm64 zip from disk so passing bump.rs:540 would fail with Unavailable instead of Refused.
+        std::fs::remove_file(rel_dir.join("vitruvian-code-tool-1.52.0-arm64.zip")).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons.iter().any(|r| r.contains(
+                        "v1.52.0 has vitruvian-code-tool-1.52.0-arm64.zip but no vitruvian-code-tool-1.52.0-arm64.zip.sha256"
+                    )),
+                    "expected missing sidecar refusal before fetch, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        assert_eq!(
+            written.at("tools").unwrap().as_list().unwrap()[0]
+                .at("version")
+                .unwrap()
+                .py_str(),
+            "1.50.0"
+        );
+    }
 }
