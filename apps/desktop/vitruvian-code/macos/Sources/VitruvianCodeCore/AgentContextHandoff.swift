@@ -153,7 +153,9 @@ public enum AgentContextHandoff {
     /// The user's own text from a prompt `withInlineContext` built, for showing a prompt read back
     /// from an agent's transcript. The note says how many rows it kept, so the history ends after
     /// that many row headers, and the user's text follows the first "User message:" line after
-    /// them; what the user typed cannot move that point. Any other text comes back as it is.
+    /// them; what the user typed cannot move that point. A kept row whose own text holds a row
+    /// header ("\n\n[Historical ") can still end the count early, since T3 Code's format does not
+    /// escape it. Any other text comes back as it is.
     public static func userText(fromPrompt prompt: String) -> String {
         guard prompt.hasPrefix("Context handoff (") else { return prompt }
         var rowsEnd = prompt.startIndex
