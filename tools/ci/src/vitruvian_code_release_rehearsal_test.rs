@@ -670,7 +670,7 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
     );
     let catalog_pins = body("Say what the catalog entry pins");
     expect(
-        "Say what the catalog entry pins lists the all-Macs, arm64, and x86_64 tool zips",
+        "Say what the catalog entry pins lists the all-Macs, arm64, and x86_64 tool zips as Markdown bullets",
         catalog_pins
             .iter()
             .any(|l| l.contains("vitruvian-code-tool-${VERSION}.zip"))
@@ -679,15 +679,93 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
                 .any(|l| l.contains("vitruvian-code-tool-${VERSION}-arm64.zip"))
             && catalog_pins
                 .iter()
-                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-x86_64.zip")),
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-x86_64.zip"))
+            && catalog_pins
+                .iter()
+                .any(|l| l.contains("- `%s`: `size`: %s, `sha256`: %s")),
     );
     problems
 }
 
+fn run_body_lines(body: &[String]) -> Option<&[String]> {
+    body.iter()
+        .position(|l| l == "run: |" || l == "run: |-")
+        .map(|idx| &body[idx + 1..])
+}
+
+fn has_guard_followed_by_exit_1<F: Fn(&str) -> bool>(lines: &[String], cond: F) -> bool {
+    lines.iter().enumerate().any(|(i, l)| {
+        cond(l)
+            && lines[i..lines.len().min(i + 4)]
+                .iter()
+                .any(|x| x == "exit 1" || x.contains("exit 1"))
+    })
+}
+
+fn check_folder_guard(
+    run_lines: &[String],
+    label: &str,
+    job: &str,
+    step: &str,
+    problems: &mut Vec<String>,
+) {
+    let zip_idx = run_lines
+        .iter()
+        .position(|l| l.starts_with("(cd \"$folder\" && zip -r -X"));
+    let before_zip = zip_idx.map_or(run_lines, |p| &run_lines[..p]);
+    let has_bytes_limit = run_lines.iter().any(|l| l.contains("268435456"));
+    let has_items_limit = run_lines.iter().any(|l| l.contains("10000"));
+    let counts_bytes = before_zip
+        .iter()
+        .any(|l| l.contains("folder_bytes=") && l.contains("find \"$folder\" -type f"));
+    let counts_items = before_zip
+        .iter()
+        .any(|l| l.contains("folder_items=") && l.contains("find \"$folder\" -mindepth 1"));
+    let guards_bytes = has_guard_followed_by_exit_1(before_zip, |l| {
+        l.contains("\"$folder_bytes\"")
+            && l.contains("-gt")
+            && (l.contains("\"$max_bytes\"") || l.contains("268435456"))
+    });
+    let guards_items = has_guard_followed_by_exit_1(before_zip, |l| {
+        l.contains("\"$folder_items\"")
+            && l.contains("-gt")
+            && (l.contains("\"$max_items\"") || l.contains("10000"))
+    });
+
+    for (desc, ok) in [
+        (
+            "defines the 268435456-byte Atrium folder cap",
+            has_bytes_limit,
+        ),
+        ("defines the 10000-item Atrium folder cap", has_items_limit),
+        (
+            "counts regular-file bytes in `$folder` before zipping",
+            counts_bytes,
+        ),
+        ("counts items under `$folder` before zipping", counts_items),
+        (
+            "enforces the folder byte cap with `-gt` followed by `exit 1` before zipping",
+            guards_bytes,
+        ),
+        (
+            "enforces the folder item cap with `-gt` followed by `exit 1` before zipping",
+            guards_items,
+        ),
+    ] {
+        if !ok {
+            problems.push(format!(
+                "{}, job `{}`, step `{}`: missing {}",
+                label, job, step, desc
+            ));
+        }
+    }
+}
+
 /// Ensures `job` in `text` builds per-Mac (`arm64` and `x86_64`) thin tool zips
 /// after signing and disk cleanup, using `lipo -thin` from the signed universal
-/// binaries, verifying each with `check-packaged-app`, writing `.sha256` sidecars,
-/// and enforcing the 268435456-byte cap.
+/// binaries, verifying each with `check-packaged-app`, guarding unpacked folder
+/// bytes/items before zipping, writing `.sha256` sidecars, and enforcing the
+/// 268435456-byte cap on each zip.
 pub fn per_mac_tool_zips_ok(text: &str, label: &str, job: &str) -> Vec<String> {
     let mut problems = Vec::new();
     let Some(lines) = job_lines(text, job) else {
@@ -739,22 +817,71 @@ pub fn per_mac_tool_zips_ok(text: &str, label: &str, job: &str) -> Vec<String> {
         }
     }
 
+    if let Some(tool_zip_idx) = step_idx("Zip the tool's folder") {
+        if let Some(run_lines) = run_body_lines(&steps[tool_zip_idx].1) {
+            check_folder_guard(
+                run_lines,
+                label,
+                job,
+                "Zip the tool's folder",
+                &mut problems,
+            );
+        } else {
+            problems.push(format!(
+                "{}, job `{}`, step `Zip the tool's folder`: missing `run: |` block",
+                label, job
+            ));
+        }
+    }
+
     let body = &steps[idx].1;
+    let Some(run_lines) = run_body_lines(body) else {
+        problems.push(format!(
+            "{}, job `{}`, step `Zip the per-Mac tool folders`: missing `run: |` block",
+            label, job
+        ));
+        return problems;
+    };
+
+    if run_lines.first().map(String::as_str) != Some("set -euo pipefail") {
+        problems.push(format!(
+            "{}, job `{}`, step `Zip the per-Mac tool folders`: first non-empty line of `run:` must be `set -euo pipefail`",
+            label, job
+        ));
+    }
+
+    check_folder_guard(
+        run_lines,
+        label,
+        job,
+        "Zip the per-Mac tool folders",
+        &mut problems,
+    );
+
+    let zip_idx = run_lines.iter().position(|l| {
+        l.starts_with("(cd \"$folder\" && zip -r -X \"${GITHUB_WORKSPACE}/${asset}\" .)")
+    });
+    let after_zip = zip_idx.map_or(&[][..], |p| &run_lines[p + 1..]);
+    let has_zip_cap_guard = has_guard_followed_by_exit_1(after_zip, |l| {
+        l.contains("-gt") && (l.contains("\"$max_bytes\"") || l.contains("268435456"))
+    });
+
     let checks: &[(&str, bool)] = &[
         (
             "iterates `arm64` and `x86_64`",
-            body.iter()
+            run_lines
+                .iter()
                 .any(|l| l.contains("arm64") && l.contains("x86_64")),
         ),
         (
             "extracts thin `bin/node` with `lipo /tmp/universal/tool-node -thin \"$arch\" -output \"$folder/bin/node\"`",
-            body.iter().any(|l| {
+            run_lines.iter().any(|l| {
                 l.contains("lipo /tmp/universal/tool-node -thin \"$arch\" -output \"$folder/bin/node\"")
             }),
         ),
         (
             "extracts thin `bin/tool` with `lipo /tmp/universal/vitruvian-code-tool -thin \"$arch\" -output \"$folder/bin/tool\"`",
-            body.iter().any(|l| {
+            run_lines.iter().any(|l| {
                 l.contains(
                     "lipo /tmp/universal/vitruvian-code-tool -thin \"$arch\" -output \"$folder/bin/tool\"",
                 )
@@ -762,26 +889,26 @@ pub fn per_mac_tool_zips_ok(text: &str, label: &str, job: &str) -> Vec<String> {
         ),
         (
             "runs `\"$RUNNER_TEMP/check-packaged-app\" --tool-folder \"$folder\" \"$arch\"`",
-            body.iter().any(|l| {
+            run_lines.iter().any(|l| {
                 l.contains("\"$RUNNER_TEMP/check-packaged-app\" --tool-folder \"$folder\" \"$arch\"")
             }),
         ),
         (
             "creates `vitruvian-code-tool-${VERSION}-${arch}.zip`",
-            body.iter()
+            run_lines
+                .iter()
                 .any(|l| l.contains("vitruvian-code-tool-${VERSION}-${arch}.zip"))
-                && body
-                    .iter()
-                    .any(|l| l.starts_with("(cd \"$folder\" && zip -r -X \"${GITHUB_WORKSPACE}/${asset}\" .)")),
+                && zip_idx.is_some(),
         ),
         (
             "writes `shasum -a 256 \"$asset\" > \"$asset.sha256\"`",
-            body.iter()
+            run_lines
+                .iter()
                 .any(|l| l.contains("shasum -a 256 \"$asset\" > \"$asset.sha256\"")),
         ),
         (
-            "enforces the 268435456-byte size cap",
-            body.iter().any(|l| l.contains("268435456")),
+            "enforces the 268435456-byte zip cap with `-gt \"$max_bytes\"` followed by `exit 1`",
+            has_zip_cap_guard,
         ),
     ];
 
@@ -790,6 +917,123 @@ pub fn per_mac_tool_zips_ok(text: &str, label: &str, job: &str) -> Vec<String> {
             problems.push(format!(
                 "{}, job `{}`, step `Zip the per-Mac tool folders`: missing {}",
                 label, job, desc
+            ));
+        }
+    }
+
+    problems
+}
+
+/// Ensures the rehearsal's `Check the tool's folder` step builds `vitruvian-tool`
+/// and `conformance` once before the loop, unpacks and validates all three tool
+/// zips (`all`, `arm64`, `x86_64`), checks sorted `lipo -archs` and `codesign` on
+/// both `bin/tool` and `bin/node`, and runs `validate`.
+pub fn rehearsal_tool_folder_check_ok(rehearsal_text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Some(lines) = job_lines(rehearsal_text, "package") else {
+        problems.push("the rehearsal: has no job `package`".to_string());
+        return problems;
+    };
+    let (_, steps) = split_job(&lines);
+    let Some((_, body)) = steps.iter().find(|(t, _)| t == "Check the tool's folder") else {
+        problems.push(
+            "the rehearsal, job `package`: missing step `Check the tool's folder`".to_string(),
+        );
+        return problems;
+    };
+    let Some(run_lines) = run_body_lines(body) else {
+        problems.push(
+            "the rehearsal, job `package`, step `Check the tool's folder`: missing `run: |` block"
+                .to_string(),
+        );
+        return problems;
+    };
+
+    if run_lines.first().map(String::as_str) != Some("set -euo pipefail") {
+        problems.push("the rehearsal, job `package`, step `Check the tool's folder`: missing `set -euo pipefail`".to_string());
+    }
+
+    let loop_idx = run_lines.iter().position(|l| l.starts_with("for "));
+    let swift_idx = run_lines
+        .iter()
+        .position(|l| l.contains("swift build") && l.contains("--product vitruvian-tool"));
+    let cargo_idx = run_lines.iter().enumerate().position(|(i, l)| {
+        l.contains("cargo +1.98.1 build")
+            && (l.contains("--bin conformance")
+                || run_lines
+                    .get(i + 1)
+                    .is_some_and(|next| next.contains("--bin conformance")))
+    });
+    let validate_idx = run_lines
+        .iter()
+        .position(|l| l.contains("validate \"$dir\"") || l.contains("vitruvian-tool\" validate"));
+
+    let checks: &[(&str, bool)] = &[
+        (
+            "all-Macs zip `vitruvian-code-tool-${VERSION}.zip`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}.zip")),
+        ),
+        (
+            "arm64 zip `vitruvian-code-tool-${VERSION}-arm64.zip`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-arm64.zip")),
+        ),
+        (
+            "x86_64 zip `vitruvian-code-tool-${VERSION}-x86_64.zip`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("vitruvian-code-tool-${VERSION}-x86_64.zip")),
+        ),
+        (
+            "`ditto -x -k` unpack",
+            run_lines.iter().any(|l| l.contains("ditto -x -k")),
+        ),
+        (
+            "sorted `lipo -archs` check on `bin/tool`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("lipo -archs") && l.contains("bin/tool") && l.contains("sort")),
+        ),
+        (
+            "sorted `lipo -archs` check on `bin/node`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("lipo -archs") && l.contains("bin/node") && l.contains("sort")),
+        ),
+        (
+            "`codesign --verify --strict` on `bin/node`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("codesign --verify --strict") && l.contains("bin/node")),
+        ),
+        (
+            "`codesign --verify --strict` on `bin/tool`",
+            run_lines
+                .iter()
+                .any(|l| l.contains("codesign --verify --strict") && l.contains("bin/tool")),
+        ),
+        (
+            "`swift build --product vitruvian-tool` before the loop",
+            matches!((swift_idx, loop_idx), (Some(s), Some(l)) if s < l),
+        ),
+        (
+            "`cargo +1.98.1 build ... --bin conformance` before the loop",
+            matches!((cargo_idx, loop_idx), (Some(c), Some(l)) if c < l),
+        ),
+        (
+            "`validate` inside the loop over the unpacked tool folders",
+            matches!((loop_idx, validate_idx), (Some(l), Some(v)) if v > l),
+        ),
+    ];
+
+    for (desc, ok) in checks {
+        if !ok {
+            problems.push(format!(
+                "the rehearsal, job `package`, step `Check the tool's folder`: missing {}",
+                desc
             ));
         }
     }
@@ -1534,24 +1778,129 @@ jobs:
       - name: Free disk space before the DMGs
         run: rm -rf /tmp/arm64
       - name: Zip the tool's folder
-        run: echo zip
+        run: |
+          set -euo pipefail
+          max_bytes=268435456
+          max_items=10000
+          folder=\"/tmp/tool/vitruvian-code\"
+          folder_bytes=\"$(find \"$folder\" -type f -exec stat -f %z {} + | awk '{s+=$1} END {print s+0}')\"
+          folder_items=\"$(find \"$folder\" -mindepth 1 | wc -l | tr -d ' ')\"
+          if [ \"$folder_bytes\" -gt \"$max_bytes\" ]; then
+            exit 1
+          fi
+          if [ \"$folder_items\" -gt \"$max_items\" ]; then
+            exit 1
+          fi
+          (cd \"$folder\" && zip -r -X \"${GITHUB_WORKSPACE}/${asset}\" .)
       - name: Zip the per-Mac tool folders
         run: |
+          set -euo pipefail
           max_bytes=268435456
+          max_items=10000
           for arch in arm64 x86_64; do
             folder=\"/tmp/tool-${arch}/vitruvian-code\"
             lipo /tmp/universal/vitruvian-code-tool -thin \"$arch\" -output \"$folder/bin/tool\"
             lipo /tmp/universal/tool-node -thin \"$arch\" -output \"$folder/bin/node\"
             \"$RUNNER_TEMP/check-packaged-app\" --tool-folder \"$folder\" \"$arch\"
+            folder_bytes=\"$(find \"$folder\" -type f -exec stat -f %z {} + | awk '{s+=$1} END {print s+0}')\"
+            folder_items=\"$(find \"$folder\" -mindepth 1 | wc -l | tr -d ' ')\"
+            if [ \"$folder_bytes\" -gt \"$max_bytes\" ]; then
+              exit 1
+            fi
+            if [ \"$folder_items\" -gt \"$max_items\" ]; then
+              exit 1
+            fi
             asset=\"vitruvian-code-tool-${VERSION}-${arch}.zip\"
             (cd \"$folder\" && zip -r -X \"${GITHUB_WORKSPACE}/${asset}\" .)
             shasum -a 256 \"$asset\" > \"$asset.sha256\"
+            if [ \"$size\" -gt \"$max_bytes\" ]; then
+              exit 1
+            fi
           done
 ";
     assert!(
         per_mac_tool_zips_ok(good_per_mac_wf, "test", "package").is_empty(),
         "unexpected problems: {:?}",
         per_mac_tool_zips_ok(good_per_mac_wf, "test", "package")
+    );
+
+    let no_set_euo = good_per_mac_wf.replacen("          set -euo pipefail\n", "", 2);
+    assert!(
+        !per_mac_tool_zips_ok(&no_set_euo, "test", "package").is_empty(),
+        "must reject missing set -euo pipefail"
+    );
+
+    let no_zip_cap = good_per_mac_wf.replacen(
+        "            if [ \"$size\" -gt \"$max_bytes\" ]; then\n              exit 1\n            fi\n",
+        "",
+        1,
+    );
+    assert!(
+        !per_mac_tool_zips_ok(&no_zip_cap, "test", "package").is_empty(),
+        "must reject missing zip cap check"
+    );
+
+    let no_exit_1_in_cap = good_per_mac_wf.replacen(
+        "            if [ \"$size\" -gt \"$max_bytes\" ]; then\n              exit 1\n            fi\n",
+        "            if [ \"$size\" -gt \"$max_bytes\" ]; then\n              echo too big\n            fi\n",
+        1,
+    );
+    assert!(
+        !per_mac_tool_zips_ok(&no_exit_1_in_cap, "test", "package").is_empty(),
+        "must reject cap guard without exit 1"
+    );
+
+    let no_folder_items_guard = good_per_mac_wf.replacen(
+        "          if [ \"$folder_items\" -gt \"$max_items\" ]; then\n            exit 1\n          fi\n",
+        "",
+        1,
+    );
+    assert!(
+        !per_mac_tool_zips_ok(&no_folder_items_guard, "test", "package").is_empty(),
+        "must reject missing folder items guard"
+    );
+
+    // 8. rehearsal_tool_folder_check_ok rejects missing per-arch zips or validate
+    let bad_rehearsal_check = "\
+jobs:
+  package:
+    steps:
+      - name: Check the tool's folder
+        run: |
+          set -euo pipefail
+          ditto -x -k \"vitruvian-code-tool-${VERSION}.zip\" \"$RUNNER_TEMP/tool\"
+          lipo -archs \"$RUNNER_TEMP/tool/bin/node\"
+          codesign --verify --strict \"$RUNNER_TEMP/tool/bin/node\"
+";
+    assert!(!rehearsal_tool_folder_check_ok(bad_rehearsal_check).is_empty());
+
+    let good_rehearsal_check = "\
+jobs:
+  package:
+    steps:
+      - name: Check the tool's folder
+        run: |
+          set -euo pipefail
+          swift build --package-path \"$sdk\" --product vitruvian-tool
+          cargo +1.98.1 build --locked --release --manifest-path packages/vitruvian-sdk/verification/Cargo.toml --bin conformance
+          entries=(
+            \"all|vitruvian-code-tool-${VERSION}.zip|arm64 x86_64|yes\"
+            \"arm64|vitruvian-code-tool-${VERSION}-arm64.zip|arm64|yes\"
+            \"x86_64|vitruvian-code-tool-${VERSION}-x86_64.zip|x86_64|no\"
+          )
+          for entry in \"${entries[@]}\"; do
+            ditto -x -k \"$zip\" \"$dir\"
+            tool_archs=\"$(lipo -archs \"$dir/bin/tool\" | tr ' ' '\\n' | awk 'NF' | sort | paste -sd' ' -)\"
+            node_archs=\"$(lipo -archs \"$dir/bin/node\" | tr ' ' '\\n' | awk 'NF' | sort | paste -sd' ' -)\"
+            codesign --verify --strict \"$dir/bin/node\"
+            codesign --verify --strict \"$dir/bin/tool\"
+            \"$vitruvian_tool\" validate \"$dir\"
+          done
+";
+    assert!(
+        rehearsal_tool_folder_check_ok(good_rehearsal_check).is_empty(),
+        "unexpected problems: {:?}",
+        rehearsal_tool_folder_check_ok(good_rehearsal_check)
     );
 }
 
@@ -1582,6 +1931,7 @@ fn main() -> ExitCode {
         "the rehearsal",
         "package",
     ));
+    problems.extend(rehearsal_tool_folder_check_ok(&rehearsal_text));
     problems.extend(workflow_hardened(&release_text, &rehearsal_text));
     problems.extend(signing_secrets_scoped(&release_text, &rehearsal_text));
     problems.extend(compare(&release_text, &rehearsal_text));

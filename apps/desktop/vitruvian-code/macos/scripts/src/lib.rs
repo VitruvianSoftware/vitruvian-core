@@ -1067,6 +1067,74 @@ mod tests {
     }
 
     #[test]
+    fn check_packaged_app_tool_folder_checks_bin_tool_archs() {
+        let dir = std::env::temp_dir().join("check_pkg_tool_folder_archs_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let fake_bin = dir.join("fake_bin");
+        let archs_dir = fake_bin.join("archs");
+        fs::create_dir_all(&archs_dir).unwrap();
+        make_fake_tool(&fake_bin, "lipo", FAKE_LIPO);
+        let full_codesign = "#!/bin/sh\nif [ \"$1\" = \"-d\" ]; then\n  cat <<'PLIST'\n<plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/></dict></plist>\nPLIST\nfi\nexit 0\n";
+        make_fake_tool(&fake_bin, "codesign", full_codesign);
+
+        let folder = dir.join("vitruvian-code");
+        fs::create_dir_all(folder.join("bin/claude-helper")).unwrap();
+        fs::write(folder.join("vitruvian-tool.json"), b"{}").unwrap();
+        fs::write(folder.join("bin/mermaid.min.js"), b"m").unwrap();
+        for exe in ["bin/tool", "bin/node"] {
+            fs::write(folder.join(exe), b"fake").unwrap();
+            fs::set_permissions(folder.join(exe), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        fs::write(
+            folder.join("bin/claude-helper/claude-helper.mjs"),
+            b"export {};\n",
+        )
+        .unwrap();
+
+        let _path_guard = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let orig_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", fake_bin.display(), orig_path));
+
+        let both_args: Vec<String> = vec![
+            "check-packaged-app".into(),
+            "--tool-folder".into(),
+            folder.to_str().unwrap().into(),
+            "arm64".into(),
+            "x86_64".into(),
+        ];
+        let arm_args: Vec<String> = vec![
+            "check-packaged-app".into(),
+            "--tool-folder".into(),
+            folder.to_str().unwrap().into(),
+            "arm64".into(),
+        ];
+
+        // 1. node = arm64 x86_64, tool = arm64, expected arm64 x86_64 -> rejected.
+        fs::write(archs_dir.join("node"), "arm64 x86_64\n").unwrap();
+        fs::write(archs_dir.join("tool"), "arm64\n").unwrap();
+        assert_eq!(check_packaged_app::run(&both_args), 1);
+
+        // 2. node = arm64, tool = arm64 x86_64, expected arm64 -> rejected.
+        fs::write(archs_dir.join("node"), "arm64\n").unwrap();
+        fs::write(archs_dir.join("tool"), "arm64 x86_64\n").unwrap();
+        assert_eq!(check_packaged_app::run(&arm_args), 1);
+
+        // 3. node = arm64, tool = x86_64, expected arm64 -> rejected.
+        fs::write(archs_dir.join("node"), "arm64\n").unwrap();
+        fs::write(archs_dir.join("tool"), "x86_64\n").unwrap();
+        assert_eq!(check_packaged_app::run(&arm_args), 1);
+
+        // 4. node = arm64, tool = arm64, expected arm64 -> accepted.
+        fs::write(archs_dir.join("node"), "arm64\n").unwrap();
+        fs::write(archs_dir.join("tool"), "arm64\n").unwrap();
+        assert_eq!(check_packaged_app::run(&arm_args), 0);
+
+        std::env::set_var("PATH", &orig_path);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn bazel_app_holds_node_rejects_missing_node_wrong_arch_and_bad_helper_hash() {
         let fx = app_fixture("bazel_app_holds_node_unit_test", true);
         let nvmrc = fx.dir.join(".nvmrc");

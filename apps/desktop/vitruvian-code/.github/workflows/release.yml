@@ -607,6 +607,9 @@ jobs:
       # its size and checksum, which the sidecar and the release notes carry.
       - name: Zip the tool's folder
         run: |
+          set -euo pipefail
+          max_bytes=268435456
+          max_items=10000
           folder="/tmp/tool/vitruvian-code"
           mkdir -p "$folder/bin/claude-helper"
           cp macos/atrium-extension/vitruvian-tool.json "$folder/"
@@ -619,6 +622,17 @@ jobs:
           # Node and the helper are in the folder, Node holds both architectures
           # and is signed with the JIT entitlements, before any of it is zipped.
           "$RUNNER_TEMP/check-packaged-app" --tool-folder "$folder" arm64 x86_64
+          folder_bytes="$(find "$folder" -type f -exec stat -f %z {} + | awk '{s+=$1} END {print s+0}')"
+          folder_items="$(find "$folder" -mindepth 1 | wc -l | tr -d ' ')"
+          echo "$folder: ${folder_bytes} bytes, ${folder_items} items"
+          if [ "$folder_bytes" -gt "$max_bytes" ]; then
+            echo "::error::${folder} is ${folder_bytes} bytes, exceeding the ${max_bytes}-byte Atrium folder cap" >&2
+            exit 1
+          fi
+          if [ "$folder_items" -gt "$max_items" ]; then
+            echo "::error::${folder} has ${folder_items} items, exceeding the ${max_items}-item Atrium folder cap" >&2
+            exit 1
+          fi
           asset="vitruvian-code-tool-${VERSION}.zip"
           (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
           cd "${GITHUB_WORKSPACE}"
@@ -630,6 +644,7 @@ jobs:
         run: |
           set -euo pipefail
           max_bytes=268435456
+          max_items=10000
           for arch in arm64 x86_64; do
             folder="/tmp/tool-${arch}/vitruvian-code"
             rm -rf "$folder"
@@ -643,6 +658,17 @@ jobs:
             chmod 755 "$folder/bin/node"
             cp macos/claude-helper/bundle/claude-helper.mjs "$folder/bin/claude-helper/claude-helper.mjs"
             "$RUNNER_TEMP/check-packaged-app" --tool-folder "$folder" "$arch"
+            folder_bytes="$(find "$folder" -type f -exec stat -f %z {} + | awk '{s+=$1} END {print s+0}')"
+            folder_items="$(find "$folder" -mindepth 1 | wc -l | tr -d ' ')"
+            echo "$folder: ${folder_bytes} bytes, ${folder_items} items"
+            if [ "$folder_bytes" -gt "$max_bytes" ]; then
+              echo "::error::${folder} is ${folder_bytes} bytes, exceeding the ${max_bytes}-byte Atrium folder cap" >&2
+              exit 1
+            fi
+            if [ "$folder_items" -gt "$max_items" ]; then
+              echo "::error::${folder} has ${folder_items} items, exceeding the ${max_items}-item Atrium folder cap" >&2
+              exit 1
+            fi
             asset="vitruvian-code-tool-${VERSION}-${arch}.zip"
             (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
             cd "${GITHUB_WORKSPACE}"
@@ -687,7 +713,7 @@ jobs:
               "vitruvian-code-tool-${VERSION}-x86_64.zip"; do
               size="$(stat -f %z "$asset")"
               sha256="$(cut -d' ' -f1 "$asset.sha256")"
-              printf '`%s`: `size`: %s, `sha256`: %s\n' "$asset" "$size" "$sha256"
+              printf -- '- `%s`: `size`: %s, `sha256`: %s\n' "$asset" "$size" "$sha256"
             done
           } > /tmp/notes.md
           gh release edit "$TAG" --notes-file /tmp/notes.md
