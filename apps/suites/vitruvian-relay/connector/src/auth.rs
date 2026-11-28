@@ -195,13 +195,21 @@ pub fn login(cfg: &Config) -> Result<Tokens> {
     eprintln!();
 
     let began = Instant::now();
-    let mut interval = start.interval_secs;
+    let mut pacer = PollPacer::new(start.interval_secs);
     loop {
-        if began.elapsed().as_secs() >= start.expires_in_secs {
-            return Err("the code expired before it was approved".into());
+        let left = start
+            .expires_in_secs
+            .saturating_sub(began.elapsed().as_secs());
+        if left == 0 {
+            return Err(match pacer.unreachable {
+                Some(why) => format!(
+                    "the code expired before it was approved; could not reach the sign-in server ({why})"
+                ),
+                None => "the code expired before it was approved".into(),
+            });
         }
-        std::thread::sleep(Duration::from_secs(interval));
-        let (status, body) = post_form(
+        std::thread::sleep(Duration::from_secs(pacer.sleep_secs(left)));
+        let answer = poll_token(
             &agent,
             &ep.token,
             &[
@@ -209,13 +217,118 @@ pub fn login(cfg: &Config) -> Result<Tokens> {
                 ("device_code", &start.device_code),
                 ("client_id", &cfg.client_id),
             ],
-        )?;
-        match parse_token_response(status, &body, now_unix()) {
-            Poll::Pending => {}
-            Poll::SlowDown => interval += 5,
-            Poll::Failed(why) => return Err(format!("sign-in failed: {why}")),
-            Poll::Done(tokens) => return Ok(tokens),
+        );
+        match answer {
+            PollAnswer::Trouble { why, retry_after } => {
+                if pacer.unreachable.is_none() {
+                    eprintln!("  (lost touch with the sign-in server, still waiting: {why})");
+                }
+                pacer.trouble(why, retry_after);
+            }
+            PollAnswer::Answer(status, body) => {
+                match parse_token_response(status, &body, now_unix()) {
+                    Poll::Pending => pacer.pending(),
+                    Poll::SlowDown => pacer.slow_down(),
+                    Poll::Failed(why) => return Err(format!("sign-in failed: {why}")),
+                    Poll::Done(tokens) => return Ok(tokens),
+                }
+            }
         }
+    }
+}
+
+/// The longest wait between token polls after network trouble, unless the
+/// server asks for longer with `Retry-After`.
+const MAX_POLL_BACKOFF_SECS: u64 = 30;
+
+/// What one device-grant token poll came back with.
+enum PollAnswer {
+    /// The server answered about the sign-in (any status but 429 and 5xx).
+    Answer(u16, Value),
+    /// The server could not be reached, was overloaded (429) or failed (5xx):
+    /// nothing was said about the approval. `retry_after` is the server's
+    /// `Retry-After` in seconds, when it sent one.
+    Trouble {
+        why: String,
+        retry_after: Option<u64>,
+    },
+}
+
+fn poll_token(agent: &ureq::Agent, url: &str, params: &[(&str, &str)]) -> PollAnswer {
+    let r = match agent
+        .post(url)
+        .set("Content-Type", "application/x-www-form-urlencoded")
+        .send_string(&encode_form(params))
+    {
+        Ok(r) => r,
+        Err(ureq::Error::Status(_, r)) => r,
+        Err(e) => {
+            return PollAnswer::Trouble {
+                why: format!("POST {url}: {e}"),
+                retry_after: None,
+            }
+        }
+    };
+    let status = r.status();
+    if status == 429 || status >= 500 {
+        return PollAnswer::Trouble {
+            why: format!("HTTP {status}"),
+            // Delay-seconds only; an HTTP-date `Retry-After` is ignored and the
+            // usual backoff applies. Any size is safe: the pacer saturates and
+            // never sleeps past the code's expiry.
+            retry_after: r.header("Retry-After").and_then(|v| v.trim().parse().ok()),
+        };
+    }
+    PollAnswer::Answer(status, read_json(r))
+}
+
+/// How long to wait between device-grant polls (RFC 8628 §3.5).
+///
+/// `slow_down` adds 5 seconds for good. Network trouble doubles the wait, up
+/// to [`MAX_POLL_BACKOFF_SECS`] or the server's `Retry-After`, and the next
+/// real answer goes back to the normal pace and forgets the trouble.
+#[derive(Debug, Clone, PartialEq)]
+struct PollPacer {
+    /// The pace the server set: its interval plus 5 s per `slow_down`.
+    base: u64,
+    /// The wait before the next poll.
+    interval: u64,
+    /// The latest network trouble since the server last answered.
+    unreachable: Option<String>,
+}
+
+impl PollPacer {
+    fn new(interval: u64) -> Self {
+        PollPacer {
+            base: interval,
+            interval,
+            unreachable: None,
+        }
+    }
+
+    /// Never sleep past the code's expiry.
+    fn sleep_secs(&self, left: u64) -> u64 {
+        self.interval.min(left)
+    }
+
+    fn pending(&mut self) {
+        self.interval = self.base;
+        self.unreachable = None;
+    }
+
+    fn slow_down(&mut self) {
+        self.base += 5;
+        self.pending();
+    }
+
+    fn trouble(&mut self, why: String, retry_after: Option<u64>) {
+        let backoff = self
+            .interval
+            .saturating_mul(2)
+            .min(MAX_POLL_BACKOFF_SECS)
+            .max(self.base);
+        self.interval = backoff.max(retry_after.unwrap_or(0));
+        self.unreachable = Some(why);
     }
 }
 
@@ -518,6 +631,9 @@ mod tests {
 
     type Handler = dyn FnMut(&str, &str, &str, &str) -> (u16, String) + Send;
 
+    /// A handler status that makes the fake server hang up without answering.
+    const DROP: u16 = 0;
+
     /// A tiny HTTP server: calls `handler(method, path, head, body)` per request;
     /// `head` is the request line and headers, lowercased.
     /// Returns its base URL.
@@ -561,9 +677,17 @@ mod tests {
                     let body = String::from_utf8_lossy(&buf[head_end..]).to_string();
                     let (status, out) =
                         (handler.lock().unwrap())(method, path, &head.to_lowercase(), &body);
+                    if status == DROP {
+                        return; // close without answering, like a reset connection
+                    }
+                    // A body of `retry-after=N` is sent as that header, empty body.
+                    let (extra, out) = match out.strip_prefix("retry-after=") {
+                        Some(n) => (format!("Retry-After: {n}\r\n"), String::new()),
+                        None => (String::new(), out),
+                    };
                     let _ = write!(
                         s,
-                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{out}",
                         out.len()
                     );
                 });
@@ -902,6 +1026,170 @@ mod tests {
         let t = login(&cfg_for(&base, test_dir("login"))).unwrap();
         assert_eq!(t.access_token, "A");
         assert_eq!(t.refresh_token.as_deref(), Some("R"));
+    }
+
+    /// A device-flow server whose token answers come from `answers` in order
+    /// (the last one repeats). Returns its base URL and the token-call count.
+    fn device_server(expires_in: u64, answers: Vec<(u16, String)>) -> (String, Arc<Mutex<usize>>) {
+        let calls = Arc::new(Mutex::new(0usize));
+        let seen = calls.clone();
+        let base_cell = Arc::new(Mutex::new(String::new()));
+        let b = base_cell.clone();
+        let base = fake_server(Box::new(move |_m, path, _h, _body| match path {
+            "/.well-known/openid-configuration" => (200, discovery(&b.lock().unwrap())),
+            "/device" => (
+                200,
+                json!({"device_code": "dc", "user_code": "UC", "verification_uri": "https://v",
+                       "interval": 1, "expires_in": expires_in})
+                .to_string(),
+            ),
+            "/token" => {
+                let mut n = seen.lock().unwrap();
+                let i = (*n).min(answers.len() - 1);
+                *n += 1;
+                answers[i].clone()
+            }
+            other => panic!("unexpected {other}"),
+        }));
+        *base_cell.lock().unwrap() = base.clone();
+        (base, calls)
+    }
+
+    fn tokens_answer() -> (u16, String) {
+        (
+            200,
+            json!({"access_token": "A", "refresh_token": "R", "expires_in": 100}).to_string(),
+        )
+    }
+
+    /// 2026-11-24: one connection reset while waiting for approval ended the
+    /// whole sign-in, and the person's approval in the browser went nowhere.
+    #[test]
+    fn login_keeps_waiting_through_a_dropped_connection() {
+        let (base, calls) = device_server(600, vec![(DROP, String::new()), tokens_answer()]);
+        let t = login(&cfg_for(&base, test_dir("login-drop"))).unwrap();
+        assert_eq!(t.access_token, "A");
+        assert_eq!(*calls.lock().unwrap(), 2);
+    }
+
+    #[test]
+    fn login_keeps_waiting_through_a_server_error() {
+        for status in [500u16, 502, 503, 429] {
+            let (base, calls) = device_server(600, vec![(status, "oops".into()), tokens_answer()]);
+            let t = login(&cfg_for(&base, test_dir(&format!("login-{status}"))))
+                .unwrap_or_else(|e| panic!("HTTP {status}: {e}"));
+            assert_eq!(t.access_token, "A", "HTTP {status}");
+            assert_eq!(*calls.lock().unwrap(), 2, "HTTP {status}");
+        }
+    }
+
+    /// The server saying no is final: no retry hides a refusal.
+    #[test]
+    fn login_stops_at_once_on_a_refusal() {
+        let (base, calls) = device_server(
+            600,
+            vec![(400, json!({"error": "access_denied"}).to_string())],
+        );
+        let err = login(&cfg_for(&base, test_dir("login-denied"))).unwrap_err();
+        assert!(err.contains("access_denied"), "{err}");
+        assert_eq!(*calls.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn login_waits_as_long_as_retry_after_asks() {
+        let (base, calls) =
+            device_server(600, vec![(503, "retry-after=4".into()), tokens_answer()]);
+        let began = Instant::now();
+        let t = login(&cfg_for(&base, test_dir("login-retry-after"))).unwrap();
+        assert_eq!(t.access_token, "A");
+        assert_eq!(*calls.lock().unwrap(), 2);
+        // 1 s first interval, then the 4 s the server asked for (backoff alone: 2 s).
+        assert!(
+            began.elapsed() >= Duration::from_secs(5),
+            "{:?}",
+            began.elapsed()
+        );
+    }
+
+    #[test]
+    fn pacer_backs_off_on_trouble_up_to_the_cap() {
+        let mut p = PollPacer::new(5);
+        let mut waits = Vec::new();
+        for _ in 0..5 {
+            p.trouble("reset".into(), None);
+            waits.push(p.interval);
+        }
+        assert_eq!(waits, vec![10, 20, 30, 30, 30]);
+        assert_eq!(p.unreachable.as_deref(), Some("reset"));
+    }
+
+    #[test]
+    fn pacer_goes_back_to_the_normal_pace_once_the_server_answers() {
+        let mut p = PollPacer::new(5);
+        p.trouble("reset".into(), None);
+        p.trouble("reset".into(), None);
+        p.pending();
+        assert_eq!(
+            p,
+            PollPacer::new(5),
+            "backoff and the old trouble are forgotten"
+        );
+    }
+
+    #[test]
+    fn pacer_keeps_slow_down_through_trouble_and_recovery() {
+        let mut p = PollPacer::new(5);
+        p.slow_down();
+        assert_eq!((p.base, p.interval), (10, 10));
+        p.trouble("HTTP 503".into(), None);
+        assert_eq!(p.interval, 20);
+        p.pending();
+        assert_eq!((p.base, p.interval), (10, 10), "slow_down is for good");
+        // A slow-down pace above the cap is never shortened by trouble.
+        let mut slow = PollPacer::new(40);
+        slow.trouble("reset".into(), None);
+        assert_eq!(slow.interval, 40);
+    }
+
+    #[test]
+    fn pacer_honours_retry_after_beyond_the_cap() {
+        let mut p = PollPacer::new(5);
+        p.trouble("HTTP 429".into(), Some(90));
+        assert_eq!(p.interval, 90);
+        p.trouble("HTTP 429".into(), Some(1));
+        assert_eq!(
+            p.interval, 30,
+            "a short Retry-After does not undo the backoff"
+        );
+    }
+
+    /// A hostile or broken `Retry-After` must not overflow the wait.
+    #[test]
+    fn pacer_survives_a_huge_retry_after() {
+        let mut p = PollPacer::new(5);
+        p.trouble("HTTP 503".into(), Some(u64::MAX));
+        assert_eq!(p.sleep_secs(600), 600, "capped at the time left");
+        // Doubling u64::MAX would overflow; it saturates, then the cap applies.
+        p.trouble("HTTP 503".into(), None);
+        assert_eq!(p.interval, MAX_POLL_BACKOFF_SECS);
+    }
+
+    #[test]
+    fn pacer_never_sleeps_past_the_expiry() {
+        let mut p = PollPacer::new(5);
+        p.trouble("reset".into(), Some(120));
+        assert_eq!(p.sleep_secs(7), 7);
+        assert_eq!(p.sleep_secs(600), 120);
+    }
+
+    /// When the code runs out while the server is unreachable, the message
+    /// says the network was the trouble, not just that the code expired.
+    #[test]
+    fn login_that_never_gets_through_names_the_network_error() {
+        let (base, _) = device_server(2, vec![(DROP, String::new())]);
+        let err = login(&cfg_for(&base, test_dir("login-down"))).unwrap_err();
+        assert!(err.contains("expired"), "{err}");
+        assert!(err.contains("could not reach"), "{err}");
     }
 
     #[test]
