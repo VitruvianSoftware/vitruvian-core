@@ -323,7 +323,7 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
-          NODE_VERSION="$(cut -d. -f1 .nvmrc 2>/dev/null || echo 22)"
+          NODE_VERSION="$(cut -d. -f1 .nvmrc 2>/dev/null || echo 26)"
           docker buildx build --push \
             --build-arg NODE_VERSION="${NODE_VERSION}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \

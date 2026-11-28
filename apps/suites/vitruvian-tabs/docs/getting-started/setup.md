@@ -10,13 +10,13 @@ day-to-day loop is in the [Development guide](development.md).
 
 ## 1. Toolchain
 
-You need **Bazelisk** (installed as `bazel`), **Node 22** (pinned in `.nvmrc`),
-**pnpm** (via Corepack), and **Go** (for the `apps/suites/vitruvian-tabs/infra` Pulumi programs). For cloud
+You need **Bazelisk** (installed as `bazel`), **Node 26** (pinned in `.nvmrc`),
+**pnpm** 10.20.0 (`npm install -g pnpm@10.20.0`), and **Go** (for the `apps/suites/vitruvian-tabs/infra` Pulumi programs). For cloud
 work you also need **gcloud** and **gh**.
 
 ```bash
 # from the repo root
-nvm use && corepack enable     # Node 22 + pnpm (versions come from .nvmrc / packageManager)
+nvm use && npm install -g pnpm@10.20.0  # Node 26 + pnpm (versions come from .nvmrc / packageManager)
 bazel run //apps/suites/vitruvian-tabs:doctor      # verify your toolchain has exactly what Vitruvian Tabs needs
 ```
 

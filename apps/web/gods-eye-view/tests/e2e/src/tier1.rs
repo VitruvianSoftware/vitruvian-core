@@ -1119,10 +1119,10 @@ fn feature_10_dockerfile(ctx: &mut TestContext) {
     // F047
     if ctx.file_exists(&df) {
         let content = ctx.read_file(&df).unwrap_or_default();
-        if content.lines().any(|l| l.starts_with("FROM node:22")) {
-            ctx.pass("F047", "Dockerfile uses canonical Node 22 base image (FROM node:22-...)");
+        if content.lines().any(|l| l.starts_with("FROM node:26")) {
+            ctx.pass("F047", "Dockerfile uses canonical Node 26 base image (FROM node:26-...)");
         } else {
-            ctx.fail("F047", "Dockerfile base image does not start with node:22");
+            ctx.fail("F047", "Dockerfile base image does not start with node:26");
         }
     } else {
         ctx.skip("F047", "Dockerfile not yet created", "Pending Milestone M3");

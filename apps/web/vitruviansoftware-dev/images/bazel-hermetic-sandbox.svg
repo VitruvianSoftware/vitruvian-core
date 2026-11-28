@@ -60,7 +60,7 @@
       <rect width="225" height="110" fill="#0d1822" stroke="#1f3b52" rx="4" />
       <text x="16" y="24" class="accent-blue">PINNED TOOLCHAINS</text>
       <text x="16" y="44" class="box-body">• Go 1.26 hermetic SDK</text>
-      <text x="16" y="62" class="box-body">• Node.js 24 / pnpm pinned</text>
+      <text x="16" y="62" class="box-body">• Node.js 26 / pnpm pinned</text>
       <text x="16" y="80" class="box-body">• Python 3.11 isolated venv</text>
       <text x="16" y="98" class="box-body">• Zero host dependency</text>
 

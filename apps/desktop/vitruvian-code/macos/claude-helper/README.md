@@ -8,7 +8,7 @@ Node/TypeScript (ESM) helper process that runs Anthropic's `@anthropic-ai/claude
   Contents/Helpers/node Contents/Resources/claude-helper/claude-helper.mjs --claude-path /absolute/path/to/claude
   ```
 - **Checked-in ESM bundle & Node lock:**
-  - `bundle/claude-helper.mjs` — self-contained ESM bundle built with `esbuild` (`platform=node`, `target=node22`, excluding `@anthropic-ai/claude-agent-sdk-*` optional platform binaries).
+  - `bundle/claude-helper.mjs` — self-contained ESM bundle built with `esbuild` (`platform=node`, `target=node26`, excluding `@anthropic-ai/claude-agent-sdk-*` optional platform binaries).
   - `bundle/packages.json` — manifest of npm packages bundled into `claude-helper.mjs`, verified against `../../THIRD_PARTY_NOTICES.md`.
   - `node.lock` — pinned Node.js version (matching `//.nvmrc`) and official Darwin arm64/x64 tarball SHA-256 sums used by standalone releases.
   - Regenerate the checked-in bundle and manifest:

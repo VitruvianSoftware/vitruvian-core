@@ -152,7 +152,7 @@ the tailnet.
 ### Prerequisites
 
 - Node.js ≥ 22
-- pnpm 10 (`corepack enable` will provide it) — the repo also builds under Bazel
+- pnpm 10.20.0 (`npm install -g pnpm@10.20.0`) — the repo also builds under Bazel
 
 ### Development
 
