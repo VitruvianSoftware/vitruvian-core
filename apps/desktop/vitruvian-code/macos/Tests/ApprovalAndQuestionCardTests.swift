@@ -1097,7 +1097,6 @@ private final class CardMockSessionHost: VitruvianCodeHost {
     var timelineOnLeft = true
     var sessionPreferences = VitruvianCodeSessionPreferences()
     var chatModes: [String: String] = [:]
-    var showsConnectionSetting = false
     var strings = VitruvianCodeHostStrings()
     var approvals: [VitruvianCodeTurnNotice] = []
 

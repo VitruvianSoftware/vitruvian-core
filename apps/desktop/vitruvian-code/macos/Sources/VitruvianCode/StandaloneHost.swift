@@ -163,12 +163,6 @@ final class StandaloneHost: VitruvianCodeHost, ObservableObject {
         set { AppPreferences.defaults.set(newValue, forKey: "chatConnections") }
     }
 
-    /// Kept on this instance only: Settings sets it while it is open (Option
-    /// held at open) and it is off at every launch.
-    var showsConnectionSetting = false {
-        willSet { objectWillChange.send() }
-    }
-
     var strings: VitruvianCodeHostStrings { VitruvianCodeHostStrings() }
 
     /// A turn stopped to ask whether it may use a tool. This app's own

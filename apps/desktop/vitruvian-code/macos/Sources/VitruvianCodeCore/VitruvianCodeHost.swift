@@ -57,8 +57,6 @@ public protocol VitruvianCodeHost: AnyObject {
     var chatModes: [String: String] { get set }
     /// Per-conversation connection override (`AgentConnectionKind.rawValue`) keyed by conversation ID.
     var chatConnections: [String: String] { get set }
-    /// Whether the hidden per-provider Connection picker is shown in Settings.
-    var showsConnectionSetting: Bool { get set }
     /// User-facing text, in the app's language right now.
     var strings: VitruvianCodeHostStrings { get }
     /// A turn paused for the user to approve a tool.
@@ -85,11 +83,6 @@ public extension VitruvianCodeHost {
 
     var chatConnections: [String: String] {
         get { [:] }
-        set {}
-    }
-
-    var showsConnectionSetting: Bool {
-        get { false }
         set {}
     }
 }

@@ -262,6 +262,29 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
         route == .claude || route == .ollama
     }
 
+    /// The connection a chat uses when none is chosen (`connection` nil): agy over ACP and
+    /// Claude Code on the Agent SDK (design step 6); every other provider on its command line.
+    /// A saved choice is kept, so a user who picked the command line stays there.
+    public var defaultConnection: AgentConnectionKind {
+        switch route {
+        case .antigravity, .registry: return .acp
+        case .claude: return .claudeSDK
+        case .ollama, .opencode, .custom: return .commandLine
+        }
+    }
+
+    /// `connection`, or `defaultConnection` when none is chosen.
+    public var resolvedConnection: AgentConnectionKind { connection ?? defaultConnection }
+
+    /// This provider as a chat runs it: with `defaultConnection` filled in when none is chosen.
+    /// The engine applies it where it picks the chat's provider; what is saved keeps `nil`, so
+    /// "no choice" goes on meaning the default if the default changes.
+    public var withDefaultConnection: VitruvianCodeCLIProvider {
+        var resolved = self
+        resolved.connection = resolvedConnection
+        return resolved
+    }
+
     /// The connection choices offered in Settings for this provider, starting
     /// with Default (`nil`) and Command line. ACP is offered only for agy;
     /// Claude SDK and Claude ACP for Claude; Claude SDK, with Ollama's

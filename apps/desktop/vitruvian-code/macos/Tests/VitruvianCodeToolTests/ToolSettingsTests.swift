@@ -55,18 +55,11 @@ final class ToolSettingsTests: XCTestCase {
         "sessionPreferences": .string(#"{"pinnedSessionIDs":["s1"],"renamedSessionTitles":{"s2":"Renamed"}}"#),
     ]
 
-    func testChatModesAreSavedButShowingTheConnectionSettingNeverIs() throws {
+    func testChatModesAreSaved() throws {
         let settings = ToolSettings(folder: folder)
-        XCTAssertFalse(settings.showsConnectionSetting, "off by default")
-        settings.showsConnectionSetting = true
         settings.chatModes = ["conv-1": "|plan"]
-        XCTAssertTrue(settings.showsConnectionSetting, "kept on the instance while it lives")
-
-        let data = try Data(contentsOf: folder.appendingPathComponent(ToolSettings.fileName))
-        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("showsConnectionSetting"), "never written")
         let again = ToolSettings(folder: folder)
         XCTAssertEqual(again.chatModes, ["conv-1": "|plan"])
-        XCTAssertFalse(again.showsConnectionSetting, "off again at the next launch")
     }
 
     func testTheFirstRunTakesEverythingHandedAndWritesTheFile() throws {

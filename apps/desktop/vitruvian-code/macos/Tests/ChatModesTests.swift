@@ -241,12 +241,64 @@ final class ChatModesTests: XCTestCase {
         XCTAssertNil(normal.defaults.object(forKey: key), "and the real app does not see the copy's")
     }
 
-    // MARK: - Hidden Connection picker flag is in memory only
+    // MARK: - The Connection picker is shown (design step 6)
 
-    func testShowingTheConnectionSettingIsNeverSaved() throws {
+    /// Step 6 ends the hidden Connection picker (it showed only with Option held when Settings
+    /// opened): every provider that has more than one connection offers the choice.
+    func testTheConnectionPickerIsNoLongerHidden() throws {
+        let settings = try appSource("SettingsView.swift")
         let host = try appSource("StandaloneHost.swift")
-        XCTAssertTrue(host.contains("var showsConnectionSetting = false {"), "kept on the instance")
-        XCTAssertFalse(host.contains("\"showsConnectionSetting\""), "never a saved key")
+        for source in [settings, host] {
+            XCTAssertFalse(source.contains("showsConnectionSetting"), "no hidden-picker flag is left")
+        }
+        XCTAssertTrue(settings.contains("Picker(strings.connectionPreviewLabel, selection: $provider.connection)"))
+    }
+
+    /// Seen in the app: with the picker in the name's row, its label and fixed width squeezed a
+    /// provider's name to one letter per line in the 480-point Settings window. The picker sits
+    /// on its own line, after the command, with its label hidden, and the name stays on one line.
+    func testTheConnectionPickerSitsBelowTheNameNotBesideIt() throws {
+        let settings = try appSource("SettingsView.swift")
+        let picker = try XCTUnwrap(settings.range(of: "Picker(strings.connectionPreviewLabel, selection: $provider.connection)"))
+        let command = try XCTUnwrap(settings.range(of: "Text(actualCommand)"))
+        XCTAssertLessThan(command.lowerBound, picker.lowerBound, "the picker comes after the command line, not in the name's row")
+        let afterPicker = settings[picker.upperBound...].prefix(600)
+        XCTAssertTrue(afterPicker.contains(".labelsHidden()"), "the picker's own label is hidden; a caption names it")
+        let name = try XCTUnwrap(settings.range(of: ".font(.system(size: 12, weight: isActive ? .semibold : .regular))"))
+        XCTAssertTrue(settings[name.upperBound...].prefix(200).contains(".lineLimit(1)"), "the name stays on one line")
+    }
+
+    /// With no connection chosen, agy runs over ACP and Claude Code on the Agent SDK; every other
+    /// provider stays on its command line. A saved choice wins, so nobody is moved off theirs.
+    func testNoChoiceMeansACPForAgyAndTheAgentSDKForClaude() {
+        XCTAssertEqual(VitruvianCodeCLIProvider.antigravity.resolvedConnection, .acp)
+        XCTAssertEqual(VitruvianCodeCLIProvider.claude.resolvedConnection, .claudeSDK)
+        XCTAssertTrue(VitruvianCodeCLIProvider.claude.withDefaultConnection.runsOnClaudeSDK)
+        XCTAssertEqual(VitruvianCodeCLIProvider.ollama.resolvedConnection, .commandLine)
+        XCTAssertFalse(VitruvianCodeCLIProvider.ollama.withDefaultConnection.runsOnClaudeSDK, "Ollama (claude) stays on its command line")
+        XCTAssertEqual(VitruvianCodeCLIProvider.opencode.resolvedConnection, .commandLine)
+        for provider in [VitruvianCodeCLIProvider.antigravity, .claude] {
+            var saved = provider
+            saved.connection = .commandLine
+            XCTAssertEqual(saved.resolvedConnection, .commandLine, "\(provider.name): a saved choice is kept")
+        }
+        var claudeACP = VitruvianCodeCLIProvider.claude
+        claudeACP.connection = .claudeACP
+        XCTAssertEqual(claudeACP.resolvedConnection, .claudeACP)
+    }
+
+    /// A new chat with nothing chosen gets the live connection (the engine fills in the default
+    /// where it picks the chat's provider), and "Use command line for this chat" still moves it
+    /// to the command line.
+    @MainActor
+    func testAChatWithNoChoiceStartsLiveAndCanStillMoveToTheCommandLine() {
+        let rig = ComposerRig()
+        let session = VitruvianCodeQuickPromptSession(environment: rig.environment, host: rig.host)
+        let agy = VitruvianCodeCLIProvider.antigravity.withDefaultConnection
+        XCTAssertEqual(session.effectiveConnectionKind(for: agy), .acp)
+        XCTAssertEqual(session.effectiveConnectionKind(for: VitruvianCodeCLIProvider.claude.withDefaultConnection), .claudeSDK)
+        session.useCommandLineForThisChat(configuration: VitruvianCodeConfiguration(activeProvider: agy), agentPath: nil)
+        XCTAssertEqual(session.effectiveConnectionKind(for: agy), .commandLine)
     }
 
     // MARK: - Per-chat overrides are independent

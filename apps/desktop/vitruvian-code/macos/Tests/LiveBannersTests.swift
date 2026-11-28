@@ -920,7 +920,6 @@ private final class LiveBannersMockHost: VitruvianCodeHost {
     var sessionPreferences = VitruvianCodeSessionPreferences()
     var chatModes: [String: String] = [:]
     var chatConnections: [String: String] = [:]
-    var showsConnectionSetting = false
     var strings = VitruvianCodeHostStrings()
 
     func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {}

@@ -36,6 +36,12 @@ final class EngineHostTests: XCTestCase {
 
     /// A host whose settings are plain values the test can change at any
     /// time, and which remembers what it was told.
+    static let onTheCommandLine: [VitruvianCodeCLIProvider] = [VitruvianCodeCLIProvider.antigravity, .claude].map {
+        var provider = $0
+        provider.connection = .commandLine
+        return provider
+    }
+
     private final class RecordingHost: VitruvianCodeHost {
         var configuredBotDirectory = ""
         var startsBotAtLaunch = false
@@ -43,7 +49,11 @@ final class EngineHostTests: XCTestCase {
         var hiddenClaudeSessionIDs: [String] = []
         var chosenProviderID: UUID?
         var chosenModels: [UUID: String] = [:]
-        var savedProviders: [VitruvianCodeCLIProvider] = []
+        /// These tests are about the engine and its host on the command line, which is what a
+        /// provider with no connection chosen ran before design step 6. Since then no choice
+        /// means agy over ACP and Claude on the Agent SDK, so this host's user has chosen the
+        /// command line for both.
+        var savedProviders: [VitruvianCodeCLIProvider] = EngineHostTests.onTheCommandLine
         var promptHistory: [String] = [] {
             didSet { promptHistoryWrites += 1 }
         }
@@ -51,7 +61,6 @@ final class EngineHostTests: XCTestCase {
         var worktreeMode = false
         var timelineOnLeft = false
         var chatModes: [String: String] = [:]
-        var showsConnectionSetting = false
         var strings = VitruvianCodeHostStrings()
         var approvals: [VitruvianCodeTurnNotice] = []
         var finished: [(notice: VitruvianCodeTurnNotice, isChatVisible: Bool)] = []
@@ -523,9 +532,9 @@ final class EngineHostTests: XCTestCase {
         let host = RecordingHost()
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
 
-        XCTAssertEqual(engine.activeProvider, .antigravity)
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[0])
         engine.load()
-        XCTAssertEqual(engine.activeProvider, .antigravity)
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[0])
         XCTAssertNil(host.chosenProviderID, "reading the choice does not make one")
     }
 
@@ -535,14 +544,15 @@ final class EngineHostTests: XCTestCase {
         let host = RecordingHost()
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
 
-        engine.updateActiveProvider(.claude)
+        engine.updateActiveProvider(Self.onTheCommandLine[1])
         XCTAssertEqual(host.chosenProviderID, VitruvianCodeCLIProvider.claude.id)
-        XCTAssertEqual(engine.activeProvider, .claude)
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[1])
 
-        // The property's setter is the same road.
+        // The property's setter is the same road. Ollama has no connection chosen: the chat
+        // takes its default, the command line.
         engine.activeProvider = .ollama
         XCTAssertEqual(host.chosenProviderID, VitruvianCodeCLIProvider.ollama.id)
-        XCTAssertEqual(engine.configuration.activeProvider, .ollama)
+        XCTAssertEqual(engine.configuration.activeProvider, VitruvianCodeCLIProvider.ollama.withDefaultConnection)
     }
 
     func testTheChosenProviderSurvivesEveryRereadOfTheFile() {
@@ -552,10 +562,10 @@ final class EngineHostTests: XCTestCase {
         rig.files[rig.defaultBot] = ""
         rig.files[rig.defaultBot + "/.env"] = "TELEGRAM_BOT_TOKEN=1:abc\n"
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
-        engine.updateActiveProvider(.claude)
+        engine.updateActiveProvider(Self.onTheCommandLine[1])
 
         engine.load()
-        XCTAssertEqual(engine.activeProvider, .claude, "reading the file keeps the choice")
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[1], "reading the file keeps the choice")
         XCTAssertEqual(engine.configuration.botToken, "1:abc", "and still reads the file")
 
         var next = engine.configuration
@@ -563,24 +573,24 @@ final class EngineHostTests: XCTestCase {
         // What a settings page hands back may carry any provider; the host's choice wins.
         next.activeProvider = .antigravity
         XCTAssertTrue(engine.save(next))
-        XCTAssertEqual(engine.activeProvider, .claude, "saving keeps the choice")
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[1], "saving keeps the choice")
         XCTAssertEqual(engine.configuration.model, "some-model")
         XCTAssertNil(engine.configuration.botProvider, "the bot's provider is still not read back")
 
         // Starting reads the file again before it looks for the bot.
         engine.start()
         XCTAssertEqual(engine.problem, .missingBot)
-        XCTAssertEqual(engine.activeProvider, .claude, "starting keeps the choice")
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[1], "starting keeps the choice")
 
         engine.startPolling()
         engine.stopPolling()
-        XCTAssertEqual(engine.activeProvider, .claude, "showing the page keeps the choice")
+        XCTAssertEqual(engine.activeProvider, Self.onTheCommandLine[1], "showing the page keeps the choice")
 
         // The next launch: another engine, the same saved settings.
         let relaunched = VitruvianCodeEngine(environment: rig.environment, host: host)
-        XCTAssertEqual(relaunched.activeProvider, .claude, "a new engine starts on the choice")
+        XCTAssertEqual(relaunched.activeProvider, Self.onTheCommandLine[1], "a new engine starts on the choice")
         relaunched.load()
-        XCTAssertEqual(relaunched.activeProvider, .claude)
+        XCTAssertEqual(relaunched.activeProvider, Self.onTheCommandLine[1])
     }
 
     func testAnUnknownChosenProviderFallsBackToAntigravity() {
@@ -590,9 +600,11 @@ final class EngineHostTests: XCTestCase {
         host.chosenProviderID = UUID(uuidString: "DEADBEEF-0000-0000-0000-000000000000")
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
 
-        XCTAssertEqual(engine.activeProvider, .antigravity)
+        XCTAssertEqual(engine.activeProvider, VitruvianCodeCLIProvider.antigravity.withDefaultConnection,
+                       "an unknown id falls back to Antigravity as built in, with its default connection")
         engine.load()
-        XCTAssertEqual(engine.activeProvider, .antigravity)
+        XCTAssertEqual(engine.activeProvider, VitruvianCodeCLIProvider.antigravity.withDefaultConnection,
+                       "an unknown id falls back to Antigravity as built in, with its default connection")
     }
 
     func testAnEditedBuiltInKeepsItsPlace() {
@@ -617,6 +629,7 @@ final class EngineHostTests: XCTestCase {
         let own = VitruvianCodeCLIProvider(id: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
                                         name: "My script", commandTemplate: "/usr/local/bin/ask {prompt}",
                                         isBuiltIn: false)
+        host.savedProviders = []
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
         XCTAssertEqual(engine.providers, VitruvianCodeCLIProvider.builtIns, "with nothing saved, the four built in")
 
@@ -627,12 +640,12 @@ final class EngineHostTests: XCTestCase {
         engine.updateActiveProvider(own)
         XCTAssertEqual(host.chosenProviderID, own.id)
         engine.load()
-        XCTAssertEqual(engine.activeProvider, own, "an own provider is remembered like a built-in")
+        XCTAssertEqual(engine.activeProvider, own.withDefaultConnection, "an own provider is remembered like a built-in")
 
         // The user deletes it elsewhere: its id is now unknown.
         host.savedProviders = []
         engine.load()
-        XCTAssertEqual(engine.activeProvider, .antigravity)
+        XCTAssertEqual(engine.activeProvider, VitruvianCodeCLIProvider.antigravity.withDefaultConnection)
     }
 
     /// An edited built-in command is taken only from an entry that is itself
@@ -1008,8 +1021,10 @@ final class EngineHostTests: XCTestCase {
 
     /// A provider the user added: a command with the prompt and model in it.
     private func ownProvider(_ template: String = "llm -m {model} \"{prompt}\"") -> VitruvianCodeCLIProvider {
+        // On the command line, as these tests mean it (a "claude ..." template would otherwise
+        // default to the Agent SDK since design step 6).
         VitruvianCodeCLIProvider(id: UUID(uuidString: "AAAAAAAA-0000-0000-0000-00000000000A")!,
-                              name: "My LLM", commandTemplate: template, isBuiltIn: false)
+                              name: "My LLM", commandTemplate: template, isBuiltIn: false, connection: .commandLine)
     }
 
     /// A rig where `llm` is installed in the first folder the lookup tries.
@@ -1521,16 +1536,16 @@ final class EngineHostTests: XCTestCase {
         rig.executables = ["/usr/bin/claude", "/opt/homebrew/sbin/ollama"]
         let engine = VitruvianCodeEngine(environment: rig.environment, host: RecordingHost())
 
-        engine.updateActiveProvider(.claude)
+        engine.updateActiveProvider(Self.onTheCommandLine[1])
         XCTAssertEqual(engine.agentPath, "/usr/bin/claude")
         engine.updateActiveProvider(.ollama)
         XCTAssertEqual(engine.agentPath, "/opt/homebrew/sbin/ollama")
 
         rig.executables = ["/usr/bin/claude", "/usr/local/bin/claude"]
-        engine.updateActiveProvider(.claude)
+        engine.updateActiveProvider(Self.onTheCommandLine[1])
         XCTAssertEqual(engine.agentPath, "/usr/local/bin/claude", "a shared folder still wins")
         rig.executables = []
-        engine.updateActiveProvider(.claude)
+        engine.updateActiveProvider(Self.onTheCommandLine[1])
         XCTAssertNil(engine.agentPath, "nothing found is still missing")
         // Antigravity keeps its own lookup: the extra folders are not searched for agy.
         rig.executables = ["/usr/bin/agy"]
@@ -2655,7 +2670,7 @@ final class EngineHostTests: XCTestCase {
     /// for every provider whose turns are run this way.
     func testAnAgentThatCannotBeStartedIsAFailedTurn() {
         let providers: [(VitruvianCodeCLIProvider, path: String, model: String)] = [
-            (.antigravity, "/fake/agy", ""), (.claude, "/fake/claude", ""), (.ollama, "/fake/ollama", "m"),
+            (Self.onTheCommandLine[0], "/fake/agy", ""), (Self.onTheCommandLine[1], "/fake/claude", ""), (.ollama, "/fake/ollama", "m"),
         ]
         for (provider, path, model) in providers {
             let rig = Rig()
@@ -3210,7 +3225,7 @@ final class EngineHostTests: XCTestCase {
         commandLine.executables = [commandLine.home + "/.local/bin/claude"]
         commandLine.programOutput = "2.1.200 (Claude Code)"
         let cliEngine = VitruvianCodeEngine(environment: commandLine.environment, host: RecordingHost())
-        cliEngine.updateActiveProvider(.claude)
+        cliEngine.updateActiveProvider(Self.onTheCommandLine[1])
         await commandLine.settle()
         XCTAssertEqual(cliEngine.availableModels.map(\.id), all, "nothing changes for a chat that has not picked Claude SDK")
         XCTAssertTrue(commandLine.programRuns.isEmpty)
