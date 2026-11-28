@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.2...vitruvian-code-v1.52.3) (2026-11-28)
+
+
+### Bug Fixes
+
+* **vitruvian-code:** start a new session when a chat switches to another agent ([#5587](https://github.com/VitruvianSoftware/vitruvian-core/issues/5587)) ([c09200a](https://github.com/VitruvianSoftware/vitruvian-core/commit/c09200a34cdf6c64905c8c6f67ecf7f9ef0c6028))
+
 ## [1.52.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.1...vitruvian-code-v1.52.2) (2026-11-28)
 
 
