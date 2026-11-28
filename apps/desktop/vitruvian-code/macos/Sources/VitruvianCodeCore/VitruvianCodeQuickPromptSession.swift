@@ -1591,6 +1591,15 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             agentSlashCommands = []
             rememberedConfigChoices = [:]
         }
+        // A session belongs to the agent that made it: another agent cannot resume it (agy
+        // answered Claude's ID with "Failed to read session"). As in T3 Code, a switch to a
+        // different agent starts a new session; the same agent on another connection resumes
+        // (`ProviderSessionTransitionPolicy.ts`, `decideProviderSessionTransition`).
+        var forceFreshSession = forceFreshSession
+        if let previous = lastTurnProviderID, previous != effectiveProv.id,
+           conversationID?.isEmpty == false {
+            forceFreshSession = true
+        }
         lastTurnProviderID = effectiveProv.id
         lastTurnConnectionKind = effectiveProv.connection
         if !isCustomCommand, forceFreshSession {
