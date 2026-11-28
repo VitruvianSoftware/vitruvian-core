@@ -639,6 +639,60 @@ final class AgentConnectionTests: XCTestCase {
         await connection.stop()
     }
 
+    /// Seen in the released 1.52.0: switching a chat from Claude to agy sent Claude's session ID
+    /// to agy, which answered "Failed to read session". As in T3 Code, another agent starts a new
+    /// session (and the chat says so); the same agent on another connection still resumes.
+    func testSwitchingTheAgentStartsANewSessionAndTheSameAgentResumes() async throws {
+        let rig = ComposerRig()
+        var created: [FakeAgentConnection] = []
+        var env = rig.environment
+        env.makeConnection = { _ in
+            let fake = FakeAgentConnection()
+            created.append(fake)
+            return fake
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+
+        func turn(_ text: String, provider: VitruvianCodeCLIProvider, answer conversationID: String) async throws -> FakeAgentConnection {
+            let before = created.count
+            session.send(text, configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: provider),
+                         agentPath: "/fake/agent")
+            XCTAssertEqual(created.count, before + 1, text)
+            let fake = created[before]
+            for _ in 0..<1000 where fake.promptBlocks.isEmpty { await Task.yield() }
+            fake.emit(.started(conversationID: conversationID))
+            fake.emit(.finished(status: "end_turn", response: "ok", error: nil, conversationID: conversationID))
+            fake.finishPrompt(with: .endTurn)
+            for _ in 0..<1000 where session.isRunning { await Task.yield() }
+            return fake
+        }
+
+        var claudeOnTheSDK = VitruvianCodeCLIProvider.claude
+        claudeOnTheSDK.connection = .claudeSDK
+        var claudeOnTheCommandLine = VitruvianCodeCLIProvider.claude
+        claudeOnTheCommandLine.connection = .commandLine
+
+        let first = try await turn("one", provider: claudeOnTheSDK, answer: "claude-conv-1")
+        XCTAssertEqual(first.startRequests.first?.resumeSessionID, nil)
+
+        let sameAgent = try await turn("two", provider: claudeOnTheCommandLine, answer: "claude-conv-1")
+        XCTAssertEqual(sameAgent.startRequests.first?.resumeSessionID, "claude-conv-1",
+                       "the same agent on another connection resumes its session")
+        let noticesBefore = session.messages.filter { $0.text == rig.host.strings.worktreeFreshSessionNotice }.count
+
+        let otherAgent = try await turn("three", provider: .antigravity, answer: "agy-conv-1")
+        XCTAssertEqual(otherAgent.startRequests.first?.resumeSessionID, nil,
+                       "another agent never gets Claude's session ID")
+        XCTAssertEqual(session.conversationID, "agy-conv-1")
+        let noticesAfter = session.messages.filter { $0.text == rig.host.strings.worktreeFreshSessionNotice }.count
+        XCTAssertEqual(noticesAfter, noticesBefore + 1, "the chat says a new session started")
+        XCTAssertEqual(noticesBefore, 0, "staying on the same agent says nothing")
+
+        let backToAgy = try await turn("four", provider: .antigravity, answer: "agy-conv-1")
+        XCTAssertEqual(backToAgy.startRequests.first?.resumeSessionID, "agy-conv-1", "agy then resumes its own session")
+    }
+
     func testSessionDrivesFakeAgentConnectionThroughMakeConnection() async throws {
         let rig = ComposerRig()
         var capturedSpecs: [AgentConnectionSpec] = []
