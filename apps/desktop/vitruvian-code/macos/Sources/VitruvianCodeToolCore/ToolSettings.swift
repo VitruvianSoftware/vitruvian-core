@@ -354,6 +354,7 @@ public final class ToolSettings: VitruvianCodeHost {
                               emptyReply: Words.text("emptyReply", language),
                               worktreeCreationFailed: Words.text("worktreeCreationFailed", language),
                               worktreeFreshSessionNotice: Words.text("worktreeFreshSessionNotice", language),
+                              agentSwitchHandoffNotice: Words.text("agentSwitchHandoffNotice", language),
                               configOptionUpdateFailed: Words.text("configOptionUpdateFailed", language),
                               configOptionUnavailable: Words.text("configOptionUnavailable", language),
                               mentionOutsideWorkspaceFormat: Words.text("mentionOutsideWorkspaceFormat", language),

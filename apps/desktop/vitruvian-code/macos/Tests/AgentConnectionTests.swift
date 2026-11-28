@@ -640,9 +640,11 @@ final class AgentConnectionTests: XCTestCase {
     }
 
     /// Seen in the released 1.52.0: switching a chat from Claude to agy sent Claude's session ID
-    /// to agy, which answered "Failed to read session". As in T3 Code, another agent starts a new
-    /// session (and the chat says so); the same agent on another connection still resumes.
-    func testSwitchingTheAgentStartsANewSessionAndTheSameAgentResumes() async throws {
+    /// to agy, which answered "Failed to read session". As in T3 Code, an agent new to the chat
+    /// starts a new session whose first prompt carries the chat so far (`full_thread_summary`);
+    /// an agent coming back resumes its own session and gets the turns since it last answered
+    /// (`delta_since_target_last_seen`); the same agent on another connection just resumes.
+    func testSwitchingTheAgentHandsTheNewAgentTheChatSoFar() async throws {
         let rig = ComposerRig()
         var created: [FakeAgentConnection] = []
         var env = rig.environment
@@ -662,11 +664,18 @@ final class AgentConnectionTests: XCTestCase {
             let fake = created[before]
             for _ in 0..<1000 where fake.promptBlocks.isEmpty { await Task.yield() }
             fake.emit(.started(conversationID: conversationID))
-            fake.emit(.finished(status: "end_turn", response: "ok", error: nil, conversationID: conversationID))
+            fake.emit(.finished(status: "end_turn", response: "answer to \(text)", error: nil, conversationID: conversationID))
             fake.finishPrompt(with: .endTurn)
             for _ in 0..<1000 where session.isRunning { await Task.yield() }
             return fake
         }
+        func prompt(_ fake: FakeAgentConnection) -> String {
+            for block in (fake.promptBlocks.first ?? []).reversed() {
+                if case .text(let text) = block { return text }
+            }
+            return ""
+        }
+        func notices() -> Int { session.messages.filter { $0.text == rig.host.strings.agentSwitchHandoffNotice }.count }
 
         var claudeOnTheSDK = VitruvianCodeCLIProvider.claude
         claudeOnTheSDK.connection = .claudeSDK
@@ -675,22 +684,45 @@ final class AgentConnectionTests: XCTestCase {
 
         let first = try await turn("one", provider: claudeOnTheSDK, answer: "claude-conv-1")
         XCTAssertEqual(first.startRequests.first?.resumeSessionID, nil)
+        XCTAssertEqual(prompt(first), "one")
 
         let sameAgent = try await turn("two", provider: claudeOnTheCommandLine, answer: "claude-conv-1")
         XCTAssertEqual(sameAgent.startRequests.first?.resumeSessionID, "claude-conv-1",
                        "the same agent on another connection resumes its session")
-        let noticesBefore = session.messages.filter { $0.text == rig.host.strings.worktreeFreshSessionNotice }.count
+        XCTAssertEqual(prompt(sameAgent), "two", "the same agent needs no history")
+        XCTAssertEqual(notices(), 0, "staying on the same agent says nothing")
 
         let otherAgent = try await turn("three", provider: .antigravity, answer: "agy-conv-1")
         XCTAssertEqual(otherAgent.startRequests.first?.resumeSessionID, nil,
                        "another agent never gets Claude's session ID")
         XCTAssertEqual(session.conversationID, "agy-conv-1")
-        let noticesAfter = session.messages.filter { $0.text == rig.host.strings.worktreeFreshSessionNotice }.count
-        XCTAssertEqual(noticesAfter, noticesBefore + 1, "the chat says a new session started")
-        XCTAssertEqual(noticesBefore, 0, "staying on the same agent says nothing")
+        XCTAssertEqual(notices(), 1, "the chat says a new session started with a summary")
+        let handedOff = prompt(otherAgent)
+        XCTAssertTrue(handedOff.hasPrefix("Context handoff (full_thread_summary):\nProvider context handoff. Thread: claude-conv-1. Covered app runs: 1-2."), handedOff)
+        XCTAssertTrue(handedOff.contains("Selected 4 intact items; omitted 0 items."), handedOff)
+        for row in ["[Historical user; user_message; thread=claude-conv-1; run=1;",
+                    "provider-thread=claude-conv-1; status=completed]\none\n",
+                    "[Historical assistant; assistant_message; thread=claude-conv-1; run=2;",
+                    "]\nanswer to two\n"] {
+            XCTAssertTrue(handedOff.contains(row), row)
+        }
+        XCTAssertTrue(handedOff.hasSuffix("\n\nUser message:\nthree"), handedOff)
+        XCTAssertFalse(handedOff.contains(rig.host.strings.agentSwitchHandoffNotice), "the app's own notice is not history")
+        XCTAssertEqual(session.messages.filter { $0.role == .user }.last?.text, "three", "the chat shows what was typed")
 
         let backToAgy = try await turn("four", provider: .antigravity, answer: "agy-conv-1")
         XCTAssertEqual(backToAgy.startRequests.first?.resumeSessionID, "agy-conv-1", "agy then resumes its own session")
+        XCTAssertEqual(prompt(backToAgy), "four", "the context was handed over once")
+
+        let backToClaude = try await turn("five", provider: claudeOnTheSDK, answer: "claude-conv-1")
+        XCTAssertEqual(backToClaude.startRequests.first?.resumeSessionID, "claude-conv-1",
+                       "an agent coming back resumes its own session")
+        XCTAssertEqual(notices(), 1, "resuming is not a new session")
+        let delta = prompt(backToClaude)
+        XCTAssertTrue(delta.hasPrefix("Context handoff (delta_since_target_last_seen):\nProvider context handoff. Thread: claude-conv-1. Covered app runs: 3-4."), delta)
+        XCTAssertTrue(delta.contains("]\nthree\n") && delta.contains("]\nanswer to four\n"), delta)
+        XCTAssertFalse(delta.contains("]\none\n") || delta.contains("]\ntwo\n"), "Claude already saw its own turns")
+        XCTAssertTrue(delta.hasSuffix("\n\nUser message:\nfive"), delta)
     }
 
     func testSessionDrivesFakeAgentConnectionThroughMakeConnection() async throws {

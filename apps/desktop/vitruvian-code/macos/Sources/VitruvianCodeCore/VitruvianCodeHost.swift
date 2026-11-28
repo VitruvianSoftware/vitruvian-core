@@ -150,6 +150,8 @@ public struct VitruvianCodeHostStrings: Sendable {
     public var worktreeCreationFailed: String
     /// Starting a fresh session in a worktree drops earlier conversation context.
     public var worktreeFreshSessionNotice: String
+    /// A chat switched to another agent: it starts a new session and gets a summary of the chat.
+    public var agentSwitchHandoffNotice: String
     /// Updating a live session config option failed.
     public var configOptionUpdateFailed: String
     /// Live session config options require an active connection.
@@ -198,6 +200,7 @@ public struct VitruvianCodeHostStrings: Sendable {
                  deleteSession: String = "Delete",
                  worktreeCreationFailed: String = "Could not create a git worktree for this chat.",
                  worktreeFreshSessionNotice: String = "Starting a new session. The agent won’t remember earlier messages in this chat.",
+                 agentSwitchHandoffNotice: String = "Starting a new session with this agent. It gets a summary of this chat so far.",
                  configOptionUpdateFailed: String = "Could not update setting.",
                  configOptionUnavailable: String = "Send a message to reconnect before changing settings.",
                  mentionOutsideWorkspaceFormat: String = "Skipped %@: outside the working folder.",
@@ -237,6 +240,7 @@ public struct VitruvianCodeHostStrings: Sendable {
         self.deleteSession = deleteSession
         self.worktreeCreationFailed = worktreeCreationFailed
         self.worktreeFreshSessionNotice = worktreeFreshSessionNotice
+        self.agentSwitchHandoffNotice = agentSwitchHandoffNotice
         self.configOptionUpdateFailed = configOptionUpdateFailed
         self.configOptionUnavailable = configOptionUnavailable
         self.mentionOutsideWorkspaceFormat = mentionOutsideWorkspaceFormat
