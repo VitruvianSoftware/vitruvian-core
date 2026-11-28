@@ -301,7 +301,10 @@ final class LiveComposerControlsTests: XCTestCase {
         engine.updateChatConfiguration(updatedGlobal)
         XCTAssertEqual(session.effectiveApprovalMode(for: engine.configuration), .standard)
 
-        // Command-line chats keep today's behavior (writing global approvalMode).
+        // Command-line chats keep today's behavior (writing global approvalMode). The engine takes
+        // the chat's provider from the host's list, so the host's agy is put on the command line
+        // (with no choice it is ACP since design step 6).
+        rig.host.savedProviders = [Self.commandLineProvider]
         var cliConfig = engine.configuration
         cliConfig.activeProvider = Self.commandLineProvider
         cliConfig.approvalMode = .yolo

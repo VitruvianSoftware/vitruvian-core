@@ -913,7 +913,6 @@ private final class TestDiffReviewHost: VitruvianCodeHost {
     var timelineOnLeft = true
     var sessionPreferences = VitruvianCodeSessionPreferences()
     var chatModes: [String: String] = [:]
-    var showsConnectionSetting = false
     var strings = VitruvianCodeHostStrings()
 
     func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {}

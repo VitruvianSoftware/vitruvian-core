@@ -44,7 +44,6 @@ final class PermissionArgumentsTests: XCTestCase {
         var worktreeMode = false
         var timelineOnLeft = false
         var chatModes: [String: String] = [:]
-        var showsConnectionSetting = false
         var strings = VitruvianCodeHostStrings()
         func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {}
         func turnFinished(_ notice: VitruvianCodeTurnNotice, isChatVisible: Bool) {}

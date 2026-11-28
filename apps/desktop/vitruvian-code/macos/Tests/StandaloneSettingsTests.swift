@@ -276,13 +276,13 @@ final class StandaloneSettingsTests: XCTestCase {
         // Settings is saved after the chat chose: the choice is not put back.
         settings.saveProviders()
         XCTAssertEqual(host.chosenProviderID, aider.id)
-        XCTAssertEqual(engine.activeProvider, aider)
+        XCTAssertEqual(engine.activeProvider, aider.withDefaultConnection)
         XCTAssertEqual(host.storedBuiltIn, [.antigravity, editedClaude, .ollama, .opencode], "and the lists are as they were")
         XCTAssertEqual(host.storedCustom, [aider])
 
         // A Settings window opened later, or the next launch, is another model on the same record.
         let relaunched = VitruvianCodeEngine(environment: world.environment, host: host)
-        XCTAssertEqual(relaunched.activeProvider, aider)
+        XCTAssertEqual(relaunched.activeProvider, aider.withDefaultConnection)
         XCTAssertEqual(relaunched.providers, [.antigravity, editedClaude, .ollama, .opencode, aider])
     }
 
@@ -298,16 +298,16 @@ final class StandaloneSettingsTests: XCTestCase {
         XCTAssertEqual(engine.providers, [.antigravity, editedClaude, .ollama, .opencode, aider, llm])
         XCTAssertEqual(host.storedCustom, [aider, llm], "the user's list holds only the user's own")
         XCTAssertEqual(host.storedBuiltIn, [.antigravity, editedClaude, .ollama, .opencode])
-        XCTAssertEqual(engine.activeProvider, .antigravity, "adding one does not choose it")
+        XCTAssertEqual(engine.activeProvider, VitruvianCodeCLIProvider.antigravity.withDefaultConnection, "adding one does not choose it")
 
         // Settings' picker.
         let listingsBefore = world.listings.count
         settings.activeProviderID = llm.id
-        XCTAssertEqual(engine.activeProvider, llm)
-        XCTAssertEqual(engine.configuration.activeProvider, llm, "which is what the chat's turns run")
+        XCTAssertEqual(engine.activeProvider, llm.withDefaultConnection)
+        XCTAssertEqual(engine.configuration.activeProvider, llm.withDefaultConnection, "which is what the chat's turns run")
         XCTAssertEqual(host.store["activeProviderId"] as? String, llm.id.uuidString)
         XCTAssertEqual(world.listings.count, listingsBefore + 1, "the chat's conversations are read again")
-        XCTAssertEqual(world.listings.last, llm)
+        XCTAssertEqual(world.listings.last, llm.withDefaultConnection)
     }
 
     func testAnEditInSettingsReachesTheProviderTheChatIsOn() throws {
@@ -321,7 +321,7 @@ final class StandaloneSettingsTests: XCTestCase {
         var providers = settings.providers
         providers[1].commandTemplate = "claude -p \"{prompt}\""
         settings.providers = providers
-        XCTAssertEqual(engine.activeProvider, .claude, "the chat has the new command")
+        XCTAssertEqual(engine.activeProvider, VitruvianCodeCLIProvider.claude.withDefaultConnection, "the chat has the new command")
         XCTAssertEqual(host.storedBuiltIn, VitruvianCodeCLIProvider.builtIns)
         XCTAssertEqual(host.chosenProviderID, VitruvianCodeCLIProvider.claude.id)
 
@@ -333,7 +333,7 @@ final class StandaloneSettingsTests: XCTestCase {
         providers[try XCTUnwrap(providers.firstIndex { $0.id == aider.id })] = edited
         let listingsBefore = world.listings.count
         settings.providers = providers
-        XCTAssertEqual(engine.activeProvider, edited)
+        XCTAssertEqual(engine.activeProvider, edited.withDefaultConnection)
         XCTAssertEqual(host.storedCustom, [edited])
         XCTAssertEqual(world.listings.count, listingsBefore, "the same provider run the same way keeps its conversations")
     }
@@ -352,7 +352,7 @@ final class StandaloneSettingsTests: XCTestCase {
         settings.providers.removeAll { $0.id == aider.id }
         XCTAssertEqual(engine.providers, [antigravity, editedClaude, .ollama, .opencode])
         XCTAssertEqual(host.storedCustom, [])
-        XCTAssertEqual(engine.activeProvider, antigravity, "Antigravity as it is listed")
+        XCTAssertEqual(engine.activeProvider, antigravity.withDefaultConnection, "Antigravity as it is listed")
         XCTAssertEqual(host.store["activeProviderId"] as? String, "00000000-0000-0000-0000-000000000001",
                        "and the record no longer names the removed one")
         XCTAssertEqual(settings.activeProviderID, VitruvianCodeCLIProvider.antigravity.id)
@@ -366,7 +366,7 @@ final class StandaloneSettingsTests: XCTestCase {
         engine.updateActiveProvider(.ollama)
 
         settings.providers.removeAll { $0.id == aider.id }
-        XCTAssertEqual(engine.activeProvider, .ollama)
+        XCTAssertEqual(engine.activeProvider, VitruvianCodeCLIProvider.ollama.withDefaultConnection)
         XCTAssertEqual(host.chosenProviderID, VitruvianCodeCLIProvider.ollama.id)
     }
 

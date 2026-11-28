@@ -276,7 +276,6 @@ struct SettingsView: View {
                         ProviderRow(
                             provider: $provider,
                             isActive: configManager.activeProviderId == provider.id,
-                            showsConnectionSetting: host.showsConnectionSetting,
                             strings: chatStrings,
                             onDelete: provider.isBuiltIn ? nil : {
                                 // Read the row before removing it: `provider` reads the list by
@@ -543,7 +542,6 @@ struct TimelineSideToggle: View {
 struct ProviderRow: View {
     @Binding var provider: CLIProvider
     let isActive: Bool
-    let showsConnectionSetting: Bool
     let strings: VitruvianCodeChatStrings
     let onDelete: (() -> Void)?
 
@@ -561,7 +559,9 @@ struct ProviderRow: View {
 
     private func connectionLabel(_ kind: AgentConnectionKind?) -> String {
         switch kind {
-        case nil: return strings.connectionDefault
+        case nil:
+            // Default names what it means for this provider (agy: ACP, Claude: Agent SDK).
+            return "\(strings.connectionDefault) (\(connectionLabel(provider.shared.defaultConnection)))"
         case .commandLine: return strings.connectionCommandLine
         case .acp: return strings.connectionACP
         case .claudeSDK: return strings.connectionClaudeSDK
@@ -598,6 +598,8 @@ struct ProviderRow: View {
                 Text(provider.name)
                     .font(.system(size: 12, weight: isActive ? .semibold : .regular))
                     .foregroundStyle(isActive ? .primary : .secondary)
+                    .lineLimit(1)
+                    .layoutPriority(1)
 
                 if provider.isBuiltIn {
                     Text("built-in")
@@ -609,17 +611,6 @@ struct ProviderRow: View {
                 }
 
                 Spacer()
-
-                if showsConnectionSetting && provider.registryAgent == nil {
-                    Picker(strings.connectionPreviewLabel, selection: $provider.connection) {
-                        ForEach(Array(connectionChoices.enumerated()), id: \.offset) { _, choice in
-                            Text(connectionLabel(choice))
-                                .tag(choice as AgentConnectionKind?)
-                        }
-                    }
-                    .controlSize(.small)
-                    .fixedSize()
-                }
 
                 // Only custom providers can be edited; a registry agent runs its installed copy.
                 if !provider.isBuiltIn && provider.registryAgent == nil {
@@ -664,6 +655,26 @@ struct ProviderRow: View {
                     .truncationMode(.middle)
                     .padding(.leading, 14)
                     .help(actualCommand) // Full command on hover
+            }
+
+            // On its own line: in the header row the picker squeezed the name to one letter per line.
+            if provider.registryAgent == nil && provider.shared.availableConnections.count > 1 {
+                HStack(spacing: 6) {
+                    Text(strings.connectionPreviewLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker(strings.connectionPreviewLabel, selection: $provider.connection) {
+                        ForEach(Array(connectionChoices.enumerated()), id: \.offset) { _, choice in
+                            Text(connectionLabel(choice))
+                                .tag(choice as AgentConnectionKind?)
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .fixedSize()
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, 14)
             }
         }
         .padding(.vertical, 3)

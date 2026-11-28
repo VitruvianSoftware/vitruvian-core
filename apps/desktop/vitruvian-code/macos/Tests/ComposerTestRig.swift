@@ -36,7 +36,6 @@ final class ComposerQuietHost: VitruvianCodeHost {
     var strings = VitruvianCodeHostStrings()
     var sessionPreferences = VitruvianCodeSessionPreferences()
     var chatModes: [String: String] = [:]
-    var showsConnectionSetting = false
     func turnNeedsApproval(_ notice: VitruvianCodeTurnNotice) {}
     func turnFinished(_ notice: VitruvianCodeTurnNotice, isChatVisible: Bool) {}
 }

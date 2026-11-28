@@ -318,10 +318,6 @@ public final class ToolSettings: VitruvianCodeHost {
         }
     }
 
-    /// In memory only, never saved: the hidden Connection picker belongs to
-    /// the standalone app, and this is off at every launch.
-    public var showsConnectionSetting = false
-
     public var chosenProviderID: UUID? {
         get { UUID(uuidString: values.chosenProvider) }
         set {

@@ -335,7 +335,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
     private func withChosenProvider(_ fresh: VitruvianCodeConfiguration) -> VitruvianCodeConfiguration {
         var next = fresh
         let chosen = VitruvianCodeCLIProvider.chosen(id: host.chosenProviderID, among: providers)
-        next.activeProvider = chosen
+        next.activeProvider = chosen.withDefaultConnection
         next.model = resolvedModel(for: chosen, fallback: fresh.model)
         return next
     }
@@ -554,7 +554,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         let previous = configuration.activeProvider
         host.chosenProviderID = provider.id
         var next = configuration
-        next.activeProvider = provider
+        next.activeProvider = provider.withDefaultConnection
         next.model = resolvedModel(for: provider, fallback: envFileModel)
         configuration = next
         agentPath = locateProgram(of: provider)
@@ -590,7 +590,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
         if let id = host.chosenProviderID, !listed.contains(where: { $0.id == id }) {
             host.chosenProviderID = VitruvianCodeCLIProvider.antigravity.id
         }
-        let next = VitruvianCodeCLIProvider.chosen(id: host.chosenProviderID, among: listed)
+        let next = VitruvianCodeCLIProvider.chosen(id: host.chosenProviderID, among: listed).withDefaultConnection
         let previous = configuration.activeProvider
         guard next != previous else { return }
         var updated = configuration
@@ -775,7 +775,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
             host.chosenModels = models
         }
         var updated = next
-        updated.activeProvider = chosen
+        updated.activeProvider = chosen.withDefaultConnection
         updated.model = resolvedModel(for: chosen, fallback: next.model)
         if chosen.id != VitruvianCodeCLIProvider.antigravity.id, host.chosenModels[chosen.id] == nil {
             updated.model = next.model
