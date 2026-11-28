@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.105.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.104.0...vitruvian-atrium-v3.105.0) (2026-11-28)
+
+
+### Features
+
+* **vitruvian-atrium:** install the tool download made for this Mac ([#5581](https://github.com/VitruvianSoftware/vitruvian-core/issues/5581)) ([c10293f](https://github.com/VitruvianSoftware/vitruvian-core/commit/c10293f438814db8a4a9916d2c62fba11c8202bc))
+
 ## [3.104.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-atrium-v3.103.0...vitruvian-atrium-v3.104.0) (2026-11-23)
 
 
