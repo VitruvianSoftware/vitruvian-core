@@ -261,6 +261,156 @@ fn test_each_rule_refuses() {
 }
 
 #[test]
+fn test_downloads_schema_accepts_valid_per_arch_entries() {
+    let schema = load_schema();
+    let arm_dl = json::loads(
+        r#"{
+            "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/reference-tool-0.1.0-arm64.zip",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "size": 2048
+        }"#,
+    )
+    .unwrap();
+    let x86_dl = json::loads(
+        r#"{
+            "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/reference-tool-0.1.0-x86_64.zip",
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "size": 2048
+        }"#,
+    )
+    .unwrap();
+    for (label, dls) in [
+        (
+            "both",
+            py::obj(vec![("arm64", arm_dl.clone()), ("x86_64", x86_dl.clone())]),
+        ),
+        ("arm64 only", py::obj(vec![("arm64", arm_dl)])),
+        ("x86_64 only", py::obj(vec![("x86_64", x86_dl)])),
+    ] {
+        let tool = entry(&[("downloads", dls)]);
+        assert_eq!(
+            refused(&schema, &catalog_with(vec![tool])),
+            Vec::<String>::new(),
+            "{}",
+            label
+        );
+    }
+}
+
+#[test]
+fn test_downloads_schema_rejects_invalid_entries() {
+    let schema = load_schema();
+    let valid_arm = json::loads(
+        r#"{
+            "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/reference-tool-0.1.0-arm64.zip",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "size": 2048
+        }"#,
+    )
+    .unwrap();
+    let cases: Vec<(&str, Value)> = vec![
+        ("empty downloads", entry(&[("downloads", py::obj(vec![]))])),
+        (
+            "unknown arch key",
+            entry(&[("downloads", py::obj(vec![("universal", valid_arm)]))]),
+        ),
+        (
+            "bad url in downloads.arm64",
+            entry(&[(
+                "downloads",
+                json::loads(
+                    r#"{"arm64": {"url": "http://example.com/tool.zip", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "size": 2048}}"#,
+                )
+                .unwrap(),
+            )]),
+        ),
+        (
+            "bad sha256 in downloads.arm64",
+            entry(&[(
+                "downloads",
+                json::loads(
+                    r#"{"arm64": {"url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/tool-arm64.zip", "sha256": "XYZ", "size": 2048}}"#,
+                )
+                .unwrap(),
+            )]),
+        ),
+        (
+            "zero size in downloads.arm64",
+            entry(&[(
+                "downloads",
+                json::loads(
+                    r#"{"arm64": {"url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/tool-arm64.zip", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "size": 0}}"#,
+                )
+                .unwrap(),
+            )]),
+        ),
+        (
+            "over-cap size in downloads.arm64",
+            entry(&[(
+                "downloads",
+                json::loads(
+                    r#"{"arm64": {"url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/tool-arm64.zip", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "size": 268435457}}"#,
+                )
+                .unwrap(),
+            )]),
+        ),
+    ];
+    for (reason, tool) in cases {
+        assert!(
+            !refused(&schema, &catalog_with(vec![tool])).is_empty(),
+            "{}",
+            reason
+        );
+    }
+}
+
+#[test]
+fn test_rules_flag_over_cap_per_arch_size_naming_arch() {
+    let over_cap = (rules::FOLDER_BYTES + 1) as i128;
+    let tool = entry(&[(
+        "downloads",
+        py::obj(vec![(
+            "arm64",
+            py::obj(vec![
+                (
+                    "url",
+                    py::s("https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/tool-arm64.zip"),
+                ),
+                ("sha256", py::s(&"1".repeat(64))),
+                ("size", json::int(over_cap)),
+            ]),
+        )]),
+    )]);
+    let probs = rules::problems(&catalog_with(vec![tool])).unwrap();
+    assert!(
+        probs.iter().any(|p| p.contains("downloads.arm64")),
+        "expected downloads.arm64 in {:?}",
+        probs
+    );
+
+    let bad_url_tool = entry(&[(
+        "downloads",
+        py::obj(vec![(
+            "arm64",
+            py::obj(vec![
+                (
+                    "url",
+                    py::s("https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/../tool-arm64.zip"),
+                ),
+                ("sha256", py::s(&"1".repeat(64))),
+                ("size", json::int(1024)),
+            ]),
+        )]),
+    )]);
+    let url_probs = rules::problems(&catalog_with(vec![bad_url_tool])).unwrap();
+    assert!(
+        url_probs.iter().any(|p| p.contains("downloads.arm64")),
+        "expected downloads.arm64 in {:?}",
+        url_probs
+    );
+}
+
+#[test]
 fn test_the_app_is_built_with_this_key() {
     let here_dir = here::catalog_dir();
     let root = here_dir.parent().unwrap();

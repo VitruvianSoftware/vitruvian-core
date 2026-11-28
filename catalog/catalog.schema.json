@@ -31,6 +31,29 @@
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
     },
+    "download": {
+      "type": "object",
+      "required": ["url", "sha256", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "description": "A zip of the tool's folder, with vitruvian-tool.json at its top, from a GitHub release of VitruvianSoftware. Another place is added here and in catalog_rules.py by a reviewed change.",
+          "type": "string",
+          "pattern": "^https://github\\.com/VitruvianSoftware/[A-Za-z0-9_.-]+/releases/download/[^\\s?#%]+\\.zip$"
+        },
+        "sha256": {
+          "description": "The zip's SHA-256, in lower-case hex.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size": {
+          "description": "The zip's size in bytes. At most 256 MB, the most a tool's folder may hold.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
+        }
+      }
+    },
     "tool": {
       "type": "object",
       "required": [
@@ -94,27 +117,15 @@
           "type": "string",
           "pattern": "^https://[^\\s]+$"
         },
-        "download": {
+        "download": { "$ref": "#/$defs/download" },
+        "downloads": {
+          "description": "Optional per-architecture zips, keyed by architecture (arm64, x86_64). Newer apps install the entry for their architecture when present and fall back to download otherwise.",
           "type": "object",
-          "required": ["url", "sha256", "size"],
+          "minProperties": 1,
           "additionalProperties": false,
           "properties": {
-            "url": {
-              "description": "A zip of the tool's folder, with vitruvian-tool.json at its top, from a GitHub release of VitruvianSoftware. Another place is added here and in catalog_rules.py by a reviewed change.",
-              "type": "string",
-              "pattern": "^https://github\\.com/VitruvianSoftware/[A-Za-z0-9_.-]+/releases/download/[^\\s?#%]+\\.zip$"
-            },
-            "sha256": {
-              "description": "The zip's SHA-256, in lower-case hex.",
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            },
-            "size": {
-              "description": "The zip's size in bytes. At most 256 MB, the most a tool's folder may hold.",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 268435456
-            }
+            "arm64": { "$ref": "#/$defs/download" },
+            "x86_64": { "$ref": "#/$defs/download" }
           }
         },
         "uses": {

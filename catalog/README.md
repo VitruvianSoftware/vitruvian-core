@@ -38,6 +38,18 @@ from the catalog exactly as for a folder a person picked.
     "sha256": "<64 lower-case hex digits>",
     "size": 4096
   },
+  "downloads": {
+    "arm64": {
+      "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/reference-tool-0.1.0-arm64.zip",
+      "sha256": "<64 lower-case hex digits>",
+      "size": 2048
+    },
+    "x86_64": {
+      "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.9.0/reference-tool-0.1.0-x86_64.zip",
+      "sha256": "<64 lower-case hex digits>",
+      "size": 2048
+    }
+  },
   "uses": ["notify"],
   "commands": [{ "id": "hello", "title": { "en": "Say hello" } }]
 }
@@ -46,7 +58,9 @@ from the catalog exactly as for a folder a person picked.
 `name`, `publisher`, `version`, `protocol`, `uses` and each command's `id` and
 `title` are copied from the tool's `vitruvian-tool.json`; `summary` is its
 `description`. `minimumAppVersion` is the oldest Vitruvian that may install it:
-an older one does not show it.
+an older one does not show it. `downloads` is optional and holds per-architecture
+zips (`arm64`, `x86_64`) with the same rules as `download`. Newer apps install
+their architecture's zip when present and fall back to `download` otherwise.
 
 ## The zip
 
@@ -140,6 +154,12 @@ manifest, sets `generated`, and regenerates the website's page. It never
 changes `minimumAppVersion`: when the manifest declares something only newer
 apps draw, the pull request says so.
 
+When a row in `sources.json` also lists `architectures` (keys `arm64`,
+`x86_64` with `{version}` asset patterns), the command checks each
+per-architecture zip the same way, requiring every Mach-O in it to contain that
+architecture. If every per-architecture zip is present and passes, it writes
+`downloads`; otherwise it removes any existing `downloads` key.
+
 **Who merges it.** When nothing changed in what the tool asks for (`uses`),
 its commands, its panels, its protocol or its publisher, the pull request may
 merge itself: **catalog-check** arms auto-merge once it passes on the pull
@@ -178,10 +198,10 @@ answer, or a file cannot be downloaded, the run stays red, opens no issue,
 and tries again on the next run.
 
 `sources.json` says, for each tool, the repository its release is in, the
-tag's prefix, the zip's name, its uploader, whether its program is
-universal, and, for a tool released from this repository, the workflow that
-releases it. An entry kept by hand is named under `manual` with the reason;
-`//catalog:bump_test` fails for an entry in neither.
+tag's prefix, the zip's name, optional `architectures` zip names, its uploader,
+whether its program is universal, and, for a tool released from this repository,
+the workflow that releases it. An entry kept by hand is named under `manual`
+with the reason; `//catalog:bump_test` fails for an entry in neither.
 
 Run it by hand, for one release, from the workflow's page (**Run workflow**,
 with the id and the tag) or with the command above. One run goes at a time;

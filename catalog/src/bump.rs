@@ -51,6 +51,7 @@ pub const FOREIGN_MARK: &str = "<!-- catalog-bump: foreign commits -->";
 pub const HELD_MARK: &str = "<!-- catalog-bump: held for a person -->";
 pub const TRAILER: &str = "Catalog-Bump";
 pub const HOLDS: [&str; 2] = ["needs-human", "do-not-automerge"];
+pub const ARCHES: [&str; 2] = ["arm64", "x86_64"];
 pub const BUMP_FILES: [&str; 2] = [CATALOG, "apps/web/vitruviansoftware-dev/_data/tools.yml"];
 pub const APP_AUTHORS: [&str; 2] = [
     "app/vitruvian-copybara-sync",
@@ -135,6 +136,34 @@ pub fn load_sources(path: &str) -> Res<Value> {
                 row.at("id")?.py_str()
             )));
         }
+        let arches = row.get_v("architectures")?;
+        if !arches.is_null() {
+            let entries = match &arches {
+                Value::Obj(entries) if !entries.is_empty() => entries,
+                _ => {
+                    return Err(Crash::system_exit(format!(
+                        "sources.json: {}'s architectures is not a non-empty object",
+                        row.at("id")?.py_str()
+                    )));
+                }
+            };
+            for (arch, pattern) in entries {
+                if !ARCHES.contains(&arch.as_str()) {
+                    return Err(Crash::system_exit(format!(
+                        "sources.json: {}'s architectures has unknown key {}",
+                        row.at("id")?.py_str(),
+                        arch
+                    )));
+                }
+                if !matches!(pattern, Value::Str(s) if s.contains("{version}")) {
+                    return Err(Crash::system_exit(format!(
+                        "sources.json: {}'s architectures.{} has no {{version}}",
+                        row.at("id")?.py_str(),
+                        arch
+                    )));
+                }
+            }
+        }
     }
     Ok(data)
 }
@@ -172,13 +201,21 @@ pub fn asset_name(row: &Value, version: &str) -> String {
     f(row, "asset").replace("{version}", version)
 }
 
-pub fn download_url(row: &Value, tag: &str, version: &str) -> String {
+pub fn arch_asset_name(pattern: &str, version: &str) -> String {
+    pattern.replace("{version}", version)
+}
+
+pub fn asset_download_url(row: &Value, tag: &str, name: &str) -> String {
     format!(
         "https://github.com/{}/releases/download/{}/{}",
         f(row, "repo"),
         tag,
-        asset_name(row, version)
+        name
     )
+}
+
+pub fn download_url(row: &Value, tag: &str, version: &str) -> String {
+    asset_download_url(row, tag, &asset_name(row, version))
 }
 
 pub fn branch_for(tool_id: &str, version: &str) -> String {
@@ -302,6 +339,16 @@ pub fn binary_problems(
     manifest: &Value,
     oldest: macho::Version,
 ) -> Res<Vec<String>> {
+    binary_problems_for(row, archive, manifest, oldest, None)
+}
+
+fn binary_problems_for(
+    row: &Value,
+    archive: &ZipFile,
+    manifest: &Value,
+    oldest: macho::Version,
+    required_arch: Option<&str>,
+) -> Res<Vec<String>> {
     let mut found = Vec::new();
     let mut programs: Vec<(String, Vec<macho::Slice>)> = Vec::new();
     for info in archive.infolist() {
@@ -342,7 +389,7 @@ pub fn binary_problems(
             }
         }
     }
-    if row.get_v("universal")?.truthy() {
+    let check_exec = |found: &mut Vec<String>, msg_suffix: &str| -> Res<()> {
         let runtime = manifest.get_or("runtime", Value::Obj(Dict::new()))?;
         let program = runtime.get_or("exec", json::s(""))?;
         json::key(&program)?;
@@ -356,12 +403,42 @@ pub fn binary_problems(
             } else {
                 "its program".into()
             };
-            found.push(format!(
-                "{} is not a Mach-O, not universal (x86_64 and arm64), as {}'s has been",
-                shown,
-                f(row, "id")
-            ));
+            found.push(format!("{} {}", shown, msg_suffix));
         }
+        Ok(())
+    };
+    if let Some(arch) = required_arch {
+        check_exec(
+            &mut found,
+            &format!(
+                "is not a Mach-O containing {}, as {}'s {} download needs",
+                arch,
+                f(row, "id"),
+                arch
+            ),
+        )?;
+        for (name, slices) in &programs {
+            let mut archs: Vec<String> = slices.iter().map(|(a, _)| a.clone()).collect();
+            archs.sort();
+            archs.dedup();
+            if !archs.iter().any(|a| a == arch) {
+                found.push(format!(
+                    "{} is {}, missing {} (needed for downloads.{})",
+                    name,
+                    archs.join(", "),
+                    arch,
+                    arch
+                ));
+            }
+        }
+    } else if row.get_v("universal")?.truthy() {
+        check_exec(
+            &mut found,
+            &format!(
+                "is not a Mach-O, not universal (x86_64 and arm64), as {}'s has been",
+                f(row, "id")
+            ),
+        )?;
         for (name, slices) in &programs {
             let mut archs: Vec<String> = slices.iter().map(|(a, _)| a.clone()).collect();
             archs.sort();
@@ -389,32 +466,7 @@ fn sidecar_re() -> Regex {
     pyre::fixed(r"^([0-9a-f]{64})\s+\*?(\S.*?)\s*$")
 }
 
-/// `checked_zip(row, tag, version, release, work, oldest)`: the release's
-/// metadata, the zip's SHA-256, its size and its manifest.
-pub fn checked_zip(
-    row: &Value,
-    tag: &str,
-    version: &str,
-    release: &dyn Release,
-    work: &Path,
-    oldest: macho::Version,
-) -> BRes<(Value, String, usize, Value)> {
-    let meta = match release.metadata()? {
-        None => {
-            return Err(Stop::NotReady(format!(
-                "{} has no release tagged {}",
-                f(row, "repo"),
-                tag
-            )))
-        }
-        Some(m) => m,
-    };
-    if meta.get_v("draft")?.truthy() || meta.get_v("prerelease")?.truthy() {
-        return Err(Stop::NotReady(format!(
-            "{} is a draft or a pre-release",
-            tag
-        )));
-    }
+fn assets_by_name(meta: &Value) -> Res<Vec<(json::Key, Value)>> {
     let mut assets: Vec<(json::Key, Value)> = Vec::new();
     for a in meta.get_or("assets", Value::Arr(vec![]))?.py_iter()? {
         let k = json::key(&a.get_v("name")?)?;
@@ -423,19 +475,23 @@ pub fn checked_zip(
             None => assets.push((k, a)),
         }
     }
-    let lookup = |n: &str| {
-        assets
-            .iter()
-            .find(|(k, _)| *k == json::Key::Str(n.to_string()))
-            .map(|(_, v)| v.clone())
-    };
-    let name = asset_name(row, version);
-    let asset = match lookup(&name) {
-        None => return Err(Stop::NotReady(format!("{} has no {} yet", tag, name))),
-        Some(a) => a,
-    };
+    Ok(assets)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_asset_zip(
+    row: &Value,
+    tag: &str,
+    version: &str,
+    name: &str,
+    asset: &Value,
+    sidecar: Option<Value>,
+    release: &dyn Release,
+    work: &Path,
+    oldest: macho::Version,
+    required_arch: Option<&str>,
+) -> BRes<(String, usize, Value)> {
     let mut reasons = Vec::new();
-    let sidecar = lookup(&format!("{}.sha256", name));
     if sidecar.is_none() {
         reasons.push(format!(
             "{} has {} but no {}.sha256 to check it against",
@@ -443,7 +499,7 @@ pub fn checked_zip(
         ));
     }
     let uploader = row.at("uploader")?.clone();
-    for each in [Some(&asset), sidecar.as_ref()].into_iter().flatten() {
+    for each in [Some(asset), sidecar.as_ref()].into_iter().flatten() {
         let up = each.get_v("uploader")?;
         let up = if up.truthy() {
             up
@@ -484,7 +540,7 @@ pub fn checked_zip(
         return Err(Stop::Refused(reasons));
     }
     let sidecar = sidecar.unwrap();
-    let data = release.fetch(&asset)?;
+    let data = release.fetch(asset)?;
     let side = release.fetch(&sidecar)?;
     let data =
         data.ok_or_else(|| Stop::Unavailable(format!("{} could not be downloaded", name)))?;
@@ -531,7 +587,7 @@ pub fn checked_zip(
         return Err(Stop::Refused(reasons));
     }
 
-    let path = work.join(&name);
+    let path = work.join(name);
     std::fs::write(&path, &data).map_err(|e| pyerr::os_stop(&e, &path))?;
     let problems = rules::zip_problems(&path)?;
     if !problems.is_empty() {
@@ -575,11 +631,122 @@ pub fn checked_zip(
             version
         ));
     }
-    reasons.extend(binary_problems(row, &archive, &manifest, oldest)?);
+    reasons.extend(binary_problems_for(
+        row,
+        &archive,
+        &manifest,
+        oldest,
+        required_arch,
+    )?);
     if !reasons.is_empty() {
         return Err(Stop::Refused(reasons));
     }
-    Ok((meta, sha, data.len(), manifest))
+    Ok((sha, data.len(), manifest))
+}
+
+/// `checked_zip(row, tag, version, release, work, oldest)`: the release's
+/// metadata, the zip's SHA-256, its size and its manifest.
+pub fn checked_zip(
+    row: &Value,
+    tag: &str,
+    version: &str,
+    release: &dyn Release,
+    work: &Path,
+    oldest: macho::Version,
+) -> BRes<(Value, String, usize, Value)> {
+    let meta = match release.metadata()? {
+        None => {
+            return Err(Stop::NotReady(format!(
+                "{} has no release tagged {}",
+                f(row, "repo"),
+                tag
+            )))
+        }
+        Some(m) => m,
+    };
+    if meta.get_v("draft")?.truthy() || meta.get_v("prerelease")?.truthy() {
+        return Err(Stop::NotReady(format!(
+            "{} is a draft or a pre-release",
+            tag
+        )));
+    }
+    let assets = assets_by_name(&meta)?;
+    let lookup = |n: &str| {
+        assets
+            .iter()
+            .find(|(k, _)| *k == json::Key::Str(n.to_string()))
+            .map(|(_, v)| v.clone())
+    };
+    let name = asset_name(row, version);
+    let asset = match lookup(&name) {
+        None => return Err(Stop::NotReady(format!("{} has no {} yet", tag, name))),
+        Some(a) => a,
+    };
+    let sidecar = lookup(&format!("{}.sha256", name));
+    let (sha, size, manifest) = check_asset_zip(
+        row, tag, version, &name, &asset, sidecar, release, work, oldest, None,
+    )?;
+    Ok((meta, sha, size, manifest))
+}
+
+type ArchZip = (String, String, String, usize, Value);
+
+fn checked_arch_zips(
+    row: &Value,
+    tag: &str,
+    version: &str,
+    meta: &Value,
+    release: &dyn Release,
+    work: &Path,
+    oldest: macho::Version,
+) -> BRes<Option<Vec<ArchZip>>> {
+    let Some(Value::Obj(arches)) = row.field("architectures") else {
+        return Ok(None);
+    };
+    if arches.is_empty() {
+        return Ok(None);
+    }
+    let assets = assets_by_name(meta)?;
+    let lookup = |n: &str| {
+        assets
+            .iter()
+            .find(|(k, _)| *k == json::Key::Str(n.to_string()))
+            .map(|(_, v)| v.clone())
+    };
+    let mut all_present = true;
+    let mut out = Vec::new();
+    for (arch, pattern) in arches {
+        let name = arch_asset_name(pattern.as_str().unwrap_or(""), version);
+        let Some(asset) = lookup(&name) else {
+            all_present = false;
+            continue;
+        };
+        let sidecar = lookup(&format!("{}.sha256", name));
+        let (sha, size, manifest) = check_asset_zip(
+            row,
+            tag,
+            version,
+            &name,
+            &asset,
+            sidecar,
+            release,
+            work,
+            oldest,
+            Some(arch.as_str()),
+        )?;
+        out.push((
+            arch.clone(),
+            asset_download_url(row, tag, &name),
+            sha,
+            size,
+            manifest,
+        ));
+    }
+    if all_present && !out.is_empty() {
+        Ok(Some(out))
+    } else {
+        Ok(None)
+    }
 }
 
 // --- The entry ----------------------------------------------------------------
@@ -944,6 +1111,27 @@ fn body_for(
         short(sha),
         f(row, "uploader")
     ));
+    if let Some(Value::Obj(dls)) = entry.field("downloads") {
+        let parts: Vec<String> = dls
+            .iter()
+            .filter_map(|(arch, dl)| {
+                let sz = dl.field("size")?.py_str();
+                let s = dl.field("sha256")?.py_str();
+                Some(format!(
+                    "`{}` ({} bytes, SHA-256 `{}`)",
+                    arch,
+                    sz,
+                    short(&s)
+                ))
+            })
+            .collect();
+        if !parts.is_empty() {
+            lines.push(format!(
+                "- **Per-architecture downloads:** {}.",
+                parts.join(", ")
+            ));
+        }
+    }
     if !changed.is_empty() {
         let fields: Vec<String> = changed.iter().map(|f| format!("`{}`", f)).collect();
         lines.push(format!(
@@ -1039,9 +1227,13 @@ pub fn bump(
     }
 
     let oldest = app_oldest_macos(root)?;
-    let (meta, sha, size, manifest) = {
+    let (meta, sha, size, manifest, arch_zips) = {
         let work = TempDir::new().map_err(|e| Crash::os(&e, "tmp"))?;
-        checked_zip(&row, tag, &version, release, work.path(), oldest)?
+        let (meta, sha, size, manifest) =
+            checked_zip(&row, tag, &version, release, work.path(), oldest)?;
+        let arch_zips =
+            checked_arch_zips(&row, tag, &version, &meta, release, work.path(), oldest)?;
+        (meta, sha, size, manifest, arch_zips)
     };
 
     let url = download_url(&row, tag, &version);
@@ -1050,8 +1242,30 @@ pub fn bump(
         ("sha256", json::s(&sha)),
         ("size", json::int(size as i128)),
     ]);
+    let per_arch_downloads = arch_zips.as_ref().map(|items| {
+        Value::Obj(
+            items
+                .iter()
+                .map(|(arch, u, s, sz, _)| {
+                    (
+                        arch.clone(),
+                        json::dict(vec![
+                            ("url", json::s(u)),
+                            ("sha256", json::s(s)),
+                            ("size", json::int(*sz as i128)),
+                        ]),
+                    )
+                })
+                .collect(),
+        )
+    });
     if version == previous && matches!(previous_v, Value::Str(_)) {
-        if json::py_eq(entry.at("download")?, &download) {
+        let same_downloads = match (entry.field("downloads"), per_arch_downloads.as_ref()) {
+            (None, None) => true,
+            (Some(a), Some(b)) => json::py_eq(a, b),
+            _ => false,
+        };
+        if json::py_eq(entry.at("download")?, &download) && same_downloads {
             return Ok(json::dict(vec![
                 ("status", json::s("current")),
                 ("id", json::s(tool_id)),
@@ -1068,6 +1282,20 @@ pub fn bump(
     if let Value::Obj(d) = &mut new {
         d.dict_insert("version", json::s(&version));
         d.dict_insert("download", download);
+        match per_arch_downloads {
+            Some(dls) => {
+                if d.dict_contains("downloads") {
+                    d.dict_insert("downloads", dls);
+                } else if let Some(pos) = d.iter().position(|(k, _)| k == "download") {
+                    d.insert(pos + 1, ("downloads".to_string(), dls));
+                } else {
+                    d.dict_insert("downloads", dls);
+                }
+            }
+            None => {
+                d.retain(|(k, _)| k != "downloads");
+            }
+        }
     }
     let changed = from_manifest(&mut new, &manifest)?;
     if let Value::Obj(c) = &mut catalog {
@@ -1081,6 +1309,13 @@ pub fn bump(
     let mut problems = schema_problems(root, &catalog)?;
     problems.extend(rules::problems(&catalog)?);
     problems.extend(rules::manifest_problems(&new, &manifest)?);
+    if let Some(items) = &arch_zips {
+        for (arch, _, _, _, arch_manifest) in items {
+            for problem in rules::manifest_problems(&new, arch_manifest)? {
+                problems.push(format!("downloads.{}: {}", arch, problem));
+            }
+        }
+    }
     if !problems.is_empty() {
         return Err(Stop::Refused(problems));
     }
@@ -2233,5 +2468,457 @@ mod tests {
             })
             .unwrap();
         handle.join().unwrap();
+    }
+
+    const ARM64_CPU: i32 = 0x0100000C;
+    const X86_64_CPU: i32 = 0x01000007;
+
+    fn thin_macho(cputype: i32) -> Vec<u8> {
+        let raw = (14u32 << 16) | (0u32 << 8);
+        let mut cmd = Vec::new();
+        let put = |v: &mut Vec<u8>, x: u32| v.extend_from_slice(&x.to_le_bytes());
+        for x in [0x32, 24, 1, raw, raw, 0] {
+            put(&mut cmd, x);
+        }
+        let mut out = Vec::new();
+        for x in [0xFEEDFACF, cputype as u32, 0, 2, 1, cmd.len() as u32, 0, 0] {
+            put(&mut out, x);
+        }
+        out.extend(cmd);
+        out.extend([0u8; 64]);
+        out
+    }
+
+    fn fat_macho(slices: &[(i32, Vec<u8>)]) -> Vec<u8> {
+        let offset = 4096u32;
+        let mut arches = Vec::new();
+        let mut body: Vec<u8> = Vec::new();
+        for (cpu, data) in slices {
+            for x in [
+                *cpu as u32,
+                0,
+                offset + body.len() as u32,
+                data.len() as u32,
+                12,
+            ] {
+                arches.extend_from_slice(&x.to_be_bytes());
+            }
+            body.extend(data);
+        }
+        let mut head = Vec::new();
+        head.extend_from_slice(&0xCAFEBABEu32.to_be_bytes());
+        head.extend_from_slice(&(slices.len() as u32).to_be_bytes());
+        head.extend(arches);
+        head.resize(offset as usize, 0);
+        head.extend(body);
+        head
+    }
+
+    fn make_tool_zip(version: &str, bin_bytes: &[u8]) -> Vec<u8> {
+        let manifest = format!(
+            r#"{{
+                "id": "dev.vitruvian.code",
+                "name": {{"en": "Vitruvian Code"}},
+                "publisher": "VitruvianSoftware",
+                "description": {{"en": "Runs Antigravity."}},
+                "version": "{}",
+                "protocol": "2",
+                "uses": ["notify"],
+                "runtime": {{"exec": "bin/tool"}},
+                "contributes": {{"commands": [{{"id": "quickPrompt", "title": {{"en": "Open Quick Prompt"}}}}]}}
+            }}"#,
+            version
+        );
+        let mut z = crate::zip::ZipWriter::new(true);
+        z.writestr(
+            "vitruvian-tool.json",
+            manifest.as_bytes(),
+            3,
+            0o100644 << 16,
+        );
+        z.writestr("bin/tool", bin_bytes, 3, 0o100755 << 16);
+        z.finish()
+    }
+
+    fn setup_bump_workspace(initial_entry_extra: &str) -> (TempDir, Value) {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("catalog")).unwrap();
+        std::fs::create_dir_all(root.join("apps/desktop/vitruvian-atrium/Resources")).unwrap();
+        let schema_src = crate::here::catalog_dir().join("catalog.schema.json");
+        std::fs::copy(schema_src, root.join(SCHEMA)).unwrap();
+        std::fs::write(root.join("catalog/public-key.txt"), "KEY=\n").unwrap();
+        std::fs::write(
+            root.join(APP_INFO),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>LSMinimumSystemVersion</key><string>14.0</string></dict></plist>"#,
+        )
+        .unwrap();
+        let catalog_json = format!(
+            r#"{{
+  "version": 1,
+  "generated": "2026-11-26T00:00:00Z",
+  "tools": [
+    {{
+      "id": "dev.vitruvian.code",
+      "name": {{"en": "Vitruvian Code"}},
+      "publisher": "VitruvianSoftware",
+      "summary": {{"en": "Runs Antigravity."}},
+      "version": "1.50.0",
+      "protocol": "2",
+      "minimumAppVersion": "3.72.1",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-code",
+      "download": {{
+        "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/vitruvian-code-tool-1.50.0.zip",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size": 100
+      }}{},
+      "uses": ["notify"],
+      "commands": [{{"id": "quickPrompt", "title": {{"en": "Open Quick Prompt"}}}}]
+    }}
+  ]
+}}"#,
+            initial_entry_extra
+        );
+        std::fs::write(root.join(CATALOG), catalog_json).unwrap();
+        let sources = json::loads(
+            r#"{
+                "sources": [{
+                    "id": "dev.vitruvian.code",
+                    "repo": "VitruvianSoftware/vitruvian-code",
+                    "tagPrefix": "v",
+                    "asset": "vitruvian-code-tool-{version}.zip",
+                    "architectures": {
+                        "arm64": "vitruvian-code-tool-{version}-arm64.zip",
+                        "x86_64": "vitruvian-code-tool-{version}-x86_64.zip"
+                    },
+                    "uploader": "ipv1337",
+                    "universal": true
+                }]
+            }"#,
+        )
+        .unwrap();
+        (dir, sources)
+    }
+
+    fn write_release_asset(
+        rel_dir: &Path,
+        name: &str,
+        bytes: &[u8],
+        with_sidecar: bool,
+    ) -> Vec<Value> {
+        let sha = sha256::hexdigest(bytes);
+        std::fs::write(rel_dir.join(name), bytes).unwrap();
+        let mut assets = vec![json::dict(vec![
+            ("name", json::s(name)),
+            ("size", json::int(bytes.len() as i128)),
+            ("digest", json::s(format!("sha256:{}", sha))),
+            ("uploader", json::dict(vec![("login", json::s("ipv1337"))])),
+        ])];
+        if with_sidecar {
+            let side_name = format!("{}.sha256", name);
+            let side_bytes = format!("{}  {}\n", sha, name);
+            std::fs::write(rel_dir.join(&side_name), side_bytes.as_bytes()).unwrap();
+            assets.push(json::dict(vec![
+                ("name", json::s(&side_name)),
+                ("size", json::int(side_bytes.len() as i128)),
+                ("uploader", json::dict(vec![("login", json::s("ipv1337"))])),
+            ]));
+        }
+        assets
+    }
+
+    #[test]
+    fn load_sources_validates_architectures() {
+        let real = crate::here::catalog_dir().join("sources.json");
+        assert!(load_sources(&real.to_string_lossy()).is_ok());
+
+        let tmp = TempDir::new().unwrap();
+        for bad in [
+            r#"{"sources":[{"id":"a.b","repo":"x/y","tagPrefix":"v","asset":"a-{version}.zip","uploader":"u","architectures":{}}]}"#,
+            r#"{"sources":[{"id":"a.b","repo":"x/y","tagPrefix":"v","asset":"a-{version}.zip","uploader":"u","architectures":{"universal":"a-{version}.zip"}}]}"#,
+            r#"{"sources":[{"id":"a.b","repo":"x/y","tagPrefix":"v","asset":"a-{version}.zip","uploader":"u","architectures":{"arm64":"a-arm64.zip"}}]}"#,
+            r#"{"sources":[{"id":"a.b","repo":"x/y","tagPrefix":"v","asset":"a-{version}.zip","uploader":"u","architectures":["arm64"]}]}"#,
+        ] {
+            let p = tmp.path().join("sources.json");
+            std::fs::write(&p, bad).unwrap();
+            assert!(load_sources(&p.to_string_lossy()).is_err(), "{}", bad);
+        }
+    }
+
+    #[test]
+    fn bump_writes_downloads_when_both_per_arch_assets_pass() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let res = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap();
+        assert_eq!(res.at("status").unwrap().py_str(), "bumped");
+
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        let entry = &written.at("tools").unwrap().as_list().unwrap()[0];
+        let dls = entry.at("downloads").unwrap();
+        assert_eq!(
+            dls.at("arm64").unwrap().at("sha256").unwrap().py_str(),
+            sha256::hexdigest(&arm_zip)
+        );
+        assert_eq!(
+            dls.at("x86_64").unwrap().at("sha256").unwrap().py_str(),
+            sha256::hexdigest(&x86_zip)
+        );
+    }
+
+    #[test]
+    fn bump_removes_stale_downloads_when_per_arch_asset_missing() {
+        let stale = r#",
+      "downloads": {
+        "arm64": {
+          "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.50.0/vitruvian-code-tool-1.50.0-arm64.zip",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "size": 100
+        }
+      }"#;
+        let (ws, sources) = setup_bump_workspace(stale);
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        // Only arm64 present, x86_64 missing -> must remove stale downloads.
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            true,
+        ));
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let res = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap();
+        assert_eq!(res.at("status").unwrap().py_str(), "bumped");
+        let (_, written) = rules::load(&ws.path().join(CATALOG)).unwrap();
+        let entry = &written.at("tools").unwrap().as_list().unwrap()[0];
+        assert!(entry.field("downloads").is_none());
+
+        // Also verify a row with no `architectures` removes stale downloads.
+        let (ws2, mut sources_no_arch) = setup_bump_workspace(stale);
+        if let Some(Value::Arr(rows)) = sources_no_arch.field_mut("sources") {
+            if let Some(Value::Obj(r)) = rows.get_mut(0) {
+                r.retain(|(k, _)| k != "architectures");
+            }
+        }
+        let rel_dir2 = ws2.path().join("release");
+        std::fs::create_dir_all(&rel_dir2).unwrap();
+        let main_only =
+            write_release_asset(&rel_dir2, "vitruvian-code-tool-1.52.0.zip", &main_zip, true);
+        let meta2 = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(main_only)),
+        ]);
+        std::fs::write(rel_dir2.join("release.json"), dumps(&meta2, 0)).unwrap();
+        let rel2 = FolderRelease {
+            folder: rel_dir2.to_string_lossy().into_owned(),
+        };
+        bump(
+            &ws2.path().to_string_lossy(),
+            &sources_no_arch,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel2,
+            1_795_800_000,
+        )
+        .unwrap();
+        let (_, written2) = rules::load(&ws2.path().join(CATALOG)).unwrap();
+        assert!(written2.at("tools").unwrap().as_list().unwrap()[0]
+            .field("downloads")
+            .is_none());
+    }
+
+    #[test]
+    fn bump_refuses_per_arch_zip_missing_its_architecture() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        // arm64 zip wrongly contains an x86_64-only Mach-O.
+        let wrong_arm_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let x86_zip = make_tool_zip("1.52.0", &thin_macho(X86_64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &wrong_arm_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-x86_64.zip",
+            &x86_zip,
+            true,
+        ));
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons.iter().any(|r| r.contains("arm64")),
+                    "expected arm64 refusal, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn bump_refuses_missing_per_arch_sidecar() {
+        let (ws, sources) = setup_bump_workspace("");
+        let rel_dir = ws.path().join("release");
+        std::fs::create_dir_all(&rel_dir).unwrap();
+        let universal = fat_macho(&[
+            (X86_64_CPU, thin_macho(X86_64_CPU)),
+            (ARM64_CPU, thin_macho(ARM64_CPU)),
+        ]);
+        let main_zip = make_tool_zip("1.52.0", &universal);
+        let arm_zip = make_tool_zip("1.52.0", &thin_macho(ARM64_CPU));
+        let mut assets = Vec::new();
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0.zip",
+            &main_zip,
+            true,
+        ));
+        assets.extend(write_release_asset(
+            &rel_dir,
+            "vitruvian-code-tool-1.52.0-arm64.zip",
+            &arm_zip,
+            false,
+        ));
+        let release_meta = json::dict(vec![
+            ("draft", Value::Bool(false)),
+            ("prerelease", Value::Bool(false)),
+            ("assets", Value::Arr(assets)),
+        ]);
+        std::fs::write(rel_dir.join("release.json"), dumps(&release_meta, 0)).unwrap();
+
+        let rel = FolderRelease {
+            folder: rel_dir.to_string_lossy().into_owned(),
+        };
+        let err = bump(
+            &ws.path().to_string_lossy(),
+            &sources,
+            "dev.vitruvian.code",
+            "v1.52.0",
+            &rel,
+            1_795_800_000,
+        )
+        .unwrap_err();
+        match err {
+            Stop::Refused(reasons) => {
+                assert!(
+                    reasons.iter().any(|r| r.contains(".sha256")),
+                    "expected .sha256 refusal, got {:?}",
+                    reasons
+                );
+            }
+            other => panic!("expected Stop::Refused, got {:?}", other),
+        }
     }
 }

@@ -323,6 +323,59 @@ pub fn url_problems(place: &str, url: &Value) -> Res<Vec<String>> {
     Ok(problems)
 }
 
+/// `size_problems(where, download)`: check the declared download size against
+/// the 1..FOLDER_BYTES bounds.
+pub fn size_problems(place: &str, download: &Value) -> Res<Vec<String>> {
+    let size = py::get_null(download, "size")?;
+    let mut problems = Vec::new();
+    match &size {
+        Value::Null => {}
+        Value::Int(s) => match s.parse::<i128>() {
+            Ok(n) if n < 1 => problems.push(format!(
+                "{}: the download size is {}, must be at least 1",
+                place,
+                size.py_str()
+            )),
+            Ok(n) if n > FOLDER_BYTES as i128 => problems.push(format!(
+                "{}: the download size is {} bytes, more than {}",
+                place,
+                size.py_str(),
+                FOLDER_BYTES
+            )),
+            Err(_) if s.starts_with('-') => problems.push(format!(
+                "{}: the download size is {}, must be at least 1",
+                place,
+                size.py_str()
+            )),
+            Err(_) => problems.push(format!(
+                "{}: the download size is {} bytes, more than {}",
+                place,
+                size.py_str(),
+                FOLDER_BYTES
+            )),
+            _ => {}
+        },
+        Value::Float(f) => {
+            if !f.is_finite() || *f < 1.0 {
+                problems.push(format!(
+                    "{}: the download size is {}, must be at least 1",
+                    place,
+                    size.py_str()
+                ));
+            } else if *f > FOLDER_BYTES as f64 {
+                problems.push(format!(
+                    "{}: the download size is {} bytes, more than {}",
+                    place,
+                    size.py_str(),
+                    FOLDER_BYTES
+                ));
+            }
+        }
+        _ => {}
+    }
+    Ok(problems)
+}
+
 /// `problems(catalog)`: what is wrong with a catalog that passed its schema.
 pub fn problems(catalog: &Value) -> Res<Vec<String>> {
     let mut found = Vec::new();
@@ -350,6 +403,16 @@ pub fn problems(catalog: &Value) -> Res<Vec<String>> {
         }
         let download = py::get_or(tool, "download", Value::Obj(json::Dict::new()))?;
         found.extend(url_problems(&place, &py::get_null(&download, "url")?)?);
+        found.extend(size_problems(&place, &download)?);
+        if let Some(downloads) = py::get(tool, "downloads")? {
+            if let Value::Obj(entries) = downloads {
+                for (arch, dl) in entries {
+                    let arch_place = format!("{} downloads.{}", place, arch);
+                    found.extend(url_problems(&arch_place, &py::get_null(dl, "url")?)?);
+                    found.extend(size_problems(&arch_place, dl)?);
+                }
+            }
+        }
         let mut commands = Vec::new();
         for command in py::iterate(&py::get_or(tool, "commands", Value::Arr(vec![]))?)? {
             commands.push(py::get_null(&command, "id")?);

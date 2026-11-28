@@ -129,34 +129,52 @@ fn download<'a>(entry: &'a Value, key: &str) -> Res<&'a Value> {
     py::path(entry, &["download", key])
 }
 
-/// `check_entry(entry, fetch, validate)`: every problem with one entry's
-/// download.
-pub fn check_entry(entry: &Value, fetch: &Fetch, validate: &Validate) -> Res<Vec<String>> {
-    let data = fetch(download(entry, "url")?, download(entry, "size")?)?;
+fn tag_problem(prefix: Option<&str>, msg: String) -> String {
+    match prefix {
+        Some(p) => format!("{}: {}", p, msg),
+        None => msg,
+    }
+}
+
+fn check_one(
+    entry: &Value,
+    dl: &Value,
+    prefix: Option<&str>,
+    fetch: &Fetch,
+    validate: &Validate,
+) -> Res<Vec<String>> {
+    let data = fetch(dl.at("url")?, dl.at("size")?)?;
     let data = match data {
         None => {
-            return Ok(vec![
+            return Ok(vec![tag_problem(
+                prefix,
                 "the download could not be fetched, or is larger than its size".into(),
-            ])
+            )])
         }
         Some(d) => d,
     };
     let mut problems = Vec::new();
-    let size = download(entry, "size")?;
+    let size = dl.at("size")?;
     if !json::py_eq(&json::int(data.len() as i128), size) {
-        problems.push(format!(
-            "the download is {} bytes, the entry says {}",
-            data.len(),
-            size.py_str()
+        problems.push(tag_problem(
+            prefix,
+            format!(
+                "the download is {} bytes, the entry says {}",
+                data.len(),
+                size.py_str()
+            ),
         ));
     }
     let digest = sha256::hexdigest(&data);
-    let sha = download(entry, "sha256")?;
+    let sha = dl.at("sha256")?;
     if !json::py_eq(&Value::Str(digest.clone()), sha) {
-        problems.push(format!(
-            "the download's sha256 is {}, the entry says {}",
-            digest,
-            sha.py_str()
+        problems.push(tag_problem(
+            prefix,
+            format!(
+                "the download's sha256 is {}, the entry says {}",
+                digest,
+                sha.py_str()
+            ),
         ));
     }
     if !problems.is_empty() {
@@ -167,20 +185,39 @@ pub fn check_entry(entry: &Value, fetch: &Fetch, validate: &Validate) -> Res<Vec
     std::fs::write(&zip_path, &data).map_err(|e| pyerr::os_stop(&e, &zip_path))?;
     let problems = rules::zip_problems(&zip_path)?;
     if !problems.is_empty() {
-        return Ok(problems);
+        return Ok(problems
+            .into_iter()
+            .map(|p| tag_problem(prefix, p))
+            .collect());
     }
     let folder = work.path().join("tool");
     rules::unpack(&zip_path, &folder)?;
     let (status, said) = validate(&folder)?;
     if status != 0 {
-        return Ok(vec![format!(
-            "vitruvian-tool validate refused it:\n{}",
-            said
+        return Ok(vec![tag_problem(
+            prefix,
+            format!("vitruvian-tool validate refused it:\n{}", said),
         )]);
     }
     let manifest_path = folder.join("vitruvian-tool.json");
     let manifest = json::loads(&pyerr::read_text(&manifest_path.to_string_lossy())?)?;
-    rules::manifest_problems(entry, &manifest)
+    Ok(rules::manifest_problems(entry, &manifest)?
+        .into_iter()
+        .map(|p| tag_problem(prefix, p))
+        .collect())
+}
+
+/// `check_entry(entry, fetch, validate)`: every problem with one entry's
+/// download and any per-architecture downloads.
+pub fn check_entry(entry: &Value, fetch: &Fetch, validate: &Validate) -> Res<Vec<String>> {
+    let mut found = check_one(entry, entry.at("download")?, None, fetch, validate)?;
+    if let Some(Value::Obj(downloads)) = entry.field("downloads") {
+        for (arch, dl) in downloads {
+            let label = format!("downloads.{}", arch);
+            found.extend(check_one(entry, dl, Some(&label), fetch, validate)?);
+        }
+    }
+    Ok(found)
 }
 
 fn ids(catalog: &Value) -> Res<Vec<json::Key>> {
@@ -274,6 +311,17 @@ fn run(base_path: &str, head_path: &str, tool: &str) -> Res<i32> {
             entry.at("version")?.py_str(),
             download(&entry, "url")?.py_str()
         );
+        if let Some(Value::Obj(downloads)) = entry.field("downloads") {
+            for (arch, dl) in downloads {
+                println!(
+                    "checking {} {} (downloads.{}): {}",
+                    entry.at("id")?.py_str(),
+                    entry.at("version")?.py_str(),
+                    arch,
+                    dl.at("url")?.py_str()
+                );
+            }
+        }
     }
     let problems = check(&base, &head, &fetch, &|folder: &Path| {
         validate(tool, folder)
@@ -290,6 +338,7 @@ fn run(base_path: &str, head_path: &str, tool: &str) -> Res<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::json::DictExt;
     use crate::zip::ZipWriter;
 
     fn make_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
@@ -359,5 +408,111 @@ mod tests {
         ]);
         let probs = check(&base, &stale_head, &fetch_ok, &validate_ok).unwrap();
         assert!(probs.iter().any(|p| p.contains("not later than main's")));
+    }
+
+    #[test]
+    fn check_downloads_validates_per_arch_entries() {
+        let manifest = r#"{
+            "id": "dev.vitruvian.reference",
+            "name": {"en": "Reference tool"},
+            "publisher": "VitruvianSoftware",
+            "description": {"en": "Says hello."},
+            "version": "0.1.0",
+            "protocol": "1",
+            "uses": ["notify"],
+            "contributes": {"commands": [{"id": "hello", "title": {"en": "Say hello"}}]}
+        }"#;
+        let main_zip = make_zip(&[("vitruvian-tool.json", manifest.as_bytes())]);
+        let arm_zip = make_zip(&[
+            ("vitruvian-tool.json", manifest.as_bytes()),
+            ("bin/tool", b"arm64"),
+        ]);
+        let x86_zip = make_zip(&[
+            ("vitruvian-tool.json", manifest.as_bytes()),
+            ("bin/tool", b"x86_64"),
+        ]);
+        let main_url =
+            "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref.zip";
+        let arm_url = "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref-arm64.zip";
+        let x86_url = "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref-x86_64.zip";
+        let entry_json = format!(
+            r#"{{
+                "id": "dev.vitruvian.reference",
+                "name": {{"en": "Reference tool"}},
+                "publisher": "VitruvianSoftware",
+                "summary": {{"en": "Says hello."}},
+                "version": "0.1.0",
+                "protocol": "1",
+                "minimumAppVersion": "3.43.0",
+                "source": "https://github.com/VitruvianSoftware/vitruvian-sdk",
+                "download": {{
+                    "url": "{main_url}",
+                    "sha256": "{main_sha}",
+                    "size": {main_size}
+                }},
+                "downloads": {{
+                    "arm64": {{
+                        "url": "{arm_url}",
+                        "sha256": "{arm_sha}",
+                        "size": {arm_size}
+                    }},
+                    "x86_64": {{
+                        "url": "{x86_url}",
+                        "sha256": "{x86_sha}",
+                        "size": {x86_size}
+                    }}
+                }},
+                "uses": ["notify"],
+                "commands": [{{"id": "hello", "title": {{"en": "Say hello"}}}}]
+            }}"#,
+            main_sha = sha256::hexdigest(&main_zip),
+            main_size = main_zip.len(),
+            arm_sha = sha256::hexdigest(&arm_zip),
+            arm_size = arm_zip.len(),
+            x86_sha = sha256::hexdigest(&x86_zip),
+            x86_size = x86_zip.len(),
+        );
+        let entry = json::loads(&entry_json).unwrap();
+        let base =
+            json::loads(r#"{"version": 1, "generated": "2026-10-12T00:00:00Z", "tools": []}"#)
+                .unwrap();
+        let head = json::dict(vec![
+            ("version", json::int(1)),
+            ("generated", py::s("2026-10-12T00:00:01Z")),
+            ("tools", Value::Arr(vec![entry.clone()])),
+        ]);
+        let fetch_map = |url: &Value, _size: &Value| -> Res<Option<Vec<u8>>> {
+            let bytes = match url.py_str().as_str() {
+                u if u == main_url => main_zip.clone(),
+                u if u == arm_url => arm_zip.clone(),
+                u if u == x86_url => x86_zip.clone(),
+                _ => return Ok(None),
+            };
+            Ok(Some(bytes))
+        };
+        let validate_ok = |_folder: &Path| -> Res<(i32, String)> { Ok((0, String::new())) };
+        assert_eq!(
+            check(&base, &head, &fetch_map, &validate_ok).unwrap(),
+            Vec::<String>::new()
+        );
+
+        // Corrupt arm64 checksum in entry and ensure error names downloads.arm64.
+        let mut bad_entry = entry;
+        if let Some(Value::Obj(dls)) = bad_entry.field_mut("downloads") {
+            if let Some(Value::Obj(arm)) = dls.dict_get_mut("arm64") {
+                arm.dict_insert("sha256", py::s(&"0".repeat(64)));
+            }
+        }
+        let bad_head = json::dict(vec![
+            ("version", json::int(1)),
+            ("generated", py::s("2026-10-12T00:00:01Z")),
+            ("tools", Value::Arr(vec![bad_entry])),
+        ]);
+        let probs = check(&base, &bad_head, &fetch_map, &validate_ok).unwrap();
+        assert!(
+            probs.iter().any(|p| p.contains("downloads.arm64")),
+            "expected downloads.arm64 in {:?}",
+            probs
+        );
     }
 }

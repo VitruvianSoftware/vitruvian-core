@@ -272,4 +272,65 @@ mod tests {
             "TypeError: '<' not supported between instances of 'str' and 'int'"
         );
     }
+
+    #[test]
+    fn an_entry_with_downloads_renders_main_download() {
+        let base_entry = r#"{
+            "id": "dev.vitruvian.code",
+            "name": {"en": "Vitruvian Code"},
+            "publisher": "VitruvianSoftware",
+            "summary": {"en": "Runs Antigravity."},
+            "version": "1.52.0",
+            "source": "https://github.com/VitruvianSoftware/vitruvian-code",
+            "download": {
+                "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.52.0/vitruvian-code-tool-1.52.0.zip",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "size": 1024
+            },
+            "uses": ["notify"]
+        }"#;
+        let with_downloads = r#"{
+            "id": "dev.vitruvian.code",
+            "name": {"en": "Vitruvian Code"},
+            "publisher": "VitruvianSoftware",
+            "summary": {"en": "Runs Antigravity."},
+            "version": "1.52.0",
+            "source": "https://github.com/VitruvianSoftware/vitruvian-code",
+            "download": {
+                "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.52.0/vitruvian-code-tool-1.52.0.zip",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "size": 1024
+            },
+            "downloads": {
+                "arm64": {
+                    "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.52.0/vitruvian-code-tool-1.52.0-arm64.zip",
+                    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "size": 512
+                },
+                "x86_64": {
+                    "url": "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.52.0/vitruvian-code-tool-1.52.0-x86_64.zip",
+                    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    "size": 512
+                }
+            },
+            "uses": ["notify"]
+        }"#;
+        let wrap = |e: &str| {
+            PyStr::from(format!(
+                r#"{{"generated": "2026-11-27T00:00:00Z", "tools": [{}]}}"#,
+                e
+            ))
+        };
+        let rendered_base = render(
+            &json::loads(&wrap(base_entry)).unwrap(),
+            &PyStr::from("KEY="),
+        )
+        .unwrap();
+        let rendered_with = render(
+            &json::loads(&wrap(with_downloads)).unwrap(),
+            &PyStr::from("KEY="),
+        )
+        .unwrap();
+        assert_eq!(rendered_with, rendered_base);
+    }
 }
