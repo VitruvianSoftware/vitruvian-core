@@ -271,8 +271,9 @@ request, plan step and usage update as it happens.
 |---|---|---|
 | **ACP** | The [Agent Client Protocol](https://agentclientprotocol.com): the app starts the agent's ACP server and talks JSON-RPC to it | Antigravity (`agy`), and every agent added from the ACP registry |
 | **Claude SDK** | A helper bundled in the app (Node and Anthropic's Claude Agent SDK) that runs your own `claude` and speaks ACP to the app | Claude Code |
-| **Command line** | The older way: one `-p` process per prompt, its output read as it prints | Ollama (claude), OpenCode, custom commands, and scheduled runs |
+| **Command line** | The older way: one `-p` process per prompt, its output read as it prints | Ollama (claude), OpenCode, and custom commands |
 
+Scheduled runs use the same connection as a chat with that provider.
 Change it per provider in **Settings > Providers > Connection**. "Default"
 follows the table above, and a connection you chose is kept. Claude Code can
 also run on the **Claude ACP** adapter from the registry: choosing it there

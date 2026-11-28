@@ -709,9 +709,9 @@ Recorded when step 6 landed:
 *   **Ollama (claude)** can run on the Agent SDK, but its default stays the
     command line. Section 9 lists the Agent SDK for it; the default switch
     covered agy and Claude only.
-*   **Scheduled runs** stay on the command line unless a connection is chosen.
-    The unattended-run rules in section 8 apply when one is. Moving their
-    default is a follow-up.
+*   **Scheduled runs** use the same default connection as a chat with the
+    same provider, so the unattended-run rules in section 8 apply to them
+    over ACP and the Agent SDK.
 *   **Registry agents' modes:** the app sends a mode only for the plan switch
     (the agent's own `plan` or `architect` mode, and back), as T3 Code's shared
     adapter does. The approval mode only decides how permission requests are
