@@ -546,13 +546,31 @@ jobs:
             # unused space away.
             stage_kb="$(/usr/bin/du -sk "$stage" | /usr/bin/awk '{print $1}')"
             dmg_mb=$(( (stage_kb * 125 / 100 + 1023) / 1024 + 32 ))
-            /usr/bin/hdiutil create \
+            # hdiutil sometimes stops with "Resource busy" when macOS still
+            # holds the scratch volume it just used (seen on main after #5569,
+            # the second of three images). Detach any leftover volume and try
+            # again, up to five times; a real error fails all five.
+            dmg="VitruvianCode-${VERSION}-${name}.dmg"
+            attempt=1
+            until /usr/bin/hdiutil create \
               -volname "Vitruvian Code" \
               -srcfolder "$stage" \
               -size "${dmg_mb}m" \
               -ov \
               -format UDZO \
-              "VitruvianCode-${VERSION}-${name}.dmg"
+              "$dmg"; do
+              if [ "$attempt" -ge 5 ]; then
+                echo "::error::hdiutil create failed ${attempt} times for ${dmg}" >&2
+                exit 1
+              fi
+              echo "::warning::hdiutil create failed for ${dmg} (attempt ${attempt}); retrying"
+              /bin/rm -f "$dmg"
+              for vol in "/Volumes/Vitruvian Code"*; do
+                if [ -d "$vol" ]; then /usr/bin/hdiutil detach -force "$vol" || true; fi
+              done
+              /bin/sleep $(( attempt * 10 ))
+              attempt=$(( attempt + 1 ))
+            done
             /bin/rm -rf "$stage"
             # The ZIP reads the universal app; nothing reads these two again.
             if [ "$arch" != universal ]; then /bin/rm -rf "/tmp/dist-${arch}"; fi
