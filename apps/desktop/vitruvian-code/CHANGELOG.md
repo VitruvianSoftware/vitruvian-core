@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.52.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.51.0...vitruvian-code-v1.52.0) (2026-11-28)
+
+
+### Features
+
+* **vitruvian-code:** scheduled runs use the same default connection as a chat ([#5580](https://github.com/VitruvianSoftware/vitruvian-core/issues/5580)) ([78b7cf7](https://github.com/VitruvianSoftware/vitruvian-core/commit/78b7cf759fd3b2a3aa43d29900b32c435e90c0a6))
+
 ## [1.51.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.50.0...vitruvian-code-v1.51.0) (2026-11-28)
 
 
