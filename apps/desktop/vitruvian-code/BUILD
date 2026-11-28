@@ -127,6 +127,7 @@ sh_test(
     ],
     data = [
         "README.md",
+        "docs/designs/vitruvian-code-acp.md",
         "rules/AGENTS.md",
         "scripts/README.md",
         "scripts/sign-and-notarize.sh",

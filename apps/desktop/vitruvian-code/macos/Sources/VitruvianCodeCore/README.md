@@ -25,6 +25,22 @@ Component package providing implementation for `apps/desktop/vitruvian-code/maco
 - `[VitruvianCodeFleetAndCatalog.swift:VitruvianCodeAccountManager]`
 - `[VitruvianCodeFleetAndCatalog.swift:VitruvianCodeInboxEntry]`
 
+## Agent connections
+A chat reaches its agent through one `AgentConnection` (`AgentConnection.swift`). Which one a chat gets is `VitruvianCodeCLIProvider.resolvedConnection`: the saved choice, or the default (ACP for agy and registry agents, the Claude SDK for Claude Code, the command line otherwise). The engine applies the default where it picks a chat's provider (`withDefaultConnection`); saved settings keep `nil`.
+
+| File (`ACP/`) | What it does |
+|---|---|
+| `ACPTransport.swift`, `ACPSchema.swift` | Newline-delimited JSON-RPC to the agent's process, and the ACP v1 messages |
+| `ACPConnection.swift` | One live session: prompts, updates, cancel, resume, modes and session options |
+| `ACPClientPolicy.swift`, `ACPClientFiles.swift`, `ACPClientTerminals.swift`, `ACPElicitation.swift` | What the app answers: permission requests by approval mode, file reads and writes, terminals, forms |
+| `ACPAuth.swift` | The agent's sign-in methods, offered on the error card |
+| `AntigravityACP.swift` | agy over ACP (`agy acp`) |
+| `ClaudeSDKConnection.swift` | Starts the bundled Node and Claude helper against the user's `claude` |
+| `ACPRegistry.swift`, `ACPRegistryAgentList.swift`, `ACPRegistryConnection.swift` | The public ACP registry: install, update, remove, and a chat with an installed agent |
+| `RegistryAgents/` | Per-agent handling, such as the Claude ACP adapter's subagents |
+
+Tests replay recorded sessions from `../../../testdata/acp/` and the helper's `../../claude-helper/protocol/examples/`.
+
 ## Invariants
 - None
 

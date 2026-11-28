@@ -6,4 +6,4 @@ The component's [README](https://github.com/VitruvianSoftware/vitruvian-core/blo
 
 ## Designs
 
-- [Live agent connections (ACP and the Claude Agent SDK)](designs/vitruvian-code-acp.md): proposed.
+- [Live agent connections (ACP and the Claude Agent SDK)](designs/vitruvian-code-acp.md): implemented.

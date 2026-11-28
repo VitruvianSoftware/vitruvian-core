@@ -3,6 +3,10 @@
 Vitruvian Code is MIT-licensed (see [`LICENSE`](LICENSE)). The Mac app and
 extension ship the following third-party software.
 
+Agents added from the ACP registry (including the Claude ACP adapter) are not
+shipped with the app. Each is downloaded from its own publisher when you add
+it, under that publisher's licence, so none is listed here.
+
 ## Mermaid
 
 The chat draws diagrams with [Mermaid](https://github.com/mermaid-js/mermaid).
@@ -3231,6 +3235,23 @@ inlines the packages listed in
 ```text
 © Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.
 ```
+
+**Terms of use.** This package is not open source. Anthropic says the Agent SDK
+is governed by its [Commercial Terms of Service](https://www.anthropic.com/legal/commercial-terms),
+including when it powers products offered to other people
+([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)).
+Those terms and Anthropic's
+[legal and compliance page](https://code.claude.com/docs/en/legal-and-compliance)
+set conditions for running Claude Code inside a product: Claude Code runs
+unmodified, each person signs in with their own credentials and pays for their
+own use, and nobody resells or intermediates that use. Vitruvian Code meets those
+as built: the helper runs the person's own installed `claude`, the app never
+handles Claude credentials, and it ships no Claude Code binary.
+
+Neither page explicitly grants or forbids shipping the SDK's JavaScript inside
+another app, as the helper bundle does. That question is open; until it is
+settled with Anthropic, treat redistribution as not confirmed. (Checked
+2026-11-27.)
 
 ### zod
 

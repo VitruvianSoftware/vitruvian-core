@@ -261,6 +261,60 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 2. Click the **Update** button.
 3. The app will download the new version, replace itself in the `Applications` folder, and automatically relaunch.
 
+### Agent connections
+
+A chat talks to its agent over one of three connections. The two live ones keep
+one session open for the whole chat, so the app sees every tool call, approval
+request, plan step and usage update as it happens.
+
+| Connection | What it is | Default for |
+|---|---|---|
+| **ACP** | The [Agent Client Protocol](https://agentclientprotocol.com): the app starts the agent's ACP server and talks JSON-RPC to it | Antigravity (`agy`), and every agent added from the ACP registry |
+| **Claude SDK** | A helper bundled in the app (Node and Anthropic's Claude Agent SDK) that runs your own `claude` and speaks ACP to the app | Claude Code |
+| **Command line** | The older way: one `-p` process per prompt, its output read as it prints | Ollama (claude), OpenCode, custom commands, and scheduled runs |
+
+Change it per provider in **Settings > Providers > Connection**. "Default"
+follows the table above, and a connection you chose is kept. Claude Code can
+also run on the **Claude ACP** adapter from the registry: choosing it there
+installs the adapter. If a live connection fails to start, the chat's error card
+offers **Use command line for this chat**.
+
+**Approvals.** Each chat has its own approval mode, picked in the chat header:
+
+| Mode | What it does |
+|---|---|
+| **Full access** (default) | Nothing asks |
+| **Auto-accept edits** | Edits go through; everything else asks |
+| **Approval required** | Reads and searches go through; everything else asks |
+| **Auto** (Claude only) | Claude decides for itself what is safe to run |
+
+The **plan switch** is separate: the agent plans and doesn't act until you
+switch it off. New chats start from the global default (`AGY_APPROVAL_MODE`,
+which the Telegram bot reads too). Over ACP the app answers agy's permission
+requests itself and never starts agy in its own bypass modes. Claude can still
+ask in full access when its own settings or safety checks require it.
+
+**Sign-in.** The app never handles your credentials. Claude Code runs your
+installed `claude` with its own sign-in (`claude` then `/login`, or
+`ANTHROPIC_API_KEY` in your environment), and a provider can point at another
+Claude config folder (`CLAUDE_CONFIG_DIR`). agy uses its own Antigravity
+sign-in. When an ACP agent reports that it needs signing in, the chat's error
+card offers the agent's own sign-in methods.
+
+**Agents from the ACP registry.** **Settings > Providers > + Add from ACP
+Registry** lists the public [ACP registry](https://agentclientprotocol.com/registry).
+Adding an agent downloads the exact version listed into the app's own folder,
+checking its SHA-256 when the registry publishes one. Nothing is installed until
+you add it, a chat never installs, and removing the provider removes its copy.
+The agent's own model, effort and mode appear in the settings row under the
+composer.
+
+**MCP servers.** Each agent keeps its own MCP configuration; the app passes it
+none. A live chat's **MCP servers** panel shows the servers the agent loaded,
+their state and where each is configured.
+
+The design of record is [docs/designs/vitruvian-code-acp.md](docs/designs/vitruvian-code-acp.md).
+
 ---
 
 ## Bot Commands
@@ -323,6 +377,7 @@ The pre-migration `GEMINI_*` names are still read as fallbacks.
 
 - macOS 14.0+ (for **Vitruvian Code.app** — the Rust `bot-engine` helper is bundled inside)
 - [Antigravity CLI](https://antigravity.google) (`agy`) installed and signed in — Google retired Gemini CLI for individual accounts
+- For Claude Code: [Claude Code](https://code.claude.com) (`claude`) installed and signed in. The app bundles its own Node for the Claude helper, so no Node install is needed
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 
 ## Subdirectories & Boundaries
