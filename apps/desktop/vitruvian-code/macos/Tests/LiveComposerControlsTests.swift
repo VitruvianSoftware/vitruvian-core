@@ -739,7 +739,11 @@ final class LiveComposerControlsTests: XCTestCase {
         }
         let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
         session.takeCheckpoint = { _ in nil }
-        session.idleConnectionTimeout = 0.05
+        // No idle timer here: with a 50 ms one, a slow runner shut the connection before the
+        // pick below and the pick was refused (queue run of #5575). The idle path is stopped
+        // by hand after the pick, with the call the timer makes; the timer itself is tested
+        // in AntigravityACPTests.testIdleShutdownStopsConnectionAndNextPromptRestartsWithResumeID.
+        session.idleConnectionTimeout = 0
         let config = VitruvianCodeConfiguration(approvalMode: .standard, activeProvider: Self.liveACPProvider)
 
         session.send("one", configuration: config, agentPath: "/fake/agy")
@@ -751,6 +755,7 @@ final class LiveComposerControlsTests: XCTestCase {
         try await waitUntil("turn 1 done") { !session.isRunning }
         let picked = await session.setLiveConfigOption(id: "model", value: .string("opus"))
         XCTAssertTrue(picked)
+        session.stopConnection(keepingWorktree: true) // what the idle timer does
         try await waitUntil("idle shutdown") { first.isStopped }
         return ReconnectRig(session: session, connections: connections, config: config)
     }
