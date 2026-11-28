@@ -929,7 +929,7 @@ pub fn run(ctx: &mut TestContext) {
                 .filter(|l| l.starts_with("FROM ") && l.contains(" AS "))
                 .collect();
             let has_multi_stage = stages.len() >= 2;
-            let has_node_22 = stages.iter().any(|s| s.contains("node:22"));
+            let has_node_26 = stages.iter().any(|s| s.contains("node:26"));
             let has_prod_install = df.contains("pnpm install --prod")
                 || (df.contains("deploy")
                     && df.contains("--prod")
@@ -944,7 +944,7 @@ pub fn run(ctx: &mut TestContext) {
                     && (df.contains("http://127.0.0.1:8080/healthz")
                         || df.contains("http://localhost:8080/healthz")));
             if has_multi_stage
-                && has_node_22
+                && has_node_26
                 && has_prod_install
                 && has_expose
                 && has_healthcheck
@@ -959,8 +959,8 @@ pub fn run(ctx: &mut TestContext) {
                 if !has_multi_stage {
                     errs.push("not multi-stage");
                 }
-                if !has_node_22 {
-                    errs.push("no Node 22 base");
+                if !has_node_26 {
+                    errs.push("no Node 26 base");
                 }
                 if !has_prod_install {
                     errs.push("no --prod install");

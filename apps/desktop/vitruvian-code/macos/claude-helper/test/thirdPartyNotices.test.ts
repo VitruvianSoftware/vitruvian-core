@@ -49,8 +49,16 @@ function extractSection(
     return null;
   }
   let endIdx = lines.length;
+  let inFence = false;
   for (let i = startIdx + 1; i < lines.length; i += 1) {
     const trimmed = lines[i].trim();
+    if (trimmed.startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
     if (headingPrefix === "##") {
       if (/^##\s+/.test(trimmed)) {
         endIdx = i;

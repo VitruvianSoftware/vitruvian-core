@@ -4,7 +4,7 @@ OAuth User Inspector is a full-stack web application designed to inspect OAuth u
 
 **Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.**
 
-> Design and operations detail live in [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md). The commands below use `npm`, but the repo's package manager is `pnpm` (via `corepack`) — either works locally.
+> Design and operations detail live in [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) and [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md). The commands below use `npm`, but the repo's package manager is `pnpm` (`npm install -g pnpm@10.20.0`) — either works locally.
 
 ## Working Effectively
 
@@ -103,7 +103,7 @@ The following are outputs from frequently run commands. Reference them instead o
 ### Technology Stack
 
 - **Frontend**: React 18 + Vite 6 + Tailwind CSS 3 + TypeScript
-- **Backend**: Express 4 + Node.js 20 + TypeScript + Winston logging
+- **Backend**: Express 4 + Node.js 26 + TypeScript + Winston logging
 - **Testing**: Jest 30 + ts-jest + MSW (Mock Service Worker) + Supertest
 - **Build**: Vite (frontend), TypeScript compiler (backend)
 - **Deployment**: Docker + Google Cloud Run + Google Cloud Build

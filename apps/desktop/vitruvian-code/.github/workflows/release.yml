@@ -324,6 +324,7 @@ jobs:
             tar -xzf "$tarball" -C "$fetch_dir" "${name}/bin/node"
             cp "${fetch_dir}/${name}/bin/node" "/tmp/${out_arch}/node"
             chmod 755 "/tmp/${out_arch}/node"
+            /usr/bin/strip -x "/tmp/${out_arch}/node"
             got_archs="$(lipo -archs "/tmp/${out_arch}/node")"
             test "$got_archs" = "$out_arch"
           done
@@ -540,9 +541,15 @@ jobs:
             /bin/mkdir -p "$stage"
             /usr/bin/ditto "/tmp/dist-${arch}/Vitruvian Code.app" "$stage/Vitruvian Code.app"
             /bin/ln -s /Applications "$stage/Applications"
+            # Size the volume explicitly (+25% + 32 MiB) so hdiutil's automatic
+            # -srcfolder estimate cannot undersize it on macos-15; UDZO compresses
+            # unused space away.
+            stage_kb="$(/usr/bin/du -sk "$stage" | /usr/bin/awk '{print $1}')"
+            dmg_mb=$(( (stage_kb * 125 / 100 + 1023) / 1024 + 32 ))
             /usr/bin/hdiutil create \
               -volname "Vitruvian Code" \
               -srcfolder "$stage" \
+              -size "${dmg_mb}m" \
               -ov \
               -format UDZO \
               "VitruvianCode-${VERSION}-${name}.dmg"

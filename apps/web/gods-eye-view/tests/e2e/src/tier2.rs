@@ -682,7 +682,7 @@ pub fn run(ctx: &mut TestContext) {
     // =========================================================================
 
     // B046: Dockerfile with USER root rejected
-    let df_root = "FROM node:22-bookworm-slim\nUSER root\nCMD [\"node\", \"server.mjs\"]";
+    let df_root = "FROM node:26-bookworm-slim\nUSER root\nCMD [\"node\", \"server.mjs\"]";
     let is_root = df_root.lines().any(|l| {
         let t = l.trim();
         t.starts_with("USER root") || t.starts_with("USER 0")
@@ -697,7 +697,7 @@ pub fn run(ctx: &mut TestContext) {
     }
 
     // B047: Missing HEALTHCHECK
-    let df_no_health = "FROM node:22-bookworm-slim\nUSER nodejs\nEXPOSE 8080";
+    let df_no_health = "FROM node:26-bookworm-slim\nUSER nodejs\nEXPOSE 8080";
     if !df_no_health.contains("HEALTHCHECK") {
         ctx.pass("B047", "Container auditor flags omitted HEALTHCHECK probe");
     } else {
@@ -705,7 +705,7 @@ pub fn run(ctx: &mut TestContext) {
     }
 
     // B048: Missing EXPOSE 8080
-    let df_no_expose = "FROM node:22-bookworm-slim\nUSER nodejs\nHEALTHCHECK CMD wget -qO- http://localhost:8080 || exit 1";
+    let df_no_expose = "FROM node:26-bookworm-slim\nUSER nodejs\nHEALTHCHECK CMD wget -qO- http://localhost:8080 || exit 1";
     if !df_no_expose.contains("EXPOSE 8080") {
         ctx.pass(
             "B048",
@@ -716,7 +716,7 @@ pub fn run(ctx: &mut TestContext) {
     }
 
     // B049: Mismatched Node versions across stages
-    let df_mismatch = "FROM node:20-alpine AS builder\nFROM node:22-bookworm-slim AS runner\n";
+    let df_mismatch = "FROM node:20-alpine AS builder\nFROM node:26-bookworm-slim AS runner\n";
     let from_versions: Vec<&str> = df_mismatch
         .lines()
         .filter(|l| l.starts_with("FROM "))
@@ -735,11 +735,11 @@ pub fn run(ctx: &mut TestContext) {
 
     // B050: Non-canonical Node version rejected
     let df_node18 = "FROM node:18-alpine";
-    let is_canonical = df_node18.starts_with("FROM node:22");
+    let is_canonical = df_node18.starts_with("FROM node:26");
     if !is_canonical {
         ctx.pass(
             "B050",
-            "Conformance rule strictly rejects non-canonical Node major versions (requires Node 22)",
+            "Conformance rule strictly rejects non-canonical Node major versions (requires Node 26)",
         );
     } else {
         ctx.fail("B050", "Canonical node version check failed");

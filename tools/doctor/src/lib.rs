@@ -297,7 +297,15 @@ pub fn fix_hint(key: &[u8], expected: &[u8]) -> Vec<u8> {
     let s: &str = match key {
         b"bazel" => "install Bazelisk so `bazel` honors .bazelversion",
         b"node" => "nvm use (reads .nvmrc)",
-        b"pnpm" => "corepack enable",
+        b"pnpm" => {
+            let mut v = b"npm install -g pnpm@".to_vec();
+            v.extend_from_slice(if expected.is_empty() {
+                b"<expected>"
+            } else {
+                expected
+            });
+            return v;
+        }
         b"go" => {
             let mut v = b"install Go ".to_vec();
             v.extend_from_slice(if expected.is_empty() {
@@ -945,6 +953,11 @@ mod tests {
 
     #[test]
     fn hints() {
+        assert_eq!(fix_hint(b"pnpm", b""), v("npm install -g pnpm@<expected>"));
+        assert_eq!(
+            fix_hint(b"pnpm", b"10.20.0"),
+            v("npm install -g pnpm@10.20.0")
+        );
         assert_eq!(fix_hint(b"go", b""), v("install Go <expected>"));
         assert_eq!(fix_hint(b"go", b"1.25.5"), v("install Go 1.25.5"));
         assert_eq!(fix_hint(b"zig", b""), v("install zig"));

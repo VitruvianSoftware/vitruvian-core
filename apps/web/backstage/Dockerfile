@@ -20,12 +20,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-FROM node:22-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends     python3     g++     build-essential     git     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY apps/web/backstage/package.json ./apps/web/backstage/
@@ -42,7 +42,7 @@ RUN npx backstage-cli package build
 WORKDIR /app/apps/web/backstage/packages/backend
 RUN touch yarn.lock && npx backstage-cli package build --skip-build-dependencies
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 
 # mkdocs + mkdocs-techdocs-core power TechDocs' `generator.runIn: local`. Without
 # them the generator defaults to `docker`, which cannot spawn a container from
@@ -63,7 +63,7 @@ WORKDIR /app
 #   if (nodeVersion >= 20 && !isNoNodeSnapshotOptionProvided()) throw ...
 #
 # and NunjucksWorkflowRunner.execute calls it for EVERY task. This base image is
-# node:22, so without this line every single scaffolder run dies before step 1
+# node:26, so without this line every single scaffolder run dies before step 1
 # -- and nothing catches it: the boot smoke never executes a task, and no
 # Template had ever actually been run in this deployment. The drift-guard test
 # asserts this line still exists.
@@ -72,7 +72,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--no-node-snapshot \
     NODE_PATH=/app/node_modules:/app/apps/web/backstage/packages/backend/node_modules
 
-RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
+RUN npm install -g pnpm@10.20.0
 
 COPY --from=build /app/pnpm-lock.yaml /app/package.json /app/pnpm-workspace.yaml ./
 COPY --from=build /app/apps/web/backstage/package.json ./apps/web/backstage/

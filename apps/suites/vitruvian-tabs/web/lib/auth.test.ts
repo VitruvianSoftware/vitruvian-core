@@ -227,25 +227,7 @@ describe("AuthService", () => {
     });
   });
 
-  describe("edge cases", () => {
-    it("should return null if window is undefined (getToken)", () => {
-      const originalWindow = global.window;
-      // @ts-expect-error Mocking window
-      delete global.window;
-
-      expect(AuthService.getToken()).toBeNull();
-
-      global.window = originalWindow;
-    });
-
-    it("should return null if window is undefined (getUser)", () => {
-      const originalWindow = global.window;
-      // @ts-expect-error Mocking window
-      delete global.window;
-
-      expect(AuthService.getUser()).toBeNull();
-
-      global.window = originalWindow;
-    });
-  });
+  // Server-context (`typeof window === "undefined"`) tests for getToken/getUser
+  // live in auth.server.test.ts under `@jest-environment node`; jsdom 26 marks
+  // `window` as [Unforgeable], so `delete global.window` throws under Node 26.
 });

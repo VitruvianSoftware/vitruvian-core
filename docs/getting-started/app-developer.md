@@ -7,8 +7,8 @@ to the deeper material.
 ## Your first hour
 
 ```bash
-# 1. Toolchain: Node 22 + pnpm via corepack, Bazelisk installed AS `bazel`
-nvm install && corepack enable
+# 1. Toolchain: Node 26 + pnpm 10.20.0, Bazelisk installed AS `bazel`
+nvm install && npm install -g pnpm@10.20.0
 bazel version                  # -> 9.x, pinned by .bazelversion
 
 # 2. Verify your environment (per-app: bazel run //apps/suites/vitruvian-tabs:doctor, etc.)

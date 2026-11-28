@@ -74,10 +74,22 @@ jobs:
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
-      - name: Restore Node 22.21.1 toolcache
+      - name: Read Node version from .nvmrc
+        id: nvmrc
+        run: |
+          set -euo pipefail
+          raw="$(tr -d '[:space:]' < .nvmrc)"
+          version="${raw#v}"
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::.nvmrc must contain an exact X.Y.Z Node version (optional single leading v), got '${raw}'" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Node toolcache
         uses: ./.github/actions/node-toolcache
         with:
-          version: '22.21.1'
+          version: ${{ steps.nvmrc.outputs.version }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

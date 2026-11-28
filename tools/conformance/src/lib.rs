@@ -316,7 +316,7 @@ impl Context {
 
         let group_order: &[(&str, &str)] = &[
             ("GO", "Go (go.mod → go.work)"),
-            ("NODE", "Node (Dockerfile FROM node → .nvmrc major)"),
+            ("NODE", "Node (Dockerfile FROM node & workflows → .nvmrc)"),
             ("PNPM", "pnpm (package.json packageManager → root)"),
             ("RUST", "Rust (rust-toolchain(.toml) → MODULE.bazel rust.toolchain)"),
             ("CATALOG", "Catalog (package.json → pnpm-workspace.yaml catalog)"),

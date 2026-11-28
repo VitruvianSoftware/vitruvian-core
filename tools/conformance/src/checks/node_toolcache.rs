@@ -1089,23 +1089,16 @@ runs:
                 "#!/usr/bin/env bash\nnode --version >/dev/null\necho 10.9.0\n",
             );
         };
-        let write_good_corepack = |tool_dir: &Path| {
-            write_exec(
-                &tool_dir.join("bin/corepack"),
-                "#!/usr/bin/env bash\nnode --version >/dev/null\necho 0.31.0\n",
-            );
-        };
 
         // 1. Clean miss: neither dir nor marker exists, cache-hit=false.
         let (out, d, m) = run_verify("clean-miss", Some("false"), &|_, _| {});
         assert_eq!(out, "usable=false");
         assert!(!d && !m);
 
-        // 2. Valid cache hit: node, npm, corepack, and .complete marker all present and working.
+        // 2. Valid cache hit: node, npm, and .complete marker all present and working.
         let (out, d, m) = run_verify("valid-hit", Some("true"), &|td, mk| {
             write_good_node(td);
             write_good_npm(td);
-            write_good_corepack(td);
             fs::write(mk, "").unwrap();
         });
         assert_eq!(out, "usable=true");
@@ -1140,28 +1133,9 @@ runs:
         assert_eq!(out, "usable=false");
         assert!(!d && !m);
 
-        // 6. Missing or failing corepack: deletes BOTH dir and marker.
-        let (out, d, m) = run_verify("missing-corepack", Some("true"), &|td, mk| {
-            write_good_node(td);
-            write_good_npm(td);
-            fs::write(mk, "").unwrap();
-        });
-        assert_eq!(out, "usable=false");
-        assert!(!d && !m);
-
-        let (out, d, m) = run_verify("failing-corepack", Some("true"), &|td, mk| {
-            write_good_node(td);
-            write_good_npm(td);
-            write_exec(&td.join("bin/corepack"), "#!/usr/bin/env bash\nexit 1\n");
-            fs::write(mk, "").unwrap();
-        });
-        assert_eq!(out, "usable=false");
-        assert!(!d && !m);
-
-        // 7. Missing or failing npm: deletes BOTH dir and marker.
+        // 6. Missing or failing npm: deletes BOTH dir and marker.
         let (out, d, m) = run_verify("missing-npm", Some("true"), &|td, mk| {
             write_good_node(td);
-            write_good_corepack(td);
             fs::write(mk, "").unwrap();
         });
         assert_eq!(out, "usable=false");
@@ -1170,17 +1144,15 @@ runs:
         let (out, d, m) = run_verify("failing-npm", Some("true"), &|td, mk| {
             write_good_node(td);
             write_exec(&td.join("bin/npm"), "#!/usr/bin/env bash\nexit 1\n");
-            write_good_corepack(td);
             fs::write(mk, "").unwrap();
         });
         assert_eq!(out, "usable=false");
         assert!(!d && !m);
 
-        // 8. Valid binaries but missing .complete marker: deletes dir.
+        // 7. Valid binaries but missing .complete marker: deletes dir.
         let (out, d, m) = run_verify("missing-marker", Some("true"), &|td, _| {
             write_good_node(td);
             write_good_npm(td);
-            write_good_corepack(td);
         });
         assert_eq!(out, "usable=false");
         assert!(!d && !m);

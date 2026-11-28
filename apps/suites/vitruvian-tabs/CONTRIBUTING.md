@@ -83,7 +83,7 @@ Before contributing, ensure you have:
 
 - **Node.js** 22+
 - **Bazel** (via `bazelisk`)
-- **pnpm** (via Corepack or globally installed)
+- **pnpm** 10.20.0 (`npm install -g pnpm@10.20.0`)
 - **Docker** & **Tailscale** (for local K3s access)
 - **Git** (version control)
 - **gcloud CLI** (for GCP-related development)

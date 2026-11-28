@@ -295,7 +295,7 @@ describe("the stamp-application template", () => {
   it("keeps NODE_OPTIONS=--no-node-snapshot in the runtime image", () => {
     // Not cosmetic: SecureTemplater.loadRenderer throws UNCONDITIONALLY on
     // Node >= 20 without it, and NunjucksWorkflowRunner calls it for EVERY
-    // task. The base image is node:22, so dropping this line breaks every
+    // task. The base image is node:26, so dropping this line breaks every
     // scaffolder run before step 1 -- and the boot smoke cannot catch it,
     // because it never executes a task.
     const dockerfile = readFileSync(
@@ -303,7 +303,7 @@ describe("the stamp-application template", () => {
       "utf8",
     );
     const runtime = dockerfile.slice(
-      dockerfile.lastIndexOf("FROM node:22-bookworm-slim AS runtime"),
+      dockerfile.lastIndexOf("FROM node:26-bookworm-slim AS runtime"),
     );
     expect(runtime).toMatch(/NODE_OPTIONS=--no-node-snapshot/);
 

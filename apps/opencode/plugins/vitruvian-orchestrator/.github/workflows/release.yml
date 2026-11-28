@@ -86,7 +86,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "26"
           registry-url: "https://registry.npmjs.org"
 
       - name: Ask npm whether this version is published
@@ -125,10 +125,9 @@ jobs:
         if: steps.npm.outputs.publish == 'true'
         run: |
           set -euo pipefail
-          # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1.
-          # Upgrade and then ASSERT: an npm too old does not say so, it
-          # quietly looks for a token that is not there.
-          npm install -g npm@11 >/dev/null
+          # Trusted publishing needs npm >= 11.5.1. Node 26.13.1 bundles npm
+          # 11.20.0, which already satisfies the requirement; assert without
+          # pulling an unpinned npm@latest at publish time.
           have="$(npm --version)"
           if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
             echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"

@@ -402,7 +402,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.detect.outputs.version
         with:
-          node-version: 22
+          node-version: 26
           registry-url: "https://registry.npmjs.org"
       # No lockfile is exported for the kit: it has no dependencies, and its
       # development ones resolve from package.json.
@@ -417,9 +417,9 @@ jobs:
         if: steps.detect.outputs.version
         run: |
           set -euo pipefail
-          # Node 22 bundles npm 10; trusted publishing needs 11.5.1 or later,
-          # and an older npm fails as an auth error rather than saying so.
-          npm install -g npm@latest >/dev/null
+          # Trusted publishing needs npm 11.5.1 or later (Node 26.13.1 bundles
+          # npm 11.20.0); assert without upgrading, as an older npm fails as an
+          # auth error rather than saying so.
           have="$(npm --version)"
           if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
             echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"

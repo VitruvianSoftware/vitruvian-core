@@ -26,9 +26,9 @@
 # Keeping install and build in ONE stage preserves the symlink graph.
 # Layer caching still works: package.json/lockfile change less often
 # than source, so the install layer is cached across source-only rebuilds.
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@10.20.0
 
 # Copy workspace config and lockfile (cached layer)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -59,7 +59,7 @@ WORKDIR /app/apps/suites/vitruvian-tabs/web
 RUN npx next build
 
 # Stage 3: Production runner
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

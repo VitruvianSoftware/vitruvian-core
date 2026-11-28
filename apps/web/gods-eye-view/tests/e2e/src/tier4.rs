@@ -267,7 +267,7 @@ fn scenario_02_container_multiarch_build(ctx: &mut TestContext) {
     let wf = ctx.read_file(wf_path).unwrap_or_default();
     let mut ok = true;
 
-    if !df.lines().any(|l| l.starts_with("FROM node:22")) {
+    if !df.lines().any(|l| l.starts_with("FROM node:26")) {
         ok = false;
     }
     if !df.lines().any(|l| line_matches_user_directive(l)) {

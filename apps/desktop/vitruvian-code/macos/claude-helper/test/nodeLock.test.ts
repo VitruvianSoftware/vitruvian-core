@@ -45,6 +45,28 @@ function parseNodeLock(content: string): Record<string, string> {
   return out;
 }
 
+function parseModuleNodeRepositories(
+  moduleBazel: string,
+  version: string,
+): { "darwin-arm64": string; "darwin-x64": string } | undefined {
+  const extractSha = (platform: string): string | undefined => {
+    const escaped = `${version}-${platform}`.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    const re = new RegExp(
+      `"${escaped}"\\s*:\\s*[\\[(]\\s*"[^"]*"\\s*,\\s*"[^"]*"\\s*,\\s*"([0-9a-f]{64})"`,
+    );
+    return re.exec(moduleBazel)?.[1];
+  };
+  const arm64 = extractSha("darwin_arm64");
+  const amd64 = extractSha("darwin_amd64");
+  if (arm64 !== undefined && amd64 !== undefined) {
+    return { "darwin-arm64": arm64, "darwin-x64": amd64 };
+  }
+  return undefined;
+}
+
 describe("claude-helper node.lock", () => {
   test("matches //:.nvmrc and rules_nodejs Darwin SHA-256 sums", () => {
     const nvmrcVersion = readFileSync(
@@ -77,11 +99,15 @@ describe("claude-helper node.lock", () => {
         "rules_nodejs_darwin_sums.json is empty: node_lock.bzl no longer finds rules_nodejs's Node checksums (it reads the private nodejs/private/node_versions.bzl). See node_lock.bzl.",
       );
     }
-    const entry = rulesNodejsSums[nvmrcVersion];
+    const moduleSums = parseModuleNodeRepositories(
+      readFileSync(path.join(REPO_ROOT, "MODULE.bazel"), "utf8"),
+      nvmrcVersion,
+    );
+    const entry = moduleSums ?? rulesNodejsSums[nvmrcVersion];
     if (entry === undefined) {
       throw new Error(
-        `rules_nodejs has no Darwin arm64+x64 checksums for Node ${nvmrcVersion} (//:.nvmrc). ` +
-          "Upgrade rules_nodejs, or move .nvmrc to a version it knows, then update node.lock.",
+        `Neither MODULE.bazel node_repositories nor rules_nodejs has Darwin arm64+x64 checksums for Node ${nvmrcVersion} (//:.nvmrc). ` +
+          "Upgrade rules_nodejs or pin node_repositories in MODULE.bazel, then update node.lock.",
       );
     }
     expect(lock["darwin-arm64"]).toBe(entry["darwin-arm64"]);
