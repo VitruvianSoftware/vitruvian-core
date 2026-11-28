@@ -725,6 +725,82 @@ final class AgentConnectionTests: XCTestCase {
         XCTAssertTrue(delta.hasSuffix("\n\nUser message:\nfive"), delta)
     }
 
+    /// Review of #5588: a session that starts but whose prompt fails has not seen the chat, so
+    /// the next prompt to that agent still carries the history (T3 Code keeps an unsent handoff).
+    /// And a switch whose first prompt is an agent command sends the command as typed, says a
+    /// summary is coming, and sends it with the next prompt.
+    func testHandoffStaysOwedUntilTheAgentAnswersAndWaitsPastACommand() async throws {
+        let rig = ComposerRig()
+        var created: [FakeAgentConnection] = []
+        var failNextPrompt = false
+        var env = rig.environment
+        env.makeConnection = { _ in
+            let fake = FakeAgentConnection()
+            if failNextPrompt {
+                fake.newSessionID = "agy-started-but-failed"
+                fake.promptError = AgentConnectionError.notSupportedYet
+                failNextPrompt = false
+            }
+            created.append(fake)
+            return fake
+        }
+        let session = VitruvianCodeQuickPromptSession(environment: env, host: rig.host)
+        session.takeCheckpoint = { _ in nil }
+
+        func send(_ text: String, _ provider: VitruvianCodeCLIProvider) async -> FakeAgentConnection {
+            let before = created.count
+            session.send(text, configuration: VitruvianCodeConfiguration(approvalMode: .yolo, activeProvider: provider),
+                         agentPath: "/fake/agent")
+            let fake = created[before]
+            for _ in 0..<1000 where fake.promptBlocks.isEmpty { await Task.yield() }
+            return fake
+        }
+        func answer(_ fake: FakeAgentConnection, _ id: String, _ reply: String) async {
+            fake.emit(.started(conversationID: id))
+            fake.emit(.finished(status: "end_turn", response: reply, error: nil, conversationID: id))
+            fake.finishPrompt(with: .endTurn)
+            for _ in 0..<1000 where session.isRunning { await Task.yield() }
+        }
+        func prompt(_ fake: FakeAgentConnection) -> String {
+            for block in (fake.promptBlocks.first ?? []).reversed() {
+                if case .text(let text) = block { return text }
+            }
+            return ""
+        }
+        var claude = VitruvianCodeCLIProvider.claude
+        claude.connection = .claudeSDK
+
+        await answer(await send("remember PELICAN-42", claude), "claude-conv-1", "OK")
+
+        failNextPrompt = true
+        let failed = await send("what was the word?", .antigravity)
+        for _ in 0..<1000 where session.isRunning { await Task.yield() }
+        XCTAssertTrue(prompt(failed).hasPrefix("Context handoff (full_thread_summary)"), prompt(failed))
+
+        let retry = await send("what was the word?", .antigravity)
+        XCTAssertTrue(prompt(retry).hasPrefix("Context handoff (full_thread_summary)"),
+                      "a prompt that never got an answer did not deliver the history: \(prompt(retry))")
+        XCTAssertTrue(prompt(retry).contains("]\nremember PELICAN-42\n"), prompt(retry))
+        await answer(retry, "agy-conv-1", "PELICAN-42")
+
+        let after = await send("thanks", .antigravity)
+        XCTAssertEqual(prompt(after), "thanks", "once answered, the history is not sent again")
+        await answer(after, "agy-conv-1", "ok")
+
+        // Back to a fresh agent with a command first: it goes as typed, the summary waits.
+        let notices = { session.messages.filter { $0.text == rig.host.strings.agentSwitchHandoffNotice }.count }
+        let before = notices()
+        var opencode = VitruvianCodeCLIProvider.opencode
+        opencode.connection = .commandLine
+        let command = await send("/status", opencode)
+        XCTAssertEqual(prompt(command), "/status")
+        XCTAssertEqual(notices(), before + 1, "the summary is still coming, so the chat says so")
+        await answer(command, "oc-1", "status ok")
+        let next = await send("go on", opencode)
+        XCTAssertTrue(prompt(next).hasPrefix("Context handoff (full_thread_summary)"), prompt(next))
+        XCTAssertTrue(prompt(next).hasSuffix("User message:\ngo on"), prompt(next))
+    }
+
     func testSessionDrivesFakeAgentConnectionThroughMakeConnection() async throws {
         let rig = ComposerRig()
         var capturedSpecs: [AgentConnectionSpec] = []
@@ -1215,9 +1291,12 @@ private final class FakeAgentConnection: AgentConnection {
         self.eventContinuation = continuation
     }
 
+    /// The session ID `start` reports when it is not resuming one; nil reports none.
+    var newSessionID: String?
+
     func start(_ request: AgentSessionRequest) async throws -> String {
         startRequests.append(request)
-        return request.resumeSessionID ?? ""
+        return request.resumeSessionID ?? newSessionID ?? ""
     }
 
     func prompt(_ blocks: [PromptBlock]) async throws -> AgentStopReason {

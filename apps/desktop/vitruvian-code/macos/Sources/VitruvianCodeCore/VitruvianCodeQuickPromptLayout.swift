@@ -782,6 +782,9 @@ public struct VitruvianCodeSessionSummary: Identifiable, Equatable, Sendable {
             }
         }
 
+        // A prompt that carried another agent's context shows as what the user typed.
+        text = AgentContextHandoff.userText(fromPrompt: text)
+
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return isClaudeInternalRecord(trimmed) ? "" : trimmed
     }

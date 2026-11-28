@@ -92,4 +92,39 @@ final class AgentContextHandoffTests: XCTestCase {
         XCTAssertEqual(rows[0].text, "Command: ls -la\nExit code: unknown\na.txt")
         XCTAssertEqual(rows[1].text, "File change: /r/a.txt")
     }
+
+    /// A prompt read back from an agent's transcript shows as what the user typed, not the history
+    /// it carried, even when a history row itself mentions "User message:".
+    func testTranscriptPromptsShowWhatTheUserTyped() throws {
+        let items = [message(1, .user, "earlier\n\nUser message:\nnot this"), message(2, .assistant, "reply")]
+        let prompt = try XCTUnwrap(AgentContextHandoff.prompt(
+            strategy: .fullThreadSummary, threadID: "t", runs: 1...2, items: items, userText: "the real question",
+            attachments: [], nativeContextEstimate: 0))
+        XCTAssertEqual(AgentContextHandoff.userText(fromPrompt: prompt), "the real question")
+        XCTAssertEqual(VitruvianCodeSessionSummary.extractUserPrompt(prompt), "the real question")
+        XCTAssertEqual(VitruvianCodeSessionSummary.extractUserPrompt("<USER_REQUEST>\(prompt)</USER_REQUEST>"),
+                       "the real question", "agy wraps the prompt; the history still comes off")
+        XCTAssertEqual(AgentContextHandoff.userText(fromPrompt: "plain\n\nUser message:\nx"), "plain\n\nUser message:\nx")
+    }
+
+    /// A returning agent's session already fills part of its window: `handoffBudget` leaves the
+    /// history less room, and none when the window is nearly full.
+    func testAReturningAgentsWindowLimitsTheHistory() {
+        XCTAssertEqual(AgentContextHandoff.budget(userText: "hi", attachments: [], nativeContextEstimate: 0,
+                                                  modelContextWindow: 40_000), 16_000)
+        let roomy = AgentContextHandoff.budget(userText: "hi", attachments: [], nativeContextEstimate: 20_000,
+                                               modelContextWindow: 40_000)
+        XCTAssertEqual(roomy, 40_000 - 20_000 - 4 - 16_000)
+        // A row bigger than the room left is omitted whole; the note still says so, as in T3 Code.
+        let squeezed = AgentContextHandoff.prompt(strategy: .deltaSinceTargetLastSeen, threadID: "t", runs: 1...1,
+                                                  items: [message(1, .user, String(repeating: "z", count: 5_000))],
+                                                  userText: "hi", attachments: [], nativeContextEstimate: 20_000,
+                                                  modelContextWindow: 40_000) ?? ""
+        XCTAssertTrue(squeezed.contains("Selected 0 intact items; omitted 1 items."), squeezed)
+        XCTAssertFalse(squeezed.contains("zzzz"))
+        XCTAssertNil(AgentContextHandoff.prompt(strategy: .deltaSinceTargetLastSeen, threadID: "t", runs: 1...1,
+                                                items: [message(1, .user, "a")], userText: "hi", attachments: [],
+                                                nativeContextEstimate: 23_800, modelContextWindow: 40_000),
+                     "no room even for the note: nothing is sent")
+    }
 }

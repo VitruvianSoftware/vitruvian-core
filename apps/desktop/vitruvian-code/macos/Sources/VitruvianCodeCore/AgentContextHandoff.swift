@@ -31,10 +31,11 @@ import Foundation
 /// `withInlineContext`). The new agent's first prompt carries the earlier turns, newest kept
 /// first under a byte cap, ahead of what the user typed.
 ///
-/// Two departures, both because the app has no thread-read tool for the agent to call: the
-/// coverage note leaves out T3 Code's `t3_thread_read` recovery line, and nothing marks a
-/// handoff injected natively (no agent here accepts history outside the prompt), so it is always
-/// delivered inline.
+/// Departures, each because the app does not have what T3 Code has: no thread-read tool for the
+/// agent to call, so the coverage note leaves out T3 Code's `t3_thread_read` recovery line; no
+/// agent here accepts history outside the prompt, so it is always delivered inline; commands
+/// carry no exit code, so a command row says "Exit code: unknown" (T3 Code's own fallback); and
+/// turns carry no status, so rows have no `run-status=` field (T3 Code leaves it out when unknown).
 public enum AgentContextHandoff {
     /// T3 Code's two provider-switch strategies (`Orchestrator.ts`): an agent new to the chat
     /// gets every earlier turn; one coming back gets the turns since it last answered.
@@ -149,6 +150,16 @@ public enum AgentContextHandoff {
         ([context] + messages.map(render)).joined(separator: "\n\n")
     }
 
+    /// The user's own text from a prompt `withInlineContext` built, for showing a prompt read back
+    /// from an agent's transcript: what follows the "User message:" line after the last history
+    /// row. Any other text comes back as it is.
+    public static func userText(fromPrompt prompt: String) -> String {
+        guard prompt.hasPrefix("Context handoff (") else { return prompt }
+        let rowsEnd = prompt.range(of: "\n\n[Historical ", options: .backwards)?.upperBound ?? prompt.startIndex
+        guard let marker = prompt.range(of: "\n\nUser message:\n", range: rowsEnd..<prompt.endIndex) else { return prompt }
+        return String(prompt[marker.upperBound...])
+    }
+
     /// `withInlineContext`.
     public static func withInlineContext(_ context: String, userText: String) -> String {
         context.isEmpty ? userText : "\(context)\n\nUser message:\n\(userText)"
@@ -214,11 +225,11 @@ public enum AgentContextHandoff {
     public static func prompt(strategy: Strategy, threadID: String, runs: ClosedRange<Int>,
                               items: [HistoricalMessage], userText: String,
                               attachments: [VitruvianCodeAttachment], nativeContextEstimate: Int,
-                              tokenCap: Int = defaultTokenCap) -> String? {
+                              modelContextWindow: Int? = nil, tokenCap: Int = defaultTokenCap) -> String? {
         let handoffCoverage = coverage(threadID: threadID, runs: runs, items: items)
         let prepared = selectHistory(items, coverage: handoffCoverage, budget: tokenCap)
         let turnBudget = budget(tokenCap: tokenCap, userText: userText, attachments: attachments,
-                                nativeContextEstimate: nativeContextEstimate)
+                                nativeContextEstimate: nativeContextEstimate, modelContextWindow: modelContextWindow)
         let delivered = selectHistory(prepared.messages,
                                       coverage: "Context handoff (\(strategy.rawValue)):\n\(handoffCoverage)",
                                       omittedItems: prepared.omittedItems, budget: turnBudget)
