@@ -525,6 +525,7 @@ notary_submit() {
 		local pause=$((NOTARY_RETRY_PAUSE * attempt))
 		left=$((NOTARY_BUDGET_SECONDS - NOTARY_SPENT_SECONDS))
 		[ "${pause}" -gt "${left}" ] && pause="${left}"
+		[ "${pause}" -lt 0 ] && pause=0
 		[ "${pause}" -gt 0 ] && /bin/sleep "${pause}"
 		NOTARY_SPENT_SECONDS=$((NOTARY_SPENT_SECONDS + pause))
 		attempt=$((attempt + 1))
