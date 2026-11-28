@@ -141,6 +141,42 @@ saves stays there as a file even after the test removes the domain, and on
 
 ---
 
+## Vitruvian Code: agent connections (ACP)
+
+Vitruvian Code talks to agents over the Agent Client Protocol (ACP). Design
+decisions follow T3 Code, pinned in the design doc; settle a question from its
+source rather than inventing an answer. The design of record is
+[`vitruvian-code/docs/designs/vitruvian-code-acp.md`](vitruvian-code/docs/designs/vitruvian-code-acp.md).
+
+| What | Where |
+|---|---|
+| Swift ACP client, Claude SDK connection, registry installs | `vitruvian-code/macos/Sources/VitruvianCodeCore/ACP/` (map in that folder's [README](vitruvian-code/macos/Sources/VitruvianCodeCore/README.md)) |
+| Claude helper (bundled Node + Agent SDK, speaks ACP) | `vitruvian-code/macos/claude-helper/`; its checked-in bundle is rebuilt with `bazel run //apps/desktop/vitruvian-code/macos/claude-helper:update_bundle` |
+| Protocol contract between the helper and the app | `vitruvian-code/macos/claude-helper/protocol/schema.json` and `protocol/examples/`, read by the helper's tests and `ClaudeHelperContractTests.swift` |
+| Recorded ACP sessions (replay fixtures) | `vitruvian-code/testdata/acp/*.ndjson` |
+| Stand-in `claude` for helper tests | `vitruvian-code/testdata/claude-sdk/` ([README](vitruvian-code/testdata/README.md)) |
+| Pinned Node | `vitruvian-code/macos/claude-helper/node.lock` (must match `//.nvmrc`) |
+
+**Recording a fixture.** `record_acp_fixture` sits in front of an agent's ACP
+command, passes every message through, and writes each one as a line of
+NDJSON (`direction` `client`, `agent` or `agent_stderr`). Point a client (a test,
+or the app's provider command) at it instead of the agent:
+
+```sh
+bazel run //apps/desktop/vitruvian-code/macos:record_acp_fixture -- \
+  "$PWD/apps/desktop/vitruvian-code/testdata/acp/<name>.ndjson" \
+  --redact-home "$HOME" --redact-cwd <project folder> -- agy acp
+```
+
+Then trim it to the messages the test needs, check that no path, account or
+token is left in it, and name its source and agent version in the test that
+reads it. A fixture written by hand gets `-synthetic` in its name. Live tests
+against real agents are skipped unless their environment variable is set (for
+example `ACP_REGISTRY_LIVE_AGENT`, `CLAUDE_ACP_LIVE_ADAPTER`); run them with
+`--strategy=TestRunner=local`.
+
+---
+
 ## 6. Onboarding a New Desktop App
 
 When adding a new desktop app `apps/desktop/<app-name>`:

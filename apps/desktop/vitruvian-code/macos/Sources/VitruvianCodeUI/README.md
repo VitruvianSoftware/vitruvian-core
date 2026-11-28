@@ -26,6 +26,9 @@ Component package providing implementation for `apps/desktop/vitruvian-code/maco
 - `[VitruvianCodeChatView.swift:VitruvianCodeTheme]`
 - Subdirectory: [Resources](./Resources/README.md)
 
+## Live chats
+A live connection (ACP or the Claude SDK) drives the chat's approval and question cards, the plan view, terminals, the settings row under the composer (the agent's own model, effort and, for registry agents, mode), the usage meter, subagents, notices and the MCP servers panel. The chat header's approval badge sets the chat's approval mode and plan switch. All user-facing text is in `VitruvianCodeChatStrings.swift`.
+
 ## Invariants
 - [VitruvianCodeSyntaxHighlighter.swift:258]: `"False", "None", "True", "and", "as", "assert", "async", "await", "break", "c...`
 
