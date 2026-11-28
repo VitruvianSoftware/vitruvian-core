@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.53.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.3...vitruvian-code-v1.53.0) (2026-11-28)
+
+
+### Features
+
+* **vitruvian-code:** hand the new agent the chat so far when a chat switches agent ([#5588](https://github.com/VitruvianSoftware/vitruvian-core/issues/5588)) ([6143924](https://github.com/VitruvianSoftware/vitruvian-core/commit/614392440d795ad1fe92490d54345851bbb02d9b))
+
 ## [1.52.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.52.2...vitruvian-code-v1.52.3) (2026-11-28)
 
 
