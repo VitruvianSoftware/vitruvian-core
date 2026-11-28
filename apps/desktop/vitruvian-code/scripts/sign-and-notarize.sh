@@ -406,6 +406,143 @@ sign_app_inside_out() {
 	/usr/bin/codesign --verify --deep --strict --verbose=2 "${app}"
 }
 
+# >>> notary-submit
+# One notary submission that can neither hang the release nor fail it on a
+# network blip. scripts/notary-submit_test.sh tests the part between the
+# notary-submit markers with a fake notarytool.
+#
+# On 2026-11-28 the 1.51.0 release sat for 55 minutes at notarytool's
+# "initiating connection to the Apple notary service" and the job hit its
+# 60-minute limit. Each attempt therefore runs under a watchdog, and all
+# attempts in one run of this script share a budget, so even repeated hangs
+# end well inside the job's limit (two runs of the script per release).
+
+# Seconds one attempt may take, how many attempts, the pause before the next
+# one (times the attempt number), and the seconds every attempt in this run
+# may take together. Overridable for the test.
+NOTARY_ATTEMPT_SECONDS="${NOTARY_ATTEMPT_SECONDS:-600}"
+NOTARY_ATTEMPTS="${NOTARY_ATTEMPTS:-3}"
+NOTARY_RETRY_PAUSE="${NOTARY_RETRY_PAUSE:-30}"
+NOTARY_BUDGET_SECONDS="${NOTARY_BUDGET_SECONDS:-1200}"
+NOTARY_HEARTBEAT_SECONDS="${NOTARY_HEARTBEAT_SECONDS:-60}"
+NOTARY_SPENT_SECONDS=0
+
+# The notarytool command. The test points it at a fake.
+if [ -z "${NOTARY_CMD+x}" ]; then NOTARY_CMD=(/usr/bin/xcrun notarytool); fi
+
+# run_with_watchdog <seconds> <out_file> <command...>
+# Runs the command with its output in <out_file>, printing a line every
+# NOTARY_HEARTBEAT_SECONDS while it runs and its output when it ends. Past
+# <seconds> it stops the command and the children it started (xcrun runs
+# notarytool as its child): TERM, then KILL 10 seconds later. Returns the
+# command's status, or 124 when it was stopped.
+run_with_watchdog() {
+	local seconds="$1" out_file="$2"
+	shift 2
+	"$@" >"${out_file}" 2>&1 &
+	local pid=$! waited=0 stopped=0 rc=0
+	while /bin/kill -0 "${pid}" 2>/dev/null; do
+		if [ "${waited}" -ge "${seconds}" ]; then
+			stopped=1
+			local kids
+			kids="$(/usr/bin/pgrep -P "${pid}" | /usr/bin/tr '\n' ' ' || true)"
+			# shellcheck disable=SC2086 # kids is a list of pids
+			/bin/kill -TERM ${kids} "${pid}" 2>/dev/null || true
+			local grace=0
+			while [ "${grace}" -lt 10 ] && /bin/kill -0 "${pid}" 2>/dev/null; do
+				/bin/sleep 1
+				grace=$((grace + 1))
+			done
+			waited=$((waited + grace))
+			# shellcheck disable=SC2086
+			/bin/kill -KILL ${kids} "${pid}" 2>/dev/null || true
+			break
+		fi
+		/bin/sleep 1
+		waited=$((waited + 1))
+		if [ "${NOTARY_HEARTBEAT_SECONDS}" -gt 0 ] && [ $((waited % NOTARY_HEARTBEAT_SECONDS)) -eq 0 ]; then
+			echo "==> Still waiting on the notary service (${waited}s)..."
+		fi
+	done
+	wait "${pid}" || rc=$?
+	NOTARY_SPENT_SECONDS=$((NOTARY_SPENT_SECONDS + waited))
+	/bin/cat "${out_file}"
+	if [ "${stopped}" -eq 1 ]; then
+		echo "==> Stopped after ${seconds}s with no answer from the notary service."
+		return 124
+	fi
+	return "${rc}"
+}
+
+# notary_submit <upload> <out_file> <auth args...>
+# Leaves the last attempt's output in <out_file>, the submission's id (when
+# one was created) in NOTARY_SUBMISSION_ID, and returns 0 once Apple accepts
+# the upload. A verdict (Invalid, Rejected) is final and not retried. A hang
+# or a network error is retried: by waiting on the same submission when one
+# was created, otherwise by submitting again. notarytool's own --timeout is
+# not used: it bounds only the wait for a verdict, not the upload.
+notary_submit() {
+	local upload="$1" out_file="$2"
+	shift 2
+	local attempt=1 sub_id="" rc left seconds found
+	NOTARY_SUBMISSION_ID=""
+	while :; do
+		left=$((NOTARY_BUDGET_SECONDS - NOTARY_SPENT_SECONDS))
+		if [ "${left}" -le 0 ]; then
+			echo "==> The notary budget of ${NOTARY_BUDGET_SECONDS}s for this run is spent."
+			return 1
+		fi
+		seconds="${NOTARY_ATTEMPT_SECONDS}"
+		[ "${left}" -lt "${seconds}" ] && seconds="${left}"
+		rc=0
+		if [ -n "${sub_id}" ]; then
+			echo "==> Waiting again on notary submission ${sub_id} (attempt ${attempt}/${NOTARY_ATTEMPTS})..."
+			run_with_watchdog "${seconds}" "${out_file}" \
+				"${NOTARY_CMD[@]}" wait "${sub_id}" "$@" || rc=$?
+		else
+			[ "${attempt}" -gt 1 ] && echo "==> Submitting again (attempt ${attempt}/${NOTARY_ATTEMPTS})..."
+			run_with_watchdog "${seconds}" "${out_file}" \
+				"${NOTARY_CMD[@]}" submit "${upload}" "$@" --wait || rc=$?
+		fi
+		# notarytool prints the submission as an indented "id: <uuid>" line.
+		# If a stopped attempt never printed it, the retry submits again.
+		found="$(/usr/bin/awk '/^[[:space:]]*id:[[:space:]]/ { print $2; exit }' "${out_file}" || true)"
+		if [ -n "${found}" ]; then
+			sub_id="${found}"
+			NOTARY_SUBMISSION_ID="${sub_id}"
+		fi
+		if [ "${rc}" -eq 0 ] && /usr/bin/grep -q "status: Accepted" "${out_file}"; then
+			return 0
+		fi
+		if /usr/bin/grep -qE "status: (Invalid|Rejected)" "${out_file}"; then
+			return 1
+		fi
+		if [ "${attempt}" -ge "${NOTARY_ATTEMPTS}" ]; then
+			return 1
+		fi
+		echo "::warning::Notarization of $(/usr/bin/basename "${upload}") got no verdict (attempt ${attempt}/${NOTARY_ATTEMPTS}); trying again."
+		# The pause counts against the budget too, and never outlasts it.
+		local pause=$((NOTARY_RETRY_PAUSE * attempt))
+		left=$((NOTARY_BUDGET_SECONDS - NOTARY_SPENT_SECONDS))
+		[ "${pause}" -gt "${left}" ] && pause="${left}"
+		[ "${pause}" -lt 0 ] && pause=0
+		[ "${pause}" -gt 0 ] && /bin/sleep "${pause}"
+		NOTARY_SPENT_SECONDS=$((NOTARY_SPENT_SECONDS + pause))
+		attempt=$((attempt + 1))
+	done
+}
+
+# notary_log <submission id> <auth args...>
+# Prints Apple's log for a submission, to help explain a failure. Bounded to
+# two minutes, and never fails the caller.
+notary_log() {
+	local sub_id="$1"
+	shift
+	run_with_watchdog 120 "${WORK_DIR}/notary-log-$$.txt" "${NOTARY_CMD[@]}" log "${sub_id}" "$@" || true
+	/bin/rm -f "${WORK_DIR}/notary-log-$$.txt"
+}
+# <<< notary-submit
+
 # Submits one file to the notary service and fails unless Apple accepts it.
 # $3 (optional) is the path the submission is FOR when that is not the file
 # uploaded (an app is zipped first). An accepted submission's ID is kept in
@@ -419,26 +556,24 @@ notarytool_submit_and_require_accepted() {
 
 	echo "==> Submitting ${label} to Apple notary service..."
 	local rc=0
-	/usr/bin/xcrun notarytool submit "${submit_path}" \
+	# notary_submit (above) bounds each attempt and retries a hang or a
+	# network error.
+	notary_submit "${submit_path}" "${out_file}" \
 		--key "${NOTARY_KEY_FILE}" \
 		--key-id "${VITRUVIAN_NOTARY_KEY_ID}" \
-		--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" \
-		--wait 2>&1 | /usr/bin/tee "${out_file}" || rc=$?
+		--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" || rc=$?
 
-	# notarytool prints the submission as an indented "id: <uuid>" line (the same
-	# id again with "path:" and "status:" at the end), so the first such line is
-	# the submission ID. Anchoring on the line start keeps a stray "id:" inside
-	# other text from being taken for it.
+	# notary_submit read the submission ID from notarytool's "id: <uuid>" line.
 	local sub_id
-	sub_id="$(/usr/bin/awk '/^[[:space:]]*id:[[:space:]]/ { print $2; exit }' "${out_file}" || true)"
+	sub_id="${NOTARY_SUBMISSION_ID:-}"
 
 	if [ "${rc}" -ne 0 ] || ! /usr/bin/grep -q "status: Accepted" "${out_file}"; then
 		if [ -n "${sub_id}" ]; then
 			echo "==> Fetching Apple notary log for submission ${sub_id}:" >&2
-			/usr/bin/xcrun notarytool log "${sub_id}" \
+			notary_log "${sub_id}" \
 				--key "${NOTARY_KEY_FILE}" \
 				--key-id "${VITRUVIAN_NOTARY_KEY_ID}" \
-				--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" >&2 || true
+				--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" >&2
 		fi
 		/bin/rm -f "${out_file}"
 		fail_error "Notarization failed for ${label}."
@@ -533,10 +668,10 @@ print_gatekeeper_diagnostics() {
 
 	if [ -n "${sub_id}" ]; then
 		echo "--- Apple notary log for submission ${sub_id} (ticketContents lists every notarized cdhash)"
-		/usr/bin/xcrun notarytool log "${sub_id}" \
+		notary_log "${sub_id}" \
 			--key "${NOTARY_KEY_FILE}" \
 			--key-id "${VITRUVIAN_NOTARY_KEY_ID}" \
-			--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" 2>&1 || true
+			--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" 2>&1
 	else
 		echo "--- no accepted notary submission ID was recorded for ${app}"
 	fi

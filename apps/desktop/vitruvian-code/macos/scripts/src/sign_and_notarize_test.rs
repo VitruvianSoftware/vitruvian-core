@@ -530,7 +530,10 @@ fn script_locks_path_and_calls_no_bare_system_tools() {
         "/usr/bin/codesign -dvvv --entitlements -",
         "/usr/bin/codesign -dvvv -a ",
         "/usr/bin/codesign -d --verbose=4",
-        "/usr/bin/xcrun notarytool log",
+        // notarytool runs through NOTARY_CMD (the notary-submit block), which
+        // holds the absolute path, so the log fetch is bounded like a submit.
+        "NOTARY_CMD=(/usr/bin/xcrun notarytool)",
+        "\"${NOTARY_CMD[@]}\" log",
     ] {
         assert!(
             src.contains(required),
