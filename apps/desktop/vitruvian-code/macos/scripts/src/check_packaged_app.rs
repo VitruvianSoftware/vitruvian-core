@@ -34,6 +34,7 @@ pub const ARCHS: [&str; 2] = ["arm64", "x86_64"];
 /// `ARCHS` the way the checks here take them: sorted, each followed by a space.
 pub const UNIVERSAL_ARCHS: &str = "arm64 x86_64 ";
 const HELPER_REL_PATH: &str = "Contents/Resources/claude-helper/claude-helper.mjs";
+const TOOL_BIN_REL_PATH: &str = "bin/tool";
 const TOOL_NODE_REL_PATH: &str = "bin/node";
 const TOOL_HELPER_REL_PATH: &str = "bin/claude-helper/claude-helper.mjs";
 const REQUIRED_NODE_ENTITLEMENTS: &[&str] = &[
@@ -106,32 +107,18 @@ pub fn check_node_entitlements(node_exe: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// The bundled Node at `node_exe` (called `label` in messages): present,
-/// executable, built for exactly `want_archs` ("arm64 x86_64 ": sorted, each
-/// followed by a space), its signature valid and carrying the JIT entitlements.
-pub fn check_node_binary(node_exe: &Path, label: &str, want_archs: &str) -> Result<(), String> {
-    if !node_exe.is_file() {
+/// Checks that `binary` (called `label` in messages) is an executable Mach-O
+/// built for exactly `want_archs` ("arm64 x86_64 ": sorted, each followed by
+/// a space).
+pub fn check_macho_archs(binary: &Path, label: &str, want_archs: &str) -> Result<(), String> {
+    if !binary.is_file() {
         return Err(format!("no executable at {}", label));
     }
-    let node_meta = fs::metadata(node_exe).map_err(|e| format!("cannot read {}: {}", label, e))?;
-    if node_meta.permissions().mode() & 0o111 == 0 {
+    let meta = fs::metadata(binary).map_err(|e| format!("cannot read {}: {}", label, e))?;
+    if meta.permissions().mode() & 0o111 == 0 {
         return Err(format!("{} is not executable", label));
     }
-    let out = Command::new("lipo")
-        .args(["-archs"])
-        .arg(node_exe)
-        .output()
-        .map_err(|e| format!("cannot run lipo on {}: {}", label, e))?;
-    if !out.status.success() {
-        return Err(format!(
-            "lipo -archs on {} failed: {}",
-            label,
-            String::from_utf8_lossy(&out.stderr)
-        ));
-    }
-    let raw = String::from_utf8_lossy(&out.stdout);
-    let mut got: Vec<&str> = raw.split_whitespace().filter(|s| !s.is_empty()).collect();
-    got.sort();
+    let got = lipo_archs(binary, label)?;
     let got_str = format!("{} ", got.join(" "));
     if got_str != want_archs {
         return Err(format!(
@@ -142,6 +129,14 @@ pub fn check_node_binary(node_exe: &Path, label: &str, want_archs: &str) -> Resu
         ));
     }
     println!("    \u{2713} {}, built for {}", label, got_str.trim());
+    Ok(())
+}
+
+/// The bundled Node at `node_exe` (called `label` in messages): present,
+/// executable, built for exactly `want_archs` ("arm64 x86_64 ": sorted, each
+/// followed by a space), its signature valid and carrying the JIT entitlements.
+pub fn check_node_binary(node_exe: &Path, label: &str, want_archs: &str) -> Result<(), String> {
+    check_macho_archs(node_exe, label, want_archs)?;
     let verified = Command::new("codesign")
         .args(["--verify", "--strict"])
         .arg(node_exe)
@@ -192,24 +187,7 @@ pub fn lipo_archs(binary: &Path, label: &str) -> Result<Vec<String>, String> {
 /// The bundled bot engine at `bot_exe` (called `label` in messages): present,
 /// executable, built for exactly `want_archs` and signed.
 pub fn check_bot_binary(bot_exe: &Path, label: &str, want_archs: &str) -> Result<(), String> {
-    if !bot_exe.is_file() {
-        return Err(format!("no executable at {}", label));
-    }
-    let meta = fs::metadata(bot_exe).map_err(|e| format!("cannot read {}: {}", label, e))?;
-    if meta.permissions().mode() & 0o111 == 0 {
-        return Err(format!("{} is not executable", label));
-    }
-    let got = lipo_archs(bot_exe, label)?;
-    let got_str = format!("{} ", got.join(" "));
-    if got_str != want_archs {
-        return Err(format!(
-            "{} is built for '{}', expected '{}'",
-            label,
-            got_str.trim(),
-            want_archs.trim()
-        ));
-    }
-    println!("    \u{2713} {}, built for {}", label, got_str.trim());
+    check_macho_archs(bot_exe, label, want_archs)?;
     let verified = Command::new("codesign")
         .args(["--verify", "--strict"])
         .arg(bot_exe)
@@ -376,10 +354,17 @@ pub fn check_tool_folder(folder: &str, archs: &[&String]) -> i32 {
     let mut sorted: Vec<&str> = archs.iter().map(|s| s.as_str()).collect();
     sorted.sort();
     let want_archs = format!("{} ", sorted.join(" "));
-    for rel in ["vitruvian-tool.json", "bin/tool", "bin/mermaid.min.js"] {
+    for rel in ["vitruvian-tool.json", "bin/mermaid.min.js"] {
         if !root.join(rel).is_file() {
             return fail(folder, &format!("no file at {}", rel));
         }
+    }
+    if let Err(msg) = check_macho_archs(
+        &root.join(TOOL_BIN_REL_PATH),
+        TOOL_BIN_REL_PATH,
+        &want_archs,
+    ) {
+        return fail(folder, &msg);
     }
     if let Err(msg) = check_node_binary(
         &root.join(TOOL_NODE_REL_PATH),
