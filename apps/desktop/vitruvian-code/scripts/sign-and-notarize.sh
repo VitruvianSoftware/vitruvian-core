@@ -406,6 +406,100 @@ sign_app_inside_out() {
 	/usr/bin/codesign --verify --deep --strict --verbose=2 "${app}"
 }
 
+# >>> notary-submit
+# One notary submission that can neither hang the release nor fail it on a
+# network blip. scripts/notary-submit_test.sh tests the part between the
+# notary-submit markers with a fake notarytool.
+#
+# On 2026-11-28 the 1.51.0 release sat for 55 minutes at notarytool's
+# "initiating connection to the Apple notary service" and the job hit its
+# 60-minute limit. notarytool's own --timeout only bounds the wait for a
+# verdict, not the upload, so each attempt also runs under a watchdog.
+
+# Seconds one attempt may take, how many attempts, and the pause before the
+# next one (multiplied by the attempt number). Overridable for the test.
+NOTARY_ATTEMPT_SECONDS="${NOTARY_ATTEMPT_SECONDS:-600}"
+NOTARY_ATTEMPTS="${NOTARY_ATTEMPTS:-3}"
+NOTARY_RETRY_PAUSE="${NOTARY_RETRY_PAUSE:-30}"
+
+# run_with_watchdog <seconds> <out_file> <command...>
+# Runs the command with its output in <out_file> and echoed after, killing it
+# when it outlives <seconds>. Returns the command's status, or 124 when killed.
+run_with_watchdog() {
+	local seconds="$1" out_file="$2"
+	shift 2
+	"$@" >"${out_file}" 2>&1 &
+	local pid=$!
+	(
+		/bin/sleep "${seconds}"
+		/bin/kill -0 "${pid}" 2>/dev/null || exit 0
+		/usr/bin/touch "${out_file}.killed"
+		# xcrun runs notarytool as its child: stop both.
+		/usr/bin/pkill -TERM -P "${pid}" 2>/dev/null || true
+		/bin/kill -TERM "${pid}" 2>/dev/null || true
+		/bin/sleep 10
+		/usr/bin/pkill -KILL -P "${pid}" 2>/dev/null || true
+		/bin/kill -KILL "${pid}" 2>/dev/null || true
+	) &
+	local dog=$!
+	local rc=0
+	wait "${pid}" || rc=$?
+	/usr/bin/pkill -P "${dog}" 2>/dev/null || true
+	/bin/kill "${dog}" 2>/dev/null || true
+	wait "${dog}" 2>/dev/null || true
+	/bin/cat "${out_file}"
+	if [ -e "${out_file}.killed" ]; then
+		/bin/rm -f "${out_file}.killed"
+		echo "==> Stopped after ${seconds}s with no answer from the notary service."
+		return 124
+	fi
+	return "${rc}"
+}
+
+# The notarytool command. The test points it at a fake.
+if [ -z "${NOTARY_CMD+x}" ]; then NOTARY_CMD=(/usr/bin/xcrun notarytool); fi
+
+# notary_submit <upload> <out_file> <auth args...>
+# Leaves the last attempt's output in <out_file>, the submission's id (when
+# one was created) in NOTARY_SUBMISSION_ID, and returns 0 once Apple accepts
+# the upload. A verdict (Invalid, Rejected) is final and not retried.
+# A hang, a timeout or a network error is retried: by waiting on the same
+# submission when one was created, otherwise by submitting again.
+notary_submit() {
+	local upload="$1" out_file="$2"
+	shift 2
+	local attempt=1 sub_id="" rc
+	NOTARY_SUBMISSION_ID=""
+	while :; do
+		rc=0
+		if [ -n "${sub_id}" ]; then
+			echo "==> Waiting again on notary submission ${sub_id} (attempt ${attempt}/${NOTARY_ATTEMPTS})..."
+			run_with_watchdog "${NOTARY_ATTEMPT_SECONDS}" "${out_file}" \
+				"${NOTARY_CMD[@]}" wait "${sub_id}" "$@" --timeout "${NOTARY_ATTEMPT_SECONDS}s" || rc=$?
+		else
+			[ "${attempt}" -gt 1 ] && echo "==> Submitting again (attempt ${attempt}/${NOTARY_ATTEMPTS})..."
+			run_with_watchdog "${NOTARY_ATTEMPT_SECONDS}" "${out_file}" \
+				"${NOTARY_CMD[@]}" submit "${upload}" "$@" --wait --timeout "${NOTARY_ATTEMPT_SECONDS}s" || rc=$?
+			# notarytool prints the submission as an indented "id: <uuid>" line.
+			sub_id="$(/usr/bin/awk '/^[[:space:]]*id:[[:space:]]/ { print $2; exit }' "${out_file}" || true)"
+			NOTARY_SUBMISSION_ID="${sub_id}"
+		fi
+		if [ "${rc}" -eq 0 ] && /usr/bin/grep -q "status: Accepted" "${out_file}"; then
+			return 0
+		fi
+		if /usr/bin/grep -qE "status: (Invalid|Rejected)" "${out_file}"; then
+			return 1
+		fi
+		if [ "${attempt}" -ge "${NOTARY_ATTEMPTS}" ]; then
+			return 1
+		fi
+		echo "::warning::Notarization of $(/usr/bin/basename "${upload}") got no verdict (attempt ${attempt}/${NOTARY_ATTEMPTS}); trying again."
+		/bin/sleep $((NOTARY_RETRY_PAUSE * attempt))
+		attempt=$((attempt + 1))
+	done
+}
+# <<< notary-submit
+
 # Submits one file to the notary service and fails unless Apple accepts it.
 # $3 (optional) is the path the submission is FOR when that is not the file
 # uploaded (an app is zipped first). An accepted submission's ID is kept in
@@ -419,18 +513,16 @@ notarytool_submit_and_require_accepted() {
 
 	echo "==> Submitting ${label} to Apple notary service..."
 	local rc=0
-	/usr/bin/xcrun notarytool submit "${submit_path}" \
+	# notary_submit (above) bounds each attempt and retries a hang or a
+	# network error.
+	notary_submit "${submit_path}" "${out_file}" \
 		--key "${NOTARY_KEY_FILE}" \
 		--key-id "${VITRUVIAN_NOTARY_KEY_ID}" \
-		--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" \
-		--wait 2>&1 | /usr/bin/tee "${out_file}" || rc=$?
+		--issuer "${VITRUVIAN_NOTARY_ISSUER_ID}" || rc=$?
 
-	# notarytool prints the submission as an indented "id: <uuid>" line (the same
-	# id again with "path:" and "status:" at the end), so the first such line is
-	# the submission ID. Anchoring on the line start keeps a stray "id:" inside
-	# other text from being taken for it.
+	# notary_submit read the submission ID from notarytool's "id: <uuid>" line.
 	local sub_id
-	sub_id="$(/usr/bin/awk '/^[[:space:]]*id:[[:space:]]/ { print $2; exit }' "${out_file}" || true)"
+	sub_id="${NOTARY_SUBMISSION_ID:-}"
 
 	if [ "${rc}" -ne 0 ] || ! /usr/bin/grep -q "status: Accepted" "${out_file}"; then
 		if [ -n "${sub_id}" ]; then

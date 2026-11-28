@@ -143,3 +143,14 @@ js_library(
     srcs = ["catalog-info.yaml"],
     visibility = ["//apps/web/backstage/packages/backend:__pkg__"],
 )
+
+# The notary helper the release signs with: a hung or failed submission is
+# stopped and retried, a verdict is final (the notary-submit block in
+# scripts/sign-and-notarize.sh).
+sh_test(
+    name = "notary_submit_test",
+    size = "small",
+    srcs = ["scripts/notary-submit_test.sh"],
+    data = ["scripts/sign-and-notarize.sh"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
