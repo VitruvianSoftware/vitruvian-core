@@ -390,86 +390,178 @@
       <DefaultProviderPolicy
           primaryProvider="com.google.android.wearable.sysui/com.google.android.clockwork.sysui.experiences.complications.providers.WorldClockProviderService"
           primaryProviderType="SHORT_TEXT"
+          secondaryProvider="com.samsung.android.watch.worldclock/com.samsung.android.watch.worldclock.complication.WorldClockComplicationProviderService"
+          secondaryProviderType="SHORT_TEXT"
           defaultSystemProvider="WORLD_CLOCK"
           defaultSystemProviderType="SHORT_TEXT" />
       <BoundingRoundBox x="0" y="0" width="114" height="38" cornerRadius="12" />
       <Complication type="SHORT_TEXT">
-        <ListConfiguration id="bezel_mode">
-          <ListOption id="bezel_expanded">
-            <ListConfiguration id="font_scale">
-              <ListOption id="font_standard">
-                <PartText x="4" y="2" width="106" height="20">
-                  <Text align="CENTER" ellipsis="TRUE">
-                    <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-                      <Upper>
-                        <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                      </Upper>
-                    </Font>
-                  </Text>
-                </PartText>
-              </ListOption>
-              <ListOption id="font_large">
-                <PartText x="2" y="1" width="110" height="22">
-                  <Text align="CENTER" ellipsis="TRUE">
-                    <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-                      <Upper>
-                        <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                      </Upper>
-                    </Font>
-                  </Text>
-                </PartText>
-              </ListOption>
-              <ListOption id="font_xlarge">
-                <PartText x="0" y="0" width="114" height="24">
-                  <Text align="CENTER" ellipsis="TRUE">
-                    <Font family="SYNC_TO_DEVICE" size="16" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-                      <Upper>
-                        <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                      </Upper>
-                    </Font>
-                  </Text>
-                </PartText>
-              </ListOption>
-            </ListConfiguration>
-          </ListOption>
-          <ListOption id="bezel_full">
-            <ListConfiguration id="font_scale">
-              <ListOption id="font_standard">
-                <PartText x="11" y="19" width="92" height="18">
-                  <Text align="CENTER" ellipsis="TRUE">
-                    <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-                      <Upper>
-                        <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                      </Upper>
-                    </Font>
-                  </Text>
-                </PartText>
-              </ListOption>
-              <ListOption id="font_large">
-                <PartText x="9" y="18" width="96" height="20">
-                  <Text align="CENTER" ellipsis="TRUE">
-                    <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-                      <Upper>
-                        <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                      </Upper>
-                    </Font>
-                  </Text>
-                </PartText>
-              </ListOption>
-              <ListOption id="font_xlarge">
-                <PartText x="7" y="17" width="100" height="21">
-                  <Text align="CENTER" ellipsis="TRUE">
-                    <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
-                      <Upper>
-                        <Template>%s %s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;UTC&quot;" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
-                      </Upper>
-                    </Font>
-                  </Text>
-                </PartText>
-              </ListOption>
-            </ListConfiguration>
-          </ListOption>
-        </ListConfiguration>
+        <!-- A source that names no city (Samsung World Clock before a city is picked
+             sends only "Worldclock") falls back to UTC worked out on the watch,
+             the same thing the Pixel world clock shows by default. -->
+        <Group name="world_clock_text" x="0" y="0" width="114" height="38">
+          <Condition>
+            <Expressions>
+              <Expression name="has_city">[COMPLICATION.TITLE] != null &amp;&amp; [COMPLICATION.TITLE] != &quot;&quot;</Expression>
+            </Expressions>
+            <Compare expression="has_city">
+                <ListConfiguration id="bezel_mode">
+                  <ListOption id="bezel_expanded">
+                    <ListConfiguration id="font_scale">
+                      <ListOption id="font_standard">
+                        <PartText x="4" y="2" width="106" height="20">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_large">
+                        <PartText x="2" y="1" width="110" height="22">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_xlarge">
+                        <PartText x="0" y="0" width="114" height="24">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="16" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                    </ListConfiguration>
+                  </ListOption>
+                  <ListOption id="bezel_full">
+                    <ListConfiguration id="font_scale">
+                      <ListOption id="font_standard">
+                        <PartText x="11" y="19" width="92" height="18">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_large">
+                        <PartText x="9" y="18" width="96" height="20">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_xlarge">
+                        <PartText x="7" y="17" width="100" height="21">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>%s %s<Parameter expression="[COMPLICATION.TITLE]" /><Parameter expression="[COMPLICATION.TEXT]" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                    </ListConfiguration>
+                  </ListOption>
+                </ListConfiguration>
+            </Compare>
+            <Default>
+                <ListConfiguration id="bezel_mode">
+                  <ListOption id="bezel_expanded">
+                    <ListConfiguration id="font_scale">
+                      <ListOption id="font_standard">
+                        <PartText x="4" y="2" width="106" height="20">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>UTC %d:%s%d%s<Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) % 12 == 0 ? 12 : (floor([UTC_TIMESTAMP] / 3600000) % 24) % 12" /><Parameter expression="(floor([UTC_TIMESTAMP] / 60000) % 60) &lt; 10 ? &quot;0&quot; : &quot;&quot;" /><Parameter expression="floor([UTC_TIMESTAMP] / 60000) % 60" /><Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_large">
+                        <PartText x="2" y="1" width="110" height="22">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>UTC %d:%s%d%s<Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) % 12 == 0 ? 12 : (floor([UTC_TIMESTAMP] / 3600000) % 24) % 12" /><Parameter expression="(floor([UTC_TIMESTAMP] / 60000) % 60) &lt; 10 ? &quot;0&quot; : &quot;&quot;" /><Parameter expression="floor([UTC_TIMESTAMP] / 60000) % 60" /><Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_xlarge">
+                        <PartText x="0" y="0" width="114" height="24">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="16" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>UTC %d:%s%d%s<Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) % 12 == 0 ? 12 : (floor([UTC_TIMESTAMP] / 3600000) % 24) % 12" /><Parameter expression="(floor([UTC_TIMESTAMP] / 60000) % 60) &lt; 10 ? &quot;0&quot; : &quot;&quot;" /><Parameter expression="floor([UTC_TIMESTAMP] / 60000) % 60" /><Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                    </ListConfiguration>
+                  </ListOption>
+                  <ListOption id="bezel_full">
+                    <ListConfiguration id="font_scale">
+                      <ListOption id="font_standard">
+                        <PartText x="11" y="19" width="92" height="18">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>UTC %d:%s%d%s<Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) % 12 == 0 ? 12 : (floor([UTC_TIMESTAMP] / 3600000) % 24) % 12" /><Parameter expression="(floor([UTC_TIMESTAMP] / 60000) % 60) &lt; 10 ? &quot;0&quot; : &quot;&quot;" /><Parameter expression="floor([UTC_TIMESTAMP] / 60000) % 60" /><Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_large">
+                        <PartText x="9" y="18" width="96" height="20">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>UTC %d:%s%d%s<Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) % 12 == 0 ? 12 : (floor([UTC_TIMESTAMP] / 3600000) % 24) % 12" /><Parameter expression="(floor([UTC_TIMESTAMP] / 60000) % 60) &lt; 10 ? &quot;0&quot; : &quot;&quot;" /><Parameter expression="floor([UTC_TIMESTAMP] / 60000) % 60" /><Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                      <ListOption id="font_xlarge">
+                        <PartText x="7" y="17" width="100" height="21">
+                          <Text align="CENTER" ellipsis="TRUE">
+                            <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FFF2F6F9">
+                              <Upper>
+                                <Template>UTC %d:%s%d%s<Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) % 12 == 0 ? 12 : (floor([UTC_TIMESTAMP] / 3600000) % 24) % 12" /><Parameter expression="(floor([UTC_TIMESTAMP] / 60000) % 60) &lt; 10 ? &quot;0&quot; : &quot;&quot;" /><Parameter expression="floor([UTC_TIMESTAMP] / 60000) % 60" /><Parameter expression="(floor([UTC_TIMESTAMP] / 3600000) % 24) &lt; 12 ? &quot;AM&quot; : &quot;PM&quot;" /></Template>
+                              </Upper>
+                            </Font>
+                          </Text>
+                        </PartText>
+                      </ListOption>
+                    </ListConfiguration>
+                  </ListOption>
+                </ListConfiguration>
+            </Default>
+          </Condition>
+        </Group>
       </Complication>
     </ComplicationSlot>
 
@@ -482,6 +574,12 @@
         supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY"
         x="52" y="160" width="124" height="120">
       <Variant mode="AMBIENT" target="alpha" value="0" />
+      <DefaultProviderPolicy
+          primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.heartrate.OffloadableHeartRateComplicationDataSourceService"
+          primaryProviderType="RANGED_VALUE"
+          secondaryProvider="com.samsung.android.wear.shealth/com.samsung.android.wear.shealth.complications.heartrate.HeartrateComplicationProviderService"
+          secondaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="EMPTY" />
       <BoundingOval x="0" y="0" width="124" height="120" />
       <Complication type="EMPTY" />
       <Complication type="RANGED_VALUE">
@@ -627,6 +725,12 @@
         supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY"
         x="274" y="160" width="124" height="120">
       <Variant mode="AMBIENT" target="alpha" value="0" />
+      <DefaultProviderPolicy
+          primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.currentweather.CWComplicationService"
+          primaryProviderType="RANGED_VALUE"
+          secondaryProvider="com.samsung.android.watch.weather/com.samsung.android.watch.weather.complication.WeatherComplicationService"
+          secondaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="EMPTY" />
       <BoundingOval x="0" y="0" width="124" height="120" />
       <Complication type="EMPTY" />
       <Complication type="RANGED_VALUE">
@@ -892,6 +996,13 @@
         supportedTypes="GOAL_PROGRESS RANGED_VALUE SHORT_TEXT EMPTY"
         x="165" y="266" width="120" height="120">
       <Variant mode="AMBIENT" target="alpha" value="0" />
+      <DefaultProviderPolicy
+          primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.steps.OffloadableStepsComplicationDataSourceService"
+          primaryProviderType="GOAL_PROGRESS"
+          secondaryProvider="com.samsung.android.wear.shealth/com.samsung.android.wear.shealth.complications.steps.StepsComplicationProviderService"
+          secondaryProviderType="SHORT_TEXT"
+          defaultSystemProvider="STEP_COUNT"
+          defaultSystemProviderType="SHORT_TEXT" />
       <BoundingOval x="0" y="0" width="120" height="120" />
       <Complication type="EMPTY" />
       <Complication type="GOAL_PROGRESS">
@@ -1278,6 +1389,8 @@
       <DefaultProviderPolicy
           primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.solar.SolarComplicationService"
           primaryProviderType="SHORT_TEXT"
+          secondaryProvider="com.samsung.android.watch.weather/com.samsung.android.watch.weather.complication.SunriseSunsetComplicationService"
+          secondaryProviderType="SHORT_TEXT"
           defaultSystemProvider="SUNRISE_SUNSET"
           defaultSystemProviderType="SHORT_TEXT" />
       <BoundingRoundBox x="0" y="0" width="72" height="52" cornerRadius="12" />

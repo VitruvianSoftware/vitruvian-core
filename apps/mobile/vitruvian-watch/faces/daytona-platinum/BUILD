@@ -92,6 +92,8 @@ rust_library(
         "scripts/src/lib.rs",
         "scripts/src/publish.rs",
     ],
+    # build_wff_apk's tests check --default against the real face.
+    compile_data = ["src/main/res/raw/watchface.xml"],
     crate_name = "daytona_scripts_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

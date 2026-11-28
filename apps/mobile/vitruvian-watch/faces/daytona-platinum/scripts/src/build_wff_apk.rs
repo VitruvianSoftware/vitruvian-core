@@ -142,13 +142,140 @@ fn run_cmd(program: &str, args: &[&str]) -> io::Result<()> {
     Ok(())
 }
 
+/// Command-line options for building the APK.
+#[derive(Debug, Default, PartialEq)]
+pub struct BuildArgs {
+    /// Where to write the signed APK; defaults to `daytona-platinum.apk` in the package.
+    pub out_apk: Option<PathBuf>,
+    /// `--default <setting>=<option>` pairs: the face starts on these options on a fresh
+    /// install (for example `theme_style=theme_lemans`). Existing installs keep their choices.
+    pub defaults: Vec<(String, String)>,
+}
+
+/// Parses `[OUT_APK] [--default <setting>=<option>]...` (args[0] is the program name).
+pub fn parse_args(args: &[String]) -> Result<BuildArgs, String> {
+    let mut parsed = BuildArgs::default();
+    let mut it = args.iter().skip(1);
+    while let Some(arg) = it.next() {
+        if arg == "--default" {
+            let value = it
+                .next()
+                .ok_or("--default needs <setting>=<option>, e.g. theme_style=theme_lemans")?;
+            parsed.defaults.push(parse_default(value)?);
+        } else if let Some(value) = arg.strip_prefix("--default=") {
+            parsed.defaults.push(parse_default(value)?);
+        } else if arg.starts_with("--") {
+            return Err(format!("unknown option {arg}"));
+        } else if parsed.out_apk.is_none() {
+            parsed.out_apk = Some(PathBuf::from(arg));
+        } else {
+            return Err(format!("unexpected argument {arg}"));
+        }
+    }
+    Ok(parsed)
+}
+
+fn parse_default(value: &str) -> Result<(String, String), String> {
+    match value.split_once('=') {
+        Some((k, v)) if !k.is_empty() && !v.is_empty() => Ok((k.to_string(), v.to_string())),
+        _ => Err(format!(
+            "--default expects <setting>=<option>, e.g. theme_style=theme_lemans; got {value:?}"
+        )),
+    }
+}
+
+/// Returns `watchface_xml` with each named setting's `defaultValue` changed to the given
+/// option. Only the settings under `<UserConfigurations>` are touched, and both the setting
+/// and the option must exist, so a typo fails the build instead of shipping a broken face.
+pub fn apply_defaults(
+    watchface_xml: &str,
+    defaults: &[(String, String)],
+) -> Result<String, String> {
+    let mut xml = watchface_xml.to_string();
+    for (setting, option) in defaults {
+        let section_start = xml
+            .find("<UserConfigurations>")
+            .ok_or("watchface.xml has no <UserConfigurations>")?;
+        let section_end = xml[section_start..]
+            .find("</UserConfigurations>")
+            .map(|i| section_start + i)
+            .ok_or("watchface.xml has no </UserConfigurations>")?;
+        let id_attr = format!("id=\"{setting}\"");
+        let mut search = section_start;
+        let mut found = None;
+        while let Some(rel) = xml[search..section_end].find("<ListConfiguration") {
+            let tag_start = search + rel;
+            let tag_end = tag_start
+                + xml[tag_start..]
+                    .find('>')
+                    .ok_or("unterminated <ListConfiguration> tag")?;
+            if xml[tag_start..tag_end]
+                .split_whitespace()
+                .any(|attr| attr == id_attr)
+            {
+                found = Some((tag_start, tag_end));
+                break;
+            }
+            search = tag_end;
+        }
+        let (tag_start, tag_end) =
+            found.ok_or_else(|| format!("watchface.xml has no setting named {setting:?}"))?;
+        let block_end = tag_end
+            + xml[tag_end..]
+                .find("</ListConfiguration>")
+                .ok_or_else(|| format!("setting {setting:?} is not closed"))?;
+        let option_attr = format!("id=\"{option}\"");
+        let has_option = xml[tag_end..block_end]
+            .split("<ListOption")
+            .skip(1)
+            .any(|opt| {
+                let opt_tag = opt.split('>').next().unwrap_or("");
+                opt_tag.split_whitespace().any(|attr| attr == option_attr)
+            });
+        if !has_option {
+            return Err(format!("setting {setting:?} has no option {option:?}"));
+        }
+        let tag = &xml[tag_start..tag_end];
+        let dv_rel = tag
+            .find("defaultValue=\"")
+            .ok_or_else(|| format!("setting {setting:?} has no defaultValue"))?;
+        let value_start = tag_start + dv_rel + "defaultValue=\"".len();
+        let value_end = value_start
+            + xml[value_start..]
+                .find('"')
+                .ok_or("unterminated defaultValue")?;
+        xml.replace_range(value_start..value_end, option);
+    }
+    Ok(xml)
+}
+
+fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> i32 {
     let pkg_dir = resolve_pkg_dir();
-    let out_apk = if args.len() > 1 {
-        PathBuf::from(&args[1])
-    } else {
-        pkg_dir.join("daytona-platinum.apk")
+    let parsed = match parse_args(args) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return 2;
+        }
     };
+    let out_apk = parsed
+        .out_apk
+        .clone()
+        .unwrap_or_else(|| pkg_dir.join("daytona-platinum.apk"));
 
     let sdk_root = resolve_sdk_root();
 
@@ -193,8 +320,35 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
+    // With --default overrides, build from a copy of res/ whose watchface.xml is rewritten,
+    // so the checked-in sources stay untouched.
+    let res_dir = if parsed.defaults.is_empty() {
+        pkg_dir.join("src/main/res")
+    } else {
+        let copy = work_dir.join("res");
+        let rewritten = copy_dir(&pkg_dir.join("src/main/res"), &copy)
+            .map_err(|e| format!("cannot copy res/: {e}"))
+            .and_then(|()| {
+                let xml_path = copy.join("raw/watchface.xml");
+                let xml = fs::read_to_string(&xml_path)
+                    .map_err(|e| format!("cannot read watchface.xml: {e}"))?;
+                let xml = apply_defaults(&xml, &parsed.defaults)?;
+                fs::write(&xml_path, xml).map_err(|e| format!("cannot write watchface.xml: {e}"))
+            });
+        if let Err(e) = rewritten {
+            eprintln!("error: {e}");
+            let _ = fs::remove_dir_all(&work_dir);
+            return 2;
+        }
+        for (setting, option) in &parsed.defaults {
+            println!("Default {setting} = {option}");
+        }
+        copy
+    };
+
     let result = build_apk(
         &pkg_dir,
+        &res_dir,
         &out_apk,
         &aapt2,
         &zipalign,
@@ -218,8 +372,10 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_apk(
     pkg_dir: &Path,
+    res_dir: &Path,
     out_apk: &Path,
     aapt2: &Path,
     zipalign: &Path,
@@ -237,10 +393,7 @@ fn build_apk(
         &[
             "compile",
             "--dir",
-            pkg_dir
-                .join("src/main/res")
-                .to_str()
-                .unwrap_or("src/main/res"),
+            res_dir.to_str().unwrap_or("src/main/res"),
             "-o",
             compiled_res.to_str().unwrap_or("compiled_res.zip"),
         ],
@@ -338,6 +491,108 @@ fn build_apk(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const XML: &str = r#"<WatchFace>
+  <UserConfigurations>
+    <ListConfiguration
+        id="theme_style"
+        defaultValue="theme_platinum"
+        icon="a">
+      <ListOption id="theme_platinum" icon="a" />
+      <ListOption id="theme_lemans" icon="b" />
+    </ListConfiguration>
+    <ListConfiguration id="subdial_mode" defaultValue="subdials_chrono" icon="c">
+      <ListOption id="subdials_smart" icon="c" />
+      <ListOption id="subdials_chrono" icon="c" />
+    </ListConfiguration>
+  </UserConfigurations>
+  <Scene>
+    <ListConfiguration id="theme_style">
+      <ListOption id="theme_platinum" />
+    </ListConfiguration>
+  </Scene>
+</WatchFace>"#;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_args_reads_output_and_defaults() {
+        let p = parse_args(&s(&[
+            "prog",
+            "out.apk",
+            "--default",
+            "theme_style=theme_lemans",
+            "--default=subdial_mode=subdials_smart",
+        ]))
+        .unwrap();
+        assert_eq!(p.out_apk, Some(PathBuf::from("out.apk")));
+        assert_eq!(
+            p.defaults,
+            vec![
+                ("theme_style".into(), "theme_lemans".into()),
+                ("subdial_mode".into(), "subdials_smart".into()),
+            ]
+        );
+        assert_eq!(parse_args(&s(&["prog"])).unwrap(), BuildArgs::default());
+    }
+
+    #[test]
+    fn parse_args_rejects_bad_input() {
+        assert!(parse_args(&s(&["prog", "--default"])).is_err());
+        assert!(parse_args(&s(&["prog", "--default", "theme_style"])).is_err());
+        assert!(parse_args(&s(&["prog", "--default", "=x"])).is_err());
+        assert!(parse_args(&s(&["prog", "--bogus"])).is_err());
+        assert!(parse_args(&s(&["prog", "a.apk", "b.apk"])).is_err());
+    }
+
+    #[test]
+    fn apply_defaults_changes_only_the_named_settings() {
+        let out = apply_defaults(
+            XML,
+            &[
+                ("theme_style".into(), "theme_lemans".into()),
+                ("subdial_mode".into(), "subdials_smart".into()),
+            ],
+        )
+        .unwrap();
+        assert!(out.contains(r#"defaultValue="theme_lemans""#));
+        assert!(out.contains(r#"defaultValue="subdials_smart""#));
+        assert!(!out.contains(r#"defaultValue="theme_platinum""#));
+        assert!(!out.contains(r#"defaultValue="subdials_chrono""#));
+        // The scene's same-named ListConfiguration is not a setting and is left alone.
+        let scene = &out[out.find("<Scene>").unwrap()..];
+        assert_eq!(scene, &XML[XML.find("<Scene>").unwrap()..]);
+        assert_eq!(apply_defaults(XML, &[]).unwrap(), XML);
+    }
+
+    #[test]
+    fn apply_defaults_rejects_unknown_setting_or_option() {
+        let e = apply_defaults(XML, &[("theme".into(), "theme_lemans".into())]).unwrap_err();
+        assert!(e.contains("no setting named"), "{e}");
+        let e = apply_defaults(XML, &[("theme_style".into(), "theme_gold".into())]).unwrap_err();
+        assert!(e.contains("no option"), "{e}");
+        // An option from another setting does not count.
+        let e =
+            apply_defaults(XML, &[("theme_style".into(), "subdials_smart".into())]).unwrap_err();
+        assert!(e.contains("no option"), "{e}");
+    }
+
+    #[test]
+    fn apply_defaults_accepts_every_option_in_the_real_face() {
+        let real = include_str!("../../src/main/res/raw/watchface.xml");
+        for (setting, option) in [
+            ("theme_style", "theme_lemans"),
+            ("theme_style", "theme_reverse_panda"),
+            ("subdial_mode", "subdials_smart"),
+            ("font_scale", "font_xlarge"),
+        ] {
+            let out = apply_defaults(real, &[(setting.into(), option.into())]).unwrap();
+            assert_ne!(out, real, "{setting}={option} changed nothing");
+            assert!(out.contains(&format!("defaultValue=\"{option}\"")));
+        }
+    }
 
     #[test]
     fn version_sort_key_simple() {

@@ -101,19 +101,54 @@ fn find_watch_serial(repo_root: &Path) -> Option<String> {
     None
 }
 
+/// Installer options: `--default <setting>=<option>` (passed to the APK build) and
+/// `--fresh`, which uninstalls first so the face starts on its defaults and default
+/// data sources instead of keeping the watch's saved choices.
+#[derive(Debug, Default, PartialEq)]
+pub struct InstallArgs {
+    pub fresh: bool,
+    pub build_args: Vec<String>,
+}
+
+pub fn parse_args(args: &[String]) -> Result<InstallArgs, String> {
+    let mut parsed = InstallArgs::default();
+    let mut it = args.iter().skip(1);
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--fresh" => parsed.fresh = true,
+            "--default" => {
+                let value = it.next().ok_or("--default needs <setting>=<option>")?;
+                parsed.build_args.push("--default".into());
+                parsed.build_args.push(value.clone());
+            }
+            a if a.starts_with("--default=") => parsed.build_args.push(a.to_string()),
+            a => return Err(format!("unknown argument {a}")),
+        }
+    }
+    Ok(parsed)
+}
+
 pub fn run(args: &[String]) -> i32 {
-    let _ = args;
+    let parsed = match parse_args(args) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            eprintln!("usage: install [--fresh] [--default <setting>=<option>]...");
+            return 2;
+        }
+    };
     let (repo_root, _pkg_dir) = resolve_paths();
 
     // Create temp APK path
     let work_apk = env::temp_dir().join(format!("daytona-platinum-{}.apk", std::process::id()));
 
     // Build via build_wff_apk directly in Rust
-    if crate::build_wff_apk::run(&[
+    let mut build_args = vec![
         String::from("build_wff_apk"),
         work_apk.to_string_lossy().to_string(),
-    ]) != 0
-    {
+    ];
+    build_args.extend(parsed.build_args.iter().cloned());
+    if crate::build_wff_apk::run(&build_args) != 0 {
         eprintln!("error: build_wff_apk failed");
         let _ = std::fs::remove_file(&work_apk);
         return 1;
@@ -135,6 +170,15 @@ pub fn run(args: &[String]) -> i32 {
         "Installing onto {} (preserving user configurations)...",
         watch_serial
     );
+
+    if parsed.fresh {
+        // Saved settings and data-source picks belong to the installed face; removing it
+        // is the only way for new defaults to take effect on a watch that already has it.
+        println!("--fresh: removing the installed face so it starts on its defaults...");
+        let _ = Command::new("adb")
+            .args(["-s", &watch_serial, "uninstall", WATCH_FACE_PKG])
+            .output();
+    }
 
     // Try in-place install first (-r -d) to preserve user style preferences and complications
     let mut install_status = Command::new("adb")
@@ -225,6 +269,37 @@ pub fn run(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn a(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_install_args() {
+        assert_eq!(
+            parse_args(&a(&["install"])).unwrap(),
+            InstallArgs::default()
+        );
+        let p = parse_args(&a(&[
+            "install",
+            "--fresh",
+            "--default",
+            "theme_style=theme_lemans",
+            "--default=subdial_mode=subdials_smart",
+        ]))
+        .unwrap();
+        assert!(p.fresh);
+        assert_eq!(
+            p.build_args,
+            a(&[
+                "--default",
+                "theme_style=theme_lemans",
+                "--default=subdial_mode=subdials_smart"
+            ])
+        );
+        assert!(parse_args(&a(&["install", "--default"])).is_err());
+        assert!(parse_args(&a(&["install", "extra"])).is_err());
+    }
 
     #[test]
     fn parse_known_serial_58301() {
