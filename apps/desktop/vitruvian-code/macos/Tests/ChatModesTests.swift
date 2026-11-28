@@ -268,6 +268,34 @@ final class ChatModesTests: XCTestCase {
         XCTAssertTrue(settings[name.upperBound...].prefix(200).contains(".lineLimit(1)"), "the name stays on one line")
     }
 
+    /// Seen in the released 1.52.0: choosing Claude ACP for Claude Code records the adapter's
+    /// version on the provider, and the picker then disappeared, leaving no way back. Only an
+    /// agent added from the registry loses the picker; Claude Code names the adapter only while
+    /// it runs on it.
+    func testClaudeCodeKeepsItsConnectionPickerAfterChoosingClaudeACP() throws {
+        var claude = VitruvianCodeCLIProvider.claude
+        claude.connection = .claudeACP
+        claude.registryAgent = .init(agentID: "claude-acp", version: "0.113.0")
+        XCTAssertTrue(claude.showsConnectionPicker, "Claude Code on Claude ACP can still change connection")
+        XCTAssertEqual(claude.shownRegistryAgent?.version, "0.113.0")
+
+        claude.connection = .claudeSDK
+        XCTAssertTrue(claude.showsConnectionPicker)
+        XCTAssertNil(claude.shownRegistryAgent, "back on the Agent SDK, the adapter is no longer named")
+
+        let added = VitruvianCodeCLIProvider(
+            id: UUID(), name: "OpenCode (ACP)", commandTemplate: "", isBuiltIn: false, connection: .acp,
+            registryAgent: .init(agentID: "opencode", version: "2.4.2"))
+        XCTAssertFalse(added.showsConnectionPicker, "an agent from the registry has only ACP")
+        XCTAssertEqual(added.shownRegistryAgent?.agentID, "opencode")
+
+        XCTAssertTrue(VitruvianCodeCLIProvider.antigravity.showsConnectionPicker)
+
+        let settings = try appSource("SettingsView.swift")
+        XCTAssertTrue(settings.contains("if provider.shared.showsConnectionPicker {"), "Settings uses the rule tested here")
+        XCTAssertTrue(settings.contains("if let agent = provider.shared.shownRegistryAgent {"))
+    }
+
     /// With no connection chosen, agy runs over ACP and Claude Code on the Agent SDK; every other
     /// provider stays on its command line. A saved choice wins, so nobody is moved off theirs.
     func testNoChoiceMeansACPForAgyAndTheAgentSDKForClaude() {
