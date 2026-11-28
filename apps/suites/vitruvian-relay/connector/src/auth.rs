@@ -196,12 +196,19 @@ pub fn login(cfg: &Config) -> Result<Tokens> {
 
     let began = Instant::now();
     let mut interval = start.interval_secs;
+    // The last time the server could not be reached, kept for the expiry message.
+    let mut unreachable: Option<String> = None;
     loop {
         if began.elapsed().as_secs() >= start.expires_in_secs {
-            return Err("the code expired before it was approved".into());
+            return Err(match unreachable {
+                Some(why) => format!(
+                    "the code expired before it was approved; could not reach the sign-in server ({why})"
+                ),
+                None => "the code expired before it was approved".into(),
+            });
         }
         std::thread::sleep(Duration::from_secs(interval));
-        let (status, body) = post_form(
+        let answer = post_form(
             &agent,
             &ep.token,
             &[
@@ -209,14 +216,38 @@ pub fn login(cfg: &Config) -> Result<Tokens> {
                 ("device_code", &start.device_code),
                 ("client_id", &cfg.client_id),
             ],
-        )?;
-        match parse_token_response(status, &body, now_unix()) {
-            Poll::Pending => {}
-            Poll::SlowDown => interval += 5,
-            Poll::Failed(why) => return Err(format!("sign-in failed: {why}")),
-            Poll::Done(tokens) => return Ok(tokens),
+        );
+        // A dropped connection or a server error says nothing about the
+        // approval, so keep waiting until the code expires, asking less often
+        // each time (RFC 8628 §3.5). Only an answer from the server ends it.
+        let why = match answer {
+            Err(e) => e,
+            Ok((status, _)) if poll_should_retry(status) => format!("HTTP {status}"),
+            Ok((status, body)) => match parse_token_response(status, &body, now_unix()) {
+                Poll::Pending => continue,
+                Poll::SlowDown => {
+                    interval += 5;
+                    continue;
+                }
+                Poll::Failed(why) => return Err(format!("sign-in failed: {why}")),
+                Poll::Done(tokens) => return Ok(tokens),
+            },
+        };
+        if unreachable.is_none() {
+            eprintln!("  (lost touch with the sign-in server, still waiting: {why})");
         }
+        unreachable = Some(why);
+        interval = (interval * 2).min(MAX_POLL_BACKOFF_SECS);
     }
+}
+
+/// The longest wait between token polls after network trouble.
+const MAX_POLL_BACKOFF_SECS: u64 = 30;
+
+/// True for token-endpoint answers that are the server's trouble, not a
+/// verdict on the sign-in: overload (429) and server errors (5xx).
+fn poll_should_retry(status: u16) -> bool {
+    status == 429 || status >= 500
 }
 
 /// Why a refresh did not give a token.
@@ -518,6 +549,9 @@ mod tests {
 
     type Handler = dyn FnMut(&str, &str, &str, &str) -> (u16, String) + Send;
 
+    /// A handler status that makes the fake server hang up without answering.
+    const DROP: u16 = 0;
+
     /// A tiny HTTP server: calls `handler(method, path, head, body)` per request;
     /// `head` is the request line and headers, lowercased.
     /// Returns its base URL.
@@ -561,6 +595,9 @@ mod tests {
                     let body = String::from_utf8_lossy(&buf[head_end..]).to_string();
                     let (status, out) =
                         (handler.lock().unwrap())(method, path, &head.to_lowercase(), &body);
+                    if status == DROP {
+                        return; // close without answering, like a reset connection
+                    }
                     let _ = write!(
                         s,
                         "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
@@ -902,6 +939,83 @@ mod tests {
         let t = login(&cfg_for(&base, test_dir("login"))).unwrap();
         assert_eq!(t.access_token, "A");
         assert_eq!(t.refresh_token.as_deref(), Some("R"));
+    }
+
+    /// A device-flow server whose token answers come from `answers` in order
+    /// (the last one repeats). Returns its base URL and the token-call count.
+    fn device_server(expires_in: u64, answers: Vec<(u16, String)>) -> (String, Arc<Mutex<usize>>) {
+        let calls = Arc::new(Mutex::new(0usize));
+        let seen = calls.clone();
+        let base_cell = Arc::new(Mutex::new(String::new()));
+        let b = base_cell.clone();
+        let base = fake_server(Box::new(move |_m, path, _h, _body| match path {
+            "/.well-known/openid-configuration" => (200, discovery(&b.lock().unwrap())),
+            "/device" => (
+                200,
+                json!({"device_code": "dc", "user_code": "UC", "verification_uri": "https://v",
+                       "interval": 1, "expires_in": expires_in})
+                .to_string(),
+            ),
+            "/token" => {
+                let mut n = seen.lock().unwrap();
+                let i = (*n).min(answers.len() - 1);
+                *n += 1;
+                answers[i].clone()
+            }
+            other => panic!("unexpected {other}"),
+        }));
+        *base_cell.lock().unwrap() = base.clone();
+        (base, calls)
+    }
+
+    fn tokens_answer() -> (u16, String) {
+        (
+            200,
+            json!({"access_token": "A", "refresh_token": "R", "expires_in": 100}).to_string(),
+        )
+    }
+
+    /// 2026-11-24: one connection reset while waiting for approval ended the
+    /// whole sign-in, and the person's approval in the browser went nowhere.
+    #[test]
+    fn login_keeps_waiting_through_a_dropped_connection() {
+        let (base, calls) = device_server(600, vec![(DROP, String::new()), tokens_answer()]);
+        let t = login(&cfg_for(&base, test_dir("login-drop"))).unwrap();
+        assert_eq!(t.access_token, "A");
+        assert_eq!(*calls.lock().unwrap(), 2);
+    }
+
+    #[test]
+    fn login_keeps_waiting_through_a_server_error() {
+        for status in [500u16, 502, 503, 429] {
+            let (base, calls) = device_server(600, vec![(status, "oops".into()), tokens_answer()]);
+            let t = login(&cfg_for(&base, test_dir(&format!("login-{status}"))))
+                .unwrap_or_else(|e| panic!("HTTP {status}: {e}"));
+            assert_eq!(t.access_token, "A", "HTTP {status}");
+            assert_eq!(*calls.lock().unwrap(), 2, "HTTP {status}");
+        }
+    }
+
+    /// The server saying no is final: no retry hides a refusal.
+    #[test]
+    fn login_stops_at_once_on_a_refusal() {
+        let (base, calls) = device_server(
+            600,
+            vec![(400, json!({"error": "access_denied"}).to_string())],
+        );
+        let err = login(&cfg_for(&base, test_dir("login-denied"))).unwrap_err();
+        assert!(err.contains("access_denied"), "{err}");
+        assert_eq!(*calls.lock().unwrap(), 1);
+    }
+
+    /// When the code runs out while the server is unreachable, the message
+    /// says the network was the trouble, not just that the code expired.
+    #[test]
+    fn login_that_never_gets_through_names_the_network_error() {
+        let (base, _) = device_server(2, vec![(DROP, String::new())]);
+        let err = login(&cfg_for(&base, test_dir("login-down"))).unwrap_err();
+        assert!(err.contains("expired"), "{err}");
+        assert!(err.contains("could not reach"), "{err}");
     }
 
     #[test]
