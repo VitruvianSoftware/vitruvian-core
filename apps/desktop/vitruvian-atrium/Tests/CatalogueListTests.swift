@@ -216,6 +216,8 @@ enum CatalogueListTests {
             ("downloads is a string", "x"),
             ("arm64 missing sha256", ["arm64": ["url": "https://catalog.test/a.zip", "size": 1024]]),
             ("arm64 missing url", ["arm64": ["sha256": armSha, "size": 1024]]),
+            ("x86_64 missing url", ["x86_64": ["sha256": x86Sha, "size": 2048]]),
+            ("x86_64 missing sha256", ["x86_64": ["url": "https://catalog.test/b.zip", "size": 2048]]),
         ]
         let malformedNotDropped = malformedDownloads.filter { _, downloads in
             let list = CatalogueFixtures.list([CatalogueFixtures.entry(["downloads": downloads]),
